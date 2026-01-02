@@ -1,12 +1,16 @@
 {
-    "name": "backend",
+    "name": "vedicastro-backend",
     "version": "1.0.0",
-    "description": "Backend for AstroApp",
+    "description": "Backend for VedicAstro App",
     "main": "dist/index.js",
     "scripts": {
         "start": "node dist/index.js",
         "dev": "nodemon src/index.ts",
-        "build": "tsc"
+        "build": "tsc",
+        "postinstall": "npm run build"
+    },
+    "engines": {
+        "node": ">=18.0.0"
     },
     "keywords": [],
     "author": "",

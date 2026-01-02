@@ -14,8 +14,16 @@ dotenv.config();
 
 const app = express();
 
+// CORS Configuration for production
+const corsOptions = {
+    origin: process.env.CORS_ORIGIN || '*', // Allow all origins in development, restrict in production
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Database
@@ -28,15 +36,21 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/astrologer', astrologerRoutes);
 app.use('/api/panel', astrologerPanelRoutes);
 
-
+// Root route
 app.get('/', (req, res) => {
-    res.send('VedicAstro Backend Running');
+    res.json({
+        status: 'ok',
+        message: 'VedicAstro Backend Running',
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+    });
 });
 
-
+// Railway uses PORT environment variable
 const port = process.env.PORT || 5000;
-const host = process.env.HOST || '0.0.0.0';
 
-app.listen(Number(port), host, () => {
-    console.log(`Server running on http://${host}:${port}`);
+// Listen on 0.0.0.0 for Railway
+app.listen(Number(port), '0.0.0.0', () => {
+    console.log(`Server running on port ${port}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
