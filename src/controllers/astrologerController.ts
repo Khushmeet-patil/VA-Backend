@@ -108,9 +108,11 @@ export const updateApplicationStatus = async (req: Request, res: Response) => {
 // Get approved astrologers (Public) - excludes blocked astrologers
 export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
+        // Use lean() to get plain objects and avoid schema validation issues with old data
         const astrologers = await Astrologer.find({ status: 'approved', isBlocked: { $ne: true } })
-            .populate('userId', 'name')
-            .sort({ rating: -1 });
+            .select('firstName lastName systemKnown language bio experience rating isOnline pricePerMin priceRangeMin priceRangeMax')
+            .sort({ rating: -1 })
+            .lean();
 
         res.json(astrologers);
     } catch (error: any) {
@@ -118,3 +120,4 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
