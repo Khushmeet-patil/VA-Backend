@@ -1,0 +1,206 @@
+
+import { Request, Response } from 'express';
+import User from '../models/User';
+import Astrologer from '../models/Astrologer';
+import Transaction from '../models/Transaction';
+import Notification from '../models/Notification';
+
+// 1. Dashboard Stats
+export const getDashboardStats = async (req: Request, res: Response) => {
+    try {
+        const totalUsers = await User.countDocuments({ role: 'user' });
+        const totalAstrologers = await Astrologer.countDocuments({ status: 'approved' });
+
+        // Earning stats (mock implementation for now, ideally aggregate from Transactions)
+        const earnings = {
+            daily: 100,
+            weekly: 500,
+            monthly: 2000,
+            yearly: 24000
+        };
+
+        const newUsers = {
+            daily: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+            weekly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+            monthly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
+        };
+
+        const newAstrologers = {
+            daily: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+            weekly: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+            monthly: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
+        };
+
+        // Financials
+        // Total amount added by users (Credits to wallet)
+        const totalAddedByUser = await Transaction.aggregate([
+            { $match: { type: 'credit', status: 'success' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+
+        // Total amount paid to astrologers (Debits from user wallet to astrologer)
+        const totalPaidToAstrologers = await Transaction.aggregate([
+            { $match: { type: 'debit', status: 'success', toAstrologer: { $exists: true } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalUsers,
+                totalAstrologers,
+                earnings,
+                newUsers,
+                newAstrologers,
+                financials: {
+                    totalAddedByUser: totalAddedByUser[0]?.total || 0,
+                    totalPaidToAstrologers: totalPaidToAstrologers[0]?.total || 0,
+                    // Pending/Left to pay would be calculated based on Astrologer's pending earnings
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// 2. User Management
+export const getAllUsers = async (req: Request, res: Response) => {
+    try {
+        const users = await User.find({ role: 'user' }).sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const updateUser = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const updates = req.body; // Can include isBlocked, walletBalance, etc.
+
+        const user = await User.findByIdAndUpdate(userId, updates, { new: true });
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        res.status(200).json({ success: true, message: 'User updated', data: user });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const getUserActivity = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        // For now returning transactions as activity
+        const transactions = await Transaction.find({ fromUser: userId }).sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: transactions });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// 3. Astrologer Management
+export const getAstrologers = async (req: Request, res: Response) => {
+    try {
+        const { status } = req.query;
+        const query = status ? { status } : {};
+
+        const astrologers = await Astrologer.find(query).populate('userId', 'name mobile');
+        res.status(200).json({ success: true, data: astrologers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const updateAstrologerStatus = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { status } = req.body; // 'approved' or 'rejected'
+
+        const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, { status }, { new: true });
+        if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+
+        // Also update the User role if approved
+        if (status === 'approved') {
+            await User.findByIdAndUpdate(astrologer.userId, { role: 'astrologer' });
+        }
+
+        res.status(200).json({ success: true, message: 'Astrologer status updated', data: astrologer });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Update Astrologer (block/unblock, price range)
+export const updateAstrologer = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { isBlocked, priceRangeMin, priceRangeMax, pricePerMin } = req.body;
+
+        const updateData: any = {};
+        if (typeof isBlocked === 'boolean') updateData.isBlocked = isBlocked;
+        if (typeof priceRangeMin === 'number') updateData.priceRangeMin = priceRangeMin;
+        if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
+        if (typeof pricePerMin === 'number') updateData.pricePerMin = pricePerMin;
+
+        const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
+        if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+
+        res.status(200).json({ success: true, message: 'Astrologer updated', data: astrologer });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Bulk Update Astrologers
+export const bulkUpdateAstrologers = async (req: Request, res: Response) => {
+    try {
+        const { astrologerIds, isBlocked, priceRangeMin, priceRangeMax } = req.body;
+
+        if (!astrologerIds || !Array.isArray(astrologerIds) || astrologerIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'astrologerIds array is required' });
+        }
+
+        const updateData: any = {};
+        if (typeof isBlocked === 'boolean') updateData.isBlocked = isBlocked;
+        if (typeof priceRangeMin === 'number') updateData.priceRangeMin = priceRangeMin;
+        if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ success: false, message: 'No update fields provided' });
+        }
+
+        const result = await Astrologer.updateMany(
+            { _id: { $in: astrologerIds } },
+            { $set: updateData }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: `${result.modifiedCount} astrologers updated`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// 4. Notifications
+export const createNotification = async (req: Request, res: Response) => {
+    try {
+        const { title, message, type, audience, userId } = req.body;
+
+        const notification = await Notification.create({
+            title,
+            message,
+            type,
+            audience,
+            userId: audience === 'user' ? userId : undefined
+        });
+
+        res.status(201).json({ success: true, message: 'Notification sent', data: notification });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
