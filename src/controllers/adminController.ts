@@ -99,6 +99,62 @@ export const getUserActivity = async (req: Request, res: Response) => {
     }
 };
 
+// Add balance to user wallet (Admin action)
+export const addWalletBalance = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const { amount, reason } = req.body;
+
+        // Validate amount
+        if (!amount || typeof amount !== 'number' || amount <= 0) {
+            return res.status(400).json({ success: false, message: 'Valid positive amount is required' });
+        }
+
+        // Find user and update wallet balance
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const previousBalance = user.walletBalance || 0;
+        const newBalance = previousBalance + amount;
+
+        // Update user's wallet balance
+        user.walletBalance = newBalance;
+        await user.save();
+
+        // Create a transaction record for audit trail
+        await Transaction.create({
+            fromUser: userId,
+            type: 'credit',
+            amount: amount,
+            description: reason || 'Admin added balance',
+            status: 'success',
+            previousBalance,
+            newBalance
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `₹${amount} added to wallet successfully`,
+            data: {
+                previousBalance,
+                amountAdded: amount,
+                newBalance,
+                user: {
+                    _id: user._id,
+                    name: user.name,
+                    mobile: user.mobile,
+                    walletBalance: user.walletBalance
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Add wallet balance error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
 // 3. Astrologer Management
 export const getAstrologers = async (req: Request, res: Response) => {
     try {
