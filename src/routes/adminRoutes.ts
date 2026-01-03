@@ -9,7 +9,8 @@ import {
     updateAstrologerStatus,
     updateAstrologer,
     bulkUpdateAstrologers,
-    createNotification
+    createNotification,
+    manageUserWallet
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.get('/dashboard', getDashboardStats);
 router.get('/users', getAllUsers);
 router.put('/users/:userId', updateUser);
 router.get('/users/:userId/activity', getUserActivity);
+router.post('/users/:userId/wallet', manageUserWallet);
 
 // Astrologers
 router.get('/astrologers', getAstrologers);

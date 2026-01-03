@@ -204,3 +204,51 @@ export const createNotification = async (req: Request, res: Response) => {
     }
 };
 
+// 5. Wallet Management
+export const manageUserWallet = async (req: Request, res: Response) => {
+    try {
+        const { userId, amount, type, description } = req.body;
+
+        if (!userId || !amount || !type) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        if (type !== 'credit' && type !== 'debit') {
+            return res.status(400).json({ success: false, message: 'Invalid transaction type' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        // Create Transaction Record
+        await Transaction.create({
+            fromUser: userId,
+            amount: amount,
+            type: type,
+            status: 'success',
+            description: description || `Admin ${type} adjustment`,
+            createdAt: new Date()
+        });
+
+        // Update Wallet Balance
+        const balanceChange = type === 'credit' ? amount : -amount;
+        user.walletBalance = (user.walletBalance || 0) + balanceChange;
+
+        // Prevent negative balance (optional, but good practice)
+        if (user.walletBalance < 0) user.walletBalance = 0;
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: `Wallet ${type} successful`,
+            data: {
+                walletBalance: user.walletBalance
+            }
+        });
+    } catch (error) {
+        console.error('Wallet update error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
