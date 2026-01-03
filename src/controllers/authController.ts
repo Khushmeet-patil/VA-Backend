@@ -142,3 +142,27 @@ export const resetPassword = async (req: Request, res: Response) => {
         return res.status(500).json({ message: 'Server error', error });
     }
 };
+
+// Get wallet balance for authenticated user
+export const getWalletBalance = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+
+        const user = await User.findById(userId).select('walletBalance');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        return res.status(200).json({
+            success: true,
+            walletBalance: user.walletBalance || 0
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Server error', error });
+    }
+};
