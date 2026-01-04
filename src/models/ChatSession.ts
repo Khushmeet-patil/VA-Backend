@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 /**
  * ChatSession Model
@@ -34,7 +34,7 @@ const ChatSessionSchema: Schema = new Schema({
         type: String,
         required: true,
         unique: true,
-        default: () => uuidv4()
+        default: () => randomUUID()
     },
     userId: {
         type: Schema.Types.ObjectId,
