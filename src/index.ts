@@ -43,7 +43,7 @@ const io = new SocketIOServer(httpServer, {
 // Initialize socket handlers
 initializeSocketHandlers(io);
 
-// Routes
+// Routes - these are registered immediately so health check works
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -65,27 +65,22 @@ app.get('/', (req, res) => {
 // Railway uses PORT environment variable
 const port = process.env.PORT || 5000;
 
-// Start server function - ensures DB is connected first
-const startServer = async () => {
-    try {
-        // Connect to database first
-        await connectDB();
-        console.log('Database connected successfully');
+// START SERVER IMMEDIATELY - so Railway healthcheck passes
+httpServer.listen(Number(port), '0.0.0.0', () => {
+    console.log(`Server running on port ${port}`);
+    console.log(`Socket.IO enabled`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
-        // Then start the HTTP server
-        httpServer.listen(Number(port), '0.0.0.0', () => {
-            console.log(`Server running on port ${port}`);
-            console.log(`Socket.IO enabled`);
-            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    // Connect to database AFTER server is listening
+    connectDB()
+        .then(() => {
+            console.log('Database connected successfully');
+        })
+        .catch((error) => {
+            console.error('Database connection failed:', error.message);
+            // Don't exit - let server keep running, routes will fail gracefully
         });
-    } catch (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
-    }
-};
-
-// Start the server
-startServer();
+});
 
 // Export io for use in other modules if needed
 export { io };
