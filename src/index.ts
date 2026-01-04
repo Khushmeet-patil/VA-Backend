@@ -23,7 +23,7 @@ const httpServer = createServer(app);
 
 // CORS Configuration for production
 const corsOptions = {
-    origin: process.env.CORS_ORIGIN || '*', // Allow all origins in development, restrict in production
+    origin: process.env.CORS_ORIGIN || '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -36,15 +36,12 @@ app.use(express.json());
 // Initialize Socket.IO
 const io = new SocketIOServer(httpServer, {
     cors: corsOptions,
-    pingTimeout: 60000, // 60 seconds
-    pingInterval: 25000, // 25 seconds
+    pingTimeout: 60000,
+    pingInterval: 25000,
 });
 
 // Initialize socket handlers
 initializeSocketHandlers(io);
-
-// Database
-connectDB();
 
 // Routes
 app.use('/api/health', healthRoutes);
@@ -68,12 +65,27 @@ app.get('/', (req, res) => {
 // Railway uses PORT environment variable
 const port = process.env.PORT || 5000;
 
-// Listen on 0.0.0.0 for Railway - use httpServer instead of app
-httpServer.listen(Number(port), '0.0.0.0', () => {
-    console.log(`Server running on port ${port}`);
-    console.log(`Socket.IO enabled`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Start server function - ensures DB is connected first
+const startServer = async () => {
+    try {
+        // Connect to database first
+        await connectDB();
+        console.log('Database connected successfully');
+
+        // Then start the HTTP server
+        httpServer.listen(Number(port), '0.0.0.0', () => {
+            console.log(`Server running on port ${port}`);
+            console.log(`Socket.IO enabled`);
+            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+};
+
+// Start the server
+startServer();
 
 // Export io for use in other modules if needed
 export { io };
