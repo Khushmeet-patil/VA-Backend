@@ -1,9 +1,12 @@
+console.log('Starting VedicAstro Backend...');
 
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+
+console.log('Imports loaded, loading local modules...');
 
 import connectDB from './config/db';
 import healthRoutes from './routes/healthRoutes';
@@ -13,6 +16,8 @@ import astrologerRoutes from './routes/astrologerRoutes';
 import astrologerPanelRoutes from './routes/astrologerPanelRoutes';
 import chatRoutes from './routes/chatRoutes';
 import initializeSocketHandlers from './services/socketHandlers';
+
+console.log('All modules loaded successfully');
 
 dotenv.config();
 
@@ -64,6 +69,8 @@ app.get('/', (req, res) => {
 
 // Railway uses PORT environment variable
 const port = process.env.PORT || 5000;
+
+console.log(`Attempting to start server on port ${port}...`);
 
 // START SERVER IMMEDIATELY - so Railway healthcheck passes
 httpServer.listen(Number(port), '0.0.0.0', () => {
