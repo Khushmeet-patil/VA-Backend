@@ -155,6 +155,71 @@ export const addWalletBalance = async (req: Request, res: Response) => {
     }
 };
 
+// Deduct balance from user wallet (Admin action)
+export const deductWalletBalance = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const { amount, reason } = req.body;
+
+        // Validate amount
+        if (!amount || typeof amount !== 'number' || amount <= 0) {
+            return res.status(400).json({ success: false, message: 'Valid positive amount is required' });
+        }
+
+        // Find user
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const previousBalance = user.walletBalance || 0;
+
+        // Check if user has sufficient balance
+        if (previousBalance < amount) {
+            return res.status(400).json({
+                success: false,
+                message: `Insufficient balance. Current balance: ₹${previousBalance}`
+            });
+        }
+
+        const newBalance = previousBalance - amount;
+
+        // Update user's wallet balance
+        user.walletBalance = newBalance;
+        await user.save();
+
+        // Create a transaction record for audit trail
+        await Transaction.create({
+            fromUser: userId,
+            type: 'debit',
+            amount: amount,
+            description: reason || 'Admin deducted balance',
+            status: 'success',
+            previousBalance,
+            newBalance
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `₹${amount} deducted from wallet successfully`,
+            data: {
+                previousBalance,
+                amountDeducted: amount,
+                newBalance,
+                user: {
+                    _id: user._id,
+                    name: user.name,
+                    mobile: user.mobile,
+                    walletBalance: user.walletBalance
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Deduct wallet balance error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
 // 3. Astrologer Management
 export const getAstrologers = async (req: Request, res: Response) => {
     try {

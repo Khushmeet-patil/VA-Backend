@@ -6,6 +6,7 @@ import {
     updateUser,
     getUserActivity,
     addWalletBalance,
+    deductWalletBalance,
     getAstrologers,
     updateAstrologerStatus,
     updateAstrologer,
@@ -23,6 +24,7 @@ router.get('/users', getAllUsers);
 router.put('/users/:userId', updateUser);
 router.get('/users/:userId/activity', getUserActivity);
 router.post('/users/:userId/wallet/add', addWalletBalance);
+router.post('/users/:userId/wallet/deduct', deductWalletBalance);
 
 // Astrologers
 router.get('/astrologers', getAstrologers);
