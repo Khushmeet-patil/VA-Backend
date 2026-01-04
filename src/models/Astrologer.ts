@@ -18,6 +18,8 @@ export interface IAstrologer extends Document {
     rating: number;
     isOnline: boolean;
     isBlocked: boolean;
+    isBusy: boolean;                    // TRUE when in active chat
+    activeSessionId?: string;           // Current active session ID
     pricePerMin: number;
     priceRangeMin: number;
     priceRangeMax: number;
@@ -44,6 +46,8 @@ const AstrologerSchema: Schema = new Schema({
     rating: { type: Number, default: 0 },
     isOnline: { type: Boolean, default: false },
     isBlocked: { type: Boolean, default: false },
+    isBusy: { type: Boolean, default: false },
+    activeSessionId: { type: String },
     pricePerMin: { type: Number, default: 20 },
     priceRangeMin: { type: Number, default: 10 },
     priceRangeMax: { type: Number, default: 100 },

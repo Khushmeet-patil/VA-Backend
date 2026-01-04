@@ -1,0 +1,83 @@
+import mongoose, { Schema, Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * ChatSession Model
+ * Represents a paid chat session between a user and an astrologer.
+ * The backend is FULLY authoritative for timing, billing, and session state.
+ */
+export interface IChatSession extends Document {
+    sessionId: string;                  // Unique UUID for the session
+    userId: mongoose.Types.ObjectId;    // Reference to User
+    astrologerId: mongoose.Types.ObjectId;  // Reference to Astrologer
+    ratePerMinute: number;              // Rate locked at session creation
+    status: 'PENDING' | 'ACTIVE' | 'ENDED' | 'REJECTED';
+    startTime?: Date;                   // Set when status becomes ACTIVE
+    endTime?: Date;                     // Set when status becomes ENDED
+    totalMinutes: number;               // Completed billing cycles
+    totalAmount: number;                // Total amount deducted from user
+    astrologerEarnings: number;         // Total earnings for astrologer (may differ if platform fee)
+    endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT';
+    intakeDetails?: {                   // User's intake form data
+        name?: string;
+        gender?: string;
+        dob?: string;
+        tob?: string;
+        pob?: string;
+    };
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const ChatSessionSchema: Schema = new Schema({
+    sessionId: {
+        type: String,
+        required: true,
+        unique: true,
+        default: () => uuidv4()
+    },
+    userId: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+        index: true
+    },
+    astrologerId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Astrologer',
+        required: true,
+        index: true
+    },
+    ratePerMinute: {
+        type: Number,
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['PENDING', 'ACTIVE', 'ENDED', 'REJECTED'],
+        default: 'PENDING',
+        index: true
+    },
+    startTime: { type: Date },
+    endTime: { type: Date },
+    totalMinutes: { type: Number, default: 0 },
+    totalAmount: { type: Number, default: 0 },
+    astrologerEarnings: { type: Number, default: 0 },
+    endReason: {
+        type: String,
+        enum: ['USER_END', 'ASTROLOGER_END', 'INSUFFICIENT_BALANCE', 'DISCONNECT', 'TIMEOUT']
+    },
+    intakeDetails: {
+        name: { type: String },
+        gender: { type: String },
+        dob: { type: String },
+        tob: { type: String },
+        pob: { type: String }
+    }
+}, { timestamps: true });
+
+// Compound index for finding active sessions
+ChatSessionSchema.index({ astrologerId: 1, status: 1 });
+ChatSessionSchema.index({ userId: 1, status: 1 });
+
+export default mongoose.model<IChatSession>('ChatSession', ChatSessionSchema);

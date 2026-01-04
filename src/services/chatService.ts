@@ -1,0 +1,642 @@
+import { Server as SocketIOServer, Socket } from 'socket.io';
+import mongoose from 'mongoose';
+import ChatSession, { IChatSession } from '../models/ChatSession';
+import ChatMessage from '../models/ChatMessage';
+import ChatReview from '../models/ChatReview';
+import User from '../models/User';
+import Astrologer from '../models/Astrologer';
+import Transaction from '../models/Transaction';
+
+/**
+ * ChatService - Core billing and session management
+ * 
+ * CRITICAL: This service is the SINGLE SOURCE OF TRUTH for:
+ * - Chat timing
+ * - Billing cycles
+ * - Wallet deduction
+ * - Earnings calculation
+ * 
+ * Apps MUST NOT control timing or billing.
+ */
+class ChatService {
+    private io: SocketIOServer | null = null;
+
+    // Map of active billing timers: sessionId -> NodeJS.Timeout
+    private billingTimers: Map<string, NodeJS.Timeout> = new Map();
+
+    // Map of disconnect grace timers: sessionId -> NodeJS.Timeout
+    private gracePeriodTimers: Map<string, NodeJS.Timeout> = new Map();
+
+    // Grace period for disconnections (15 seconds)
+    private readonly GRACE_PERIOD_MS = 15000;
+
+    // Billing cycle interval (60 seconds)
+    private readonly BILLING_INTERVAL_MS = 60000;
+
+    // Request timeout (60 seconds - auto-reject if not accepted)
+    private readonly REQUEST_TIMEOUT_MS = 60000;
+
+    // Map of request timeout timers: sessionId -> NodeJS.Timeout
+    private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
+
+    /**
+     * Initialize the chat service with Socket.IO instance
+     */
+    initialize(io: SocketIOServer) {
+        this.io = io;
+        console.log('[ChatService] Initialized');
+    }
+
+    /**
+     * Create a new chat request
+     * Called when user wants to start chat with astrologer
+     */
+    async createChatRequest(
+        userId: string,
+        astrologerId: string,
+        intakeDetails?: object
+    ): Promise<IChatSession> {
+        // Validate user exists and has sufficient balance
+        const user = await User.findById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Get astrologer and validate
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            throw new Error('Astrologer not found');
+        }
+
+        if (!astrologer.isOnline) {
+            throw new Error('Astrologer is offline');
+        }
+
+        if (astrologer.isBusy) {
+            throw new Error('Astrologer is busy with another chat');
+        }
+
+        if (astrologer.status !== 'approved') {
+            throw new Error('Astrologer is not approved');
+        }
+
+        const ratePerMinute = astrologer.pricePerMin;
+
+        // Check if user has enough balance for at least 1 minute
+        if (user.walletBalance < ratePerMinute) {
+            throw new Error(`Insufficient balance. Minimum ₹${ratePerMinute} required.`);
+        }
+
+        // Check for existing pending request from this user
+        const existingRequest = await ChatSession.findOne({
+            userId,
+            status: 'PENDING'
+        });
+        if (existingRequest) {
+            throw new Error('You already have a pending chat request');
+        }
+
+        // Create new chat session
+        const session = new ChatSession({
+            userId,
+            astrologerId,
+            ratePerMinute,
+            status: 'PENDING',
+            intakeDetails
+        });
+
+        await session.save();
+
+        console.log(`[ChatService] Chat request created: ${session.sessionId}`);
+
+        // Set auto-reject timeout
+        const timeout = setTimeout(async () => {
+            await this.timeoutChatRequest(session.sessionId);
+        }, this.REQUEST_TIMEOUT_MS);
+        this.requestTimeouts.set(session.sessionId, timeout);
+
+        // Emit CHAT_REQUEST to astrologer
+        if (this.io) {
+            this.io.to(`astrologer:${astrologerId}`).emit('CHAT_REQUEST', {
+                sessionId: session.sessionId,
+                userId: user._id,
+                userName: user.name || 'User',
+                intakeDetails,
+                ratePerMinute,
+                userMobile: user.mobile
+            });
+        }
+
+        return session;
+    }
+
+    /**
+     * Accept a pending chat request
+     * Called when astrologer accepts the request
+     */
+    async acceptChatRequest(sessionId: string): Promise<IChatSession> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        if (session.status !== 'PENDING') {
+            throw new Error(`Cannot accept session with status: ${session.status}`);
+        }
+
+        // Clear request timeout
+        const timeout = this.requestTimeouts.get(sessionId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.requestTimeouts.delete(sessionId);
+        }
+
+        // Verify user still has enough balance
+        const user = await User.findById(session.userId);
+        if (!user || user.walletBalance < session.ratePerMinute) {
+            session.status = 'ENDED';
+            session.endReason = 'INSUFFICIENT_BALANCE';
+            await session.save();
+            throw new Error('User has insufficient balance');
+        }
+
+        // Lock astrologer (prevent concurrent chats)
+        const astrologer = await Astrologer.findById(session.astrologerId);
+        if (!astrologer) {
+            throw new Error('Astrologer not found');
+        }
+
+        if (astrologer.isBusy) {
+            session.status = 'REJECTED';
+            await session.save();
+            throw new Error('Already in another chat');
+        }
+
+        // Update astrologer status
+        astrologer.isBusy = true;
+        astrologer.activeSessionId = sessionId;
+        await astrologer.save();
+
+        // Update session to ACTIVE
+        session.status = 'ACTIVE';
+        session.startTime = new Date();
+        await session.save();
+
+        console.log(`[ChatService] Chat accepted: ${sessionId}`);
+
+        // Start billing timer
+        this.startBillingTimer(sessionId);
+
+        // Emit CHAT_STARTED to both user and astrologer
+        if (this.io) {
+            this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
+                sessionId,
+                startTime: session.startTime,
+                ratePerMinute: session.ratePerMinute,
+                astrologerId: session.astrologerId,
+                astrologerName: `${astrologer.firstName} ${astrologer.lastName}`
+            });
+
+            this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
+                sessionId,
+                startTime: session.startTime,
+                ratePerMinute: session.ratePerMinute,
+                userId: session.userId,
+                userName: user.name || 'User'
+            });
+        }
+
+        return session;
+    }
+
+    /**
+     * Reject a pending chat request
+     */
+    async rejectChatRequest(sessionId: string): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        if (session.status !== 'PENDING') {
+            throw new Error(`Cannot reject session with status: ${session.status}`);
+        }
+
+        // Clear request timeout
+        const timeout = this.requestTimeouts.get(sessionId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.requestTimeouts.delete(sessionId);
+        }
+
+        session.status = 'REJECTED';
+        await session.save();
+
+        console.log(`[ChatService] Chat rejected: ${sessionId}`);
+
+        // Emit CHAT_REJECTED to user
+        if (this.io) {
+            this.io.to(`user:${session.userId}`).emit('CHAT_REJECTED', {
+                sessionId,
+                reason: 'Astrologer declined the request'
+            });
+        }
+    }
+
+    /**
+     * Auto-timeout a chat request that wasn't responded to
+     */
+    private async timeoutChatRequest(sessionId: string): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session || session.status !== 'PENDING') {
+            return;
+        }
+
+        session.status = 'ENDED';
+        session.endReason = 'TIMEOUT';
+        await session.save();
+
+        this.requestTimeouts.delete(sessionId);
+
+        console.log(`[ChatService] Chat request timed out: ${sessionId}`);
+
+        // Emit to user
+        if (this.io) {
+            this.io.to(`user:${session.userId}`).emit('CHAT_REJECTED', {
+                sessionId,
+                reason: 'Request timed out - Astrologer did not respond'
+            });
+        }
+    }
+
+    /**
+     * End an active chat session
+     */
+    async endChat(
+        sessionId: string,
+        endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT'
+    ): Promise<IChatSession> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        if (session.status !== 'ACTIVE') {
+            throw new Error(`Cannot end session with status: ${session.status}`);
+        }
+
+        // Stop billing timer
+        this.stopBillingTimer(sessionId);
+
+        // Clear any grace period timer
+        this.clearGracePeriod(sessionId);
+
+        // Update session
+        session.status = 'ENDED';
+        session.endTime = new Date();
+        session.endReason = endReason;
+        await session.save();
+
+        // Unlock astrologer
+        const astrologer = await Astrologer.findById(session.astrologerId);
+        if (astrologer) {
+            astrologer.isBusy = false;
+            astrologer.activeSessionId = undefined;
+            astrologer.totalChats += 1;
+            await astrologer.save();
+        }
+
+        console.log(`[ChatService] Chat ended: ${sessionId}, reason: ${endReason}`);
+
+        // Emit CHAT_ENDED to both parties
+        if (this.io) {
+            const endPayload = {
+                sessionId,
+                endReason,
+                totalMinutes: session.totalMinutes,
+                totalAmount: session.totalAmount,
+                astrologerEarnings: session.astrologerEarnings
+            };
+
+            this.io.to(`user:${session.userId}`).emit('CHAT_ENDED', endPayload);
+            this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_ENDED', endPayload);
+        }
+
+        return session;
+    }
+
+    /**
+     * Start the 60-second billing timer for a session
+     */
+    private startBillingTimer(sessionId: string): void {
+        console.log(`[ChatService] Starting billing timer for: ${sessionId}`);
+
+        const timer = setInterval(async () => {
+            await this.processBillingCycle(sessionId);
+        }, this.BILLING_INTERVAL_MS);
+
+        this.billingTimers.set(sessionId, timer);
+    }
+
+    /**
+     * Stop the billing timer for a session
+     */
+    private stopBillingTimer(sessionId: string): void {
+        const timer = this.billingTimers.get(sessionId);
+        if (timer) {
+            clearInterval(timer);
+            this.billingTimers.delete(sessionId);
+            console.log(`[ChatService] Stopped billing timer for: ${sessionId}`);
+        }
+    }
+
+    /**
+     * Process one billing cycle (60 seconds)
+     * This is the CRITICAL billing logic
+     */
+    private async processBillingCycle(sessionId: string): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session || session.status !== 'ACTIVE') {
+            this.stopBillingTimer(sessionId);
+            return;
+        }
+
+        const user = await User.findById(session.userId);
+        const astrologer = await Astrologer.findById(session.astrologerId);
+
+        if (!user || !astrologer) {
+            console.error(`[ChatService] Billing error: User or Astrologer not found`);
+            await this.endChat(sessionId, 'DISCONNECT');
+            return;
+        }
+
+        const ratePerMinute = session.ratePerMinute;
+
+        // CRITICAL: Check if user can afford BEFORE deducting
+        if (user.walletBalance < ratePerMinute) {
+            console.log(`[ChatService] Insufficient balance, ending chat: ${sessionId}`);
+            await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
+            return;
+        }
+
+        // Process payment atomically
+        const paymentSuccess = await this.processPayment(session, user, astrologer);
+
+        if (!paymentSuccess) {
+            console.error(`[ChatService] Payment failed for: ${sessionId}`);
+            await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
+            return;
+        }
+
+        // Reload user to check new balance
+        const updatedUser = await User.findById(session.userId);
+        if (!updatedUser) return;
+
+        // Emit billing update to both parties
+        if (this.io) {
+            this.io.to(`user:${session.userId}`).emit('BILLING_UPDATE', {
+                sessionId,
+                minutesElapsed: session.totalMinutes,
+                amountDeducted: session.totalAmount,
+                userBalance: updatedUser.walletBalance
+            });
+
+            this.io.to(`astrologer:${session.astrologerId}`).emit('BILLING_UPDATE', {
+                sessionId,
+                minutesElapsed: session.totalMinutes,
+                amountDeducted: session.totalAmount,
+                astrologerEarnings: session.astrologerEarnings
+            });
+        }
+
+        // Check for LAST MINUTE WARNING
+        // If after this deduction, user cannot afford another minute but still has some balance
+        if (updatedUser.walletBalance < ratePerMinute && updatedUser.walletBalance > 0) {
+            console.log(`[ChatService] Sending last minute warning for: ${sessionId}`);
+            if (this.io) {
+                this.io.to(`user:${session.userId}`).emit('LAST_MINUTE_WARNING', {
+                    sessionId,
+                    remainingBalance: updatedUser.walletBalance,
+                    ratePerMinute
+                });
+            }
+        }
+    }
+
+    /**
+     * Process payment atomically
+     * Deduct from user wallet, add to astrologer earnings
+     */
+    private async processPayment(
+        session: IChatSession,
+        user: any,
+        astrologer: any
+    ): Promise<boolean> {
+        const mongoSession = await mongoose.startSession();
+        mongoSession.startTransaction();
+
+        try {
+            const ratePerMinute = session.ratePerMinute;
+
+            // Double-check balance within transaction
+            if (user.walletBalance < ratePerMinute) {
+                await mongoSession.abortTransaction();
+                return false;
+            }
+
+            // Deduct from user wallet
+            user.walletBalance -= ratePerMinute;
+            await user.save({ session: mongoSession });
+
+            // Add to astrologer earnings (full amount for now, can add platform fee later)
+            const astrologerShare = ratePerMinute; // Could be ratePerMinute * 0.7 for 70%
+            astrologer.earnings += astrologerShare;
+            await astrologer.save({ session: mongoSession });
+
+            // Update session totals
+            session.totalMinutes += 1;
+            session.totalAmount += ratePerMinute;
+            session.astrologerEarnings += astrologerShare;
+            await session.save({ session: mongoSession });
+
+            // Create immutable transaction record
+            const transaction = new Transaction({
+                fromUser: user._id,
+                toAstrologer: astrologer._id,
+                amount: ratePerMinute,
+                type: 'debit',
+                status: 'success',
+                description: `Chat session: ${session.sessionId} - Minute ${session.totalMinutes}`
+            });
+            await transaction.save({ session: mongoSession });
+
+            await mongoSession.commitTransaction();
+
+            console.log(`[ChatService] Billing cycle ${session.totalMinutes} processed for: ${session.sessionId}`);
+            return true;
+
+        } catch (error) {
+            await mongoSession.abortTransaction();
+            console.error('[ChatService] Payment transaction failed:', error);
+            return false;
+        } finally {
+            mongoSession.endSession();
+        }
+    }
+
+    /**
+     * Save a message to the database
+     */
+    async saveMessage(
+        sessionId: string,
+        senderId: string,
+        senderType: 'user' | 'astrologer',
+        text: string
+    ): Promise<void> {
+        const message = new ChatMessage({
+            sessionId,
+            senderId,
+            senderType,
+            text,
+            timestamp: new Date()
+        });
+        await message.save();
+    }
+
+    /**
+     * Get messages for a session
+     */
+    async getMessages(sessionId: string): Promise<any[]> {
+        return ChatMessage.find({ sessionId }).sort({ timestamp: 1 });
+    }
+
+    /**
+     * Submit a review for a session
+     */
+    async submitReview(
+        sessionId: string,
+        userId: string,
+        rating: number,
+        reviewText?: string
+    ): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) {
+            throw new Error('Session not found');
+        }
+
+        if (session.userId.toString() !== userId) {
+            throw new Error('Unauthorized');
+        }
+
+        if (session.status !== 'ENDED') {
+            throw new Error('Can only review ended sessions');
+        }
+
+        // Check if already reviewed
+        const existingReview = await ChatReview.findOne({ sessionId });
+        if (existingReview) {
+            throw new Error('Session already reviewed');
+        }
+
+        // Create review
+        const review = new ChatReview({
+            sessionId,
+            userId,
+            astrologerId: session.astrologerId,
+            rating,
+            reviewText
+        });
+        await review.save();
+
+        // Update astrologer's average rating
+        const allReviews = await ChatReview.find({ astrologerId: session.astrologerId });
+        const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+
+        await Astrologer.findByIdAndUpdate(session.astrologerId, {
+            rating: Math.round(avgRating * 10) / 10 // Round to 1 decimal
+        });
+
+        console.log(`[ChatService] Review submitted for session: ${sessionId}`);
+    }
+
+    /**
+     * Handle user disconnect - start grace period
+     */
+    handleDisconnect(userId: string, isAstrologer: boolean): void {
+        const userType = isAstrologer ? 'astrologer' : 'user';
+        console.log(`[ChatService] ${userType} disconnected: ${userId}`);
+
+        // Find active session for this user
+        const findSession = isAstrologer
+            ? ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
+            : ChatSession.findOne({ userId, status: 'ACTIVE' });
+
+        findSession.then(session => {
+            if (!session) return;
+
+            console.log(`[ChatService] Starting grace period for: ${session.sessionId}`);
+
+            // Start grace period timer
+            const timer = setTimeout(async () => {
+                await this.endChat(session.sessionId, 'DISCONNECT');
+            }, this.GRACE_PERIOD_MS);
+
+            this.gracePeriodTimers.set(session.sessionId, timer);
+        });
+    }
+
+    /**
+     * Handle user reconnect - clear grace period
+     */
+    handleReconnect(userId: string, isAstrologer: boolean): void {
+        const userType = isAstrologer ? 'astrologer' : 'user';
+        console.log(`[ChatService] ${userType} reconnected: ${userId}`);
+
+        // Find active session for this user
+        const findSession = isAstrologer
+            ? ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
+            : ChatSession.findOne({ userId, status: 'ACTIVE' });
+
+        findSession.then(session => {
+            if (!session) return;
+            this.clearGracePeriod(session.sessionId);
+        });
+    }
+
+    /**
+     * Clear grace period timer for a session
+     */
+    private clearGracePeriod(sessionId: string): void {
+        const timer = this.gracePeriodTimers.get(sessionId);
+        if (timer) {
+            clearTimeout(timer);
+            this.gracePeriodTimers.delete(sessionId);
+            console.log(`[ChatService] Cleared grace period for: ${sessionId}`);
+        }
+    }
+
+    /**
+     * Get session by ID
+     */
+    async getSession(sessionId: string): Promise<IChatSession | null> {
+        return ChatSession.findOne({ sessionId });
+    }
+
+    /**
+     * Get active session for a user
+     */
+    async getActiveSessionForUser(userId: string): Promise<IChatSession | null> {
+        return ChatSession.findOne({ userId, status: 'ACTIVE' });
+    }
+
+    /**
+     * Get active session for an astrologer
+     */
+    async getActiveSessionForAstrologer(astrologerId: string): Promise<IChatSession | null> {
+        return ChatSession.findOne({ astrologerId, status: 'ACTIVE' });
+    }
+}
+
+// Export singleton instance
+export const chatService = new ChatService();
+export default chatService;
