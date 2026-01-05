@@ -9,7 +9,8 @@ import {
     getSession,
     getChatHistory,
     getActiveSession,
-    getPendingRequests
+    getPendingRequests,
+    getConversation
 } from '../controllers/chatController';
 
 const router = Router();
@@ -43,5 +44,8 @@ router.get('/active', authMiddleware, getActiveSession);
 
 // Get pending requests (for astrologers)
 router.get('/pending', authMiddleware, getPendingRequests);
+
+// Get conversation messages (all messages between user-astrologer pair)
+router.get('/conversation/:partnerId', authMiddleware, getConversation);
 
 export default router;

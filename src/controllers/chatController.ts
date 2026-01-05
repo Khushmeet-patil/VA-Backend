@@ -324,3 +324,52 @@ export const getPendingRequests = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ message: 'Failed to get pending requests' });
     }
 };
+
+/**
+ * GET /chat/conversation/:partnerId
+ * Get all messages between authenticated user and a partner (user-astrologer pair)
+ * For users: partnerId = astrologerId
+ * For astrologers: partnerId = userId
+ * Query params: limit (default 50), before (ISO timestamp for pagination)
+ */
+export const getConversation = async (req: AuthRequest, res: Response) => {
+    try {
+        const currentUserId = req.userId;
+        const userRole = req.userRole;
+        const { partnerId } = req.params;
+        const { limit = '50', before } = req.query;
+
+        if (!currentUserId) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        if (!partnerId) {
+            return res.status(400).json({ message: 'partnerId is required' });
+        }
+
+        let userId: string;
+        let astrologerId: string;
+
+        if (userRole === 'astrologer') {
+            astrologerId = currentUserId;
+            userId = partnerId;
+        } else {
+            userId = currentUserId;
+            astrologerId = partnerId;
+        }
+
+        const beforeDate = before ? new Date(before as string) : undefined;
+        const limitNum = parseInt(limit as string, 10) || 50;
+
+        const result = await chatService.getConversation(userId, astrologerId, limitNum, beforeDate);
+
+        res.json({
+            messages: result.messages,
+            hasMore: result.hasMore
+        });
+
+    } catch (error: any) {
+        console.error('Get conversation error:', error);
+        res.status(500).json({ message: 'Failed to get conversation' });
+    }
+};

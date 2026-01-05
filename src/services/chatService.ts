@@ -632,6 +632,50 @@ class ChatService {
     }
 
     /**
+     * Get ALL messages between a user-astrologer pair (across all sessions)
+     * Supports pagination for "load earlier" functionality
+     */
+    async getConversation(
+        userId: string,
+        astrologerId: string,
+        limit: number = 50,
+        before?: Date
+    ): Promise<{ messages: any[]; hasMore: boolean }> {
+        // Find all sessions between this user and astrologer
+        const sessions = await ChatSession.find({
+            userId,
+            astrologerId,
+            status: { $in: ['ACTIVE', 'ENDED'] }
+        }).select('sessionId');
+
+        const sessionIds = sessions.map(s => s.sessionId);
+
+        if (sessionIds.length === 0) {
+            return { messages: [], hasMore: false };
+        }
+
+        // Build query
+        const query: any = { sessionId: { $in: sessionIds } };
+        if (before) {
+            query.timestamp = { $lt: before };
+        }
+
+        // Get messages (fetch limit + 1 to check if there are more)
+        const messages = await ChatMessage.find(query)
+            .sort({ timestamp: -1 }) // Newest first for "load earlier"
+            .limit(limit + 1);
+
+        const hasMore = messages.length > limit;
+        const resultMessages = hasMore ? messages.slice(0, limit) : messages;
+
+        // Reverse to get chronological order (oldest first)
+        return {
+            messages: resultMessages.reverse(),
+            hasMore
+        };
+    }
+
+    /**
      * Submit a review for a session
      */
     async submitReview(

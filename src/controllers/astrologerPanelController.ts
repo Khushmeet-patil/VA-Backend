@@ -232,12 +232,12 @@ export const getStats = async (req: Request, res: Response) => {
     }
 };
 
-// Get Astrologer's Chats
+// Get Astrologer's Chats (grouped by USER, not session)
 export const getChats = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
 
-        // Find sessions involving this astrologer (ACTIVE or ENDED)
+        // Find all sessions involving this astrologer (ACTIVE or ENDED)
         const sessions = await ChatSession.find({
             astrologerId,
             status: { $in: ['ACTIVE', 'ENDED'] }
@@ -245,10 +245,28 @@ export const getChats = async (req: Request, res: Response) => {
             .populate('userId', 'name mobile')
             .sort({ updatedAt: -1 });
 
-        const chatList = await Promise.all(sessions.map(async (session) => {
-            // Get last message
-            const lastMsg = await ChatMessage.findOne({ sessionId: session.sessionId })
+        // Group sessions by userId
+        const userSessionsMap = new Map<string, any[]>();
+        for (const session of sessions) {
+            const userIdStr = (session.userId as any)._id.toString();
+            if (!userSessionsMap.has(userIdStr)) {
+                userSessionsMap.set(userIdStr, []);
+            }
+            userSessionsMap.get(userIdStr)!.push(session);
+        }
+
+        // Build chat list with one entry per user
+        const chatList = await Promise.all(Array.from(userSessionsMap.entries()).map(async ([userIdStr, userSessions]) => {
+            // Get all session IDs for this user
+            const sessionIds = userSessions.map(s => s.sessionId);
+
+            // Get last message across all sessions
+            const lastMsg = await ChatMessage.findOne({ sessionId: { $in: sessionIds } })
                 .sort({ timestamp: -1 });
+
+            // Get user info from first session
+            const firstSession = userSessions[0];
+            const userData = firstSession.userId as any;
 
             // Format time
             let timeString = '';
@@ -264,21 +282,32 @@ export const getChats = async (req: Request, res: Response) => {
                 } else {
                     timeString = date.toLocaleDateString();
                 }
-            } else if (session.startTime) {
-                timeString = session.startTime.toLocaleDateString();
             }
 
+            // Check if any session is active
+            const hasActiveSession = userSessions.some(s => s.status === 'ACTIVE');
+
             return {
-                id: session.sessionId,
+                id: userIdStr, // Use userId as the unique ID
+                sessionId: hasActiveSession ? userSessions.find(s => s.status === 'ACTIVE')?.sessionId : firstSession.sessionId,
                 userId: {
-                    name: (session.userId as any).name || 'User',
-                    mobile: (session.userId as any).mobile || ''
+                    _id: userIdStr,
+                    name: userData.name || 'User',
+                    mobile: userData.mobile || ''
                 },
-                lastMessage: lastMsg ? lastMsg.text : (session.status === 'ACTIVE' ? 'Chat in progress...' : 'Chat ended'),
+                lastMessage: lastMsg ? lastMsg.text : (hasActiveSession ? 'Chat in progress...' : 'No messages'),
                 lastMessageTime: timeString,
-                unreadCount: 0 // TODO: Implement unread count
+                unreadCount: 0,
+                isActive: hasActiveSession
             };
         }));
+
+        // Sort by last message time (most recent first)
+        chatList.sort((a, b) => {
+            if (a.isActive && !b.isActive) return -1;
+            if (!a.isActive && b.isActive) return 1;
+            return 0;
+        });
 
         res.json({
             success: true,
