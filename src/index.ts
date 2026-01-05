@@ -15,6 +15,7 @@ import adminRoutes from './routes/adminRoutes';
 import astrologerRoutes from './routes/astrologerRoutes';
 import astrologerPanelRoutes from './routes/astrologerPanelRoutes';
 import chatRoutes from './routes/chatRoutes';
+import profileRoutes from './routes/profileRoutes';
 import initializeSocketHandlers from './services/socketHandlers';
 
 console.log('All modules loaded successfully');
@@ -55,6 +56,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/astrologer', astrologerRoutes);
 app.use('/api/panel', astrologerPanelRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/profiles', profileRoutes);
 
 // Root route
 app.get('/', (req, res) => {

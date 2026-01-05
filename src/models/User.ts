@@ -1,11 +1,22 @@
 
 import mongoose, { Schema, Document } from 'mongoose';
 
+// Birth profile interface for storing multiple profiles per user
+export interface IBirthProfile {
+    _id?: mongoose.Types.ObjectId;
+    name: string;
+    gender: string;
+    dateOfBirth: string;  // ISO date string
+    timeOfBirth: string;  // HH:mm format
+    placeOfBirth: string;
+    createdAt: Date;
+}
 
 export interface IUser extends Document {
     mobile: string;
     password?: string;
     name?: string;
+    gender?: string;  // User's gender
     dob?: string;
     tob?: string;
     pob?: string;
@@ -15,13 +26,24 @@ export interface IUser extends Document {
     role: 'user' | 'admin' | 'astrologer';
     walletBalance: number;
     isBlocked: boolean;
+    birthProfiles: IBirthProfile[];  // Saved birth profiles for chat intake
     createdAt: Date;
 }
+
+const BirthProfileSchema: Schema = new Schema({
+    name: { type: String, required: true },
+    gender: { type: String, required: true },
+    dateOfBirth: { type: String, required: true },
+    timeOfBirth: { type: String, required: true },
+    placeOfBirth: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
 
 const UserSchema: Schema = new Schema({
     mobile: { type: String, required: true, unique: true },
     password: { type: String },
     name: { type: String },
+    gender: { type: String },
     dob: { type: String },
     tob: { type: String },
     pob: { type: String },
@@ -31,6 +53,8 @@ const UserSchema: Schema = new Schema({
     role: { type: String, enum: ['user', 'admin', 'astrologer'], default: 'user' },
     walletBalance: { type: Number, default: 0 },
     isBlocked: { type: Boolean, default: false },
+    birthProfiles: { type: [BirthProfileSchema], default: [] },
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);
+

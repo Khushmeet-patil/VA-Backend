@@ -79,7 +79,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
 export const signup = async (req: Request, res: Response) => {
     try {
-        const { mobile, name, dob, tob, pob, password } = req.body;
+        const { mobile, name, gender, dob, tob, pob, password } = req.body;
 
         // Hash password
         const salt = await bcrypt.genSalt(10);
@@ -87,7 +87,7 @@ export const signup = async (req: Request, res: Response) => {
 
         const user = await User.findOneAndUpdate(
             { mobile },
-            { name, dob, tob, pob, password: hashedPassword, isVerified: true },
+            { name, gender, dob, tob, pob, password: hashedPassword, isVerified: true },
             { new: true }
         );
 
