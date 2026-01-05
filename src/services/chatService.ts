@@ -857,7 +857,11 @@ class ChatService {
      * Get active session for a user
      */
     async getActiveSessionForUser(userId: string): Promise<IChatSession | null> {
-        return ChatSession.findOne({ userId, status: 'ACTIVE' })
+        return ChatSession.findOne({
+            userId,
+            status: { $in: ['ACTIVE', 'PENDING'] }
+        })
+            .sort({ createdAt: -1 }) // Get the most recent one
             .populate('astrologerId', 'firstName lastName');
     }
 
