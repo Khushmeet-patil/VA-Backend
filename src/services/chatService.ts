@@ -857,14 +857,16 @@ class ChatService {
      * Get active session for a user
      */
     async getActiveSessionForUser(userId: string): Promise<IChatSession | null> {
-        return ChatSession.findOne({ userId, status: 'ACTIVE' });
+        return ChatSession.findOne({ userId, status: 'ACTIVE' })
+            .populate('astrologerId', 'firstName lastName');
     }
 
     /**
      * Get active session for an astrologer
      */
     async getActiveSessionForAstrologer(astrologerId: string): Promise<IChatSession | null> {
-        return ChatSession.findOne({ astrologerId, status: 'ACTIVE' });
+        return ChatSession.findOne({ astrologerId, status: 'ACTIVE' })
+            .populate('userId', 'name');
     }
 }
 
