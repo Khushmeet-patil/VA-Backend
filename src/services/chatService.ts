@@ -177,19 +177,23 @@ class ChatService {
         astrologer.activeSessionId = sessionId;
         await astrologer.save();
 
-        // Update session to ACTIVE (locked) but NOT billing yet
+        // Update session to ACTIVE and START BILLING IMMEDIATELY
         session.status = 'ACTIVE';
-        // startTime will be set when both parties join
+        session.startTime = new Date();
+        session.userJoined = true;
+        session.astrologerJoined = true;
         await session.save();
 
-        console.log(`[ChatService] Chat accepted (WAITING FOR JOIN): ${sessionId}`);
+        // Start billing timer immediately
+        this.startBillingTimer(sessionId);
 
-        // Emit CHAT_STARTED to both user and astrologer
-        // They should receive this and navigate to Chat Screen
+        console.log(`[ChatService] Chat accepted and BILLING STARTED: ${sessionId}`);
+
+        // Emit CHAT_STARTED to both user and astrologer with startTime
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
                 sessionId,
-                // No startTime yet
+                startTime: session.startTime,
                 ratePerMinute: session.ratePerMinute,
                 astrologerId: session.astrologerId,
                 astrologerName: `${astrologer.firstName} ${astrologer.lastName}`
@@ -197,10 +201,20 @@ class ChatService {
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
                 sessionId,
-                // No startTime yet
+                startTime: session.startTime,
                 ratePerMinute: session.ratePerMinute,
                 userId: session.userId,
                 userName: user.name || 'User'
+            });
+
+            // Also emit TIMER_STARTED immediately
+            this.io.to(`user:${session.userId}`).emit('TIMER_STARTED', {
+                sessionId,
+                startTime: session.startTime
+            });
+            this.io.to(`astrologer:${session.astrologerId}`).emit('TIMER_STARTED', {
+                sessionId,
+                startTime: session.startTime
             });
         }
 
