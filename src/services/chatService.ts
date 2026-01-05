@@ -135,7 +135,8 @@ class ChatService {
      * Called when astrologer accepts the request
      */
     async acceptChatRequest(sessionId: string): Promise<IChatSession> {
-        const session = await ChatSession.findOne({ sessionId });
+        // Initial check (non-atomic, just for validation)
+        let session = await ChatSession.findOne({ sessionId });
         if (!session) {
             throw new Error('Session not found');
         }
@@ -154,9 +155,11 @@ class ChatService {
         // Verify user still has enough balance
         const user = await User.findById(session.userId);
         if (!user || user.walletBalance < session.ratePerMinute) {
-            session.status = 'ENDED';
-            session.endReason = 'INSUFFICIENT_BALANCE';
-            await session.save();
+            // Atomic update to fail
+            await ChatSession.findOneAndUpdate(
+                { sessionId, status: 'PENDING' },
+                { status: 'ENDED', endReason: 'INSUFFICIENT_BALANCE' }
+            );
             throw new Error('User has insufficient balance');
         }
 
@@ -167,22 +170,43 @@ class ChatService {
         }
 
         if (astrologer.isBusy) {
-            session.status = 'REJECTED';
-            await session.save();
+            await ChatSession.findOneAndUpdate(
+                { sessionId, status: 'PENDING' },
+                { status: 'REJECTED' }
+            );
             throw new Error('Already in another chat');
         }
 
-        // Update astrologer status
+        // Update astrologer status first
         astrologer.isBusy = true;
         astrologer.activeSessionId = sessionId;
         await astrologer.save();
 
-        // Update session to ACTIVE and START BILLING IMMEDIATELY
-        session.status = 'ACTIVE';
-        session.startTime = new Date();
-        session.userJoined = true;
-        session.astrologerJoined = true;
-        await session.save();
+        // ATOMIC COMMIT: Try to change status PENDING -> ACTIVE
+        const updatedSession = await ChatSession.findOneAndUpdate(
+            { sessionId, status: 'PENDING' },
+            {
+                status: 'ACTIVE',
+                startTime: new Date(),
+                userJoined: true,
+                astrologerJoined: true
+            },
+            { new: true }
+        );
+
+        if (!updatedSession) {
+            // RACE CONDITION LOST!
+            // The session is no longer PENDING (likely cancelled by user).
+            // Revert astrologer state
+            astrologer.isBusy = false;
+            astrologer.activeSessionId = undefined;
+            await astrologer.save();
+
+            throw new Error('Chat request was cancelled or expired');
+        }
+
+        // Use the updated session object from here
+        session = updatedSession;
 
         // Start billing timer immediately
         this.startBillingTimer(sessionId);
