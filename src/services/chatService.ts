@@ -33,8 +33,8 @@ class ChatService {
     // Billing cycle interval (60 seconds)
     private readonly BILLING_INTERVAL_MS = 60000;
 
-    // Request timeout (60 seconds - auto-reject if not accepted)
-    private readonly REQUEST_TIMEOUT_MS = 60000;
+    // Request timeout (30 seconds - auto-reject if not accepted)
+    private readonly REQUEST_TIMEOUT_MS = 30000;
 
     // Map of request timeout timers: sessionId -> NodeJS.Timeout
     private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
@@ -306,26 +306,92 @@ class ChatService {
      * Auto-timeout a chat request that wasn't responded to
      */
     private async timeoutChatRequest(sessionId: string): Promise<void> {
-        const session = await ChatSession.findOne({ sessionId });
-        if (!session || session.status !== 'PENDING') {
+        // Use atomic operation to handle race condition
+        const session = await ChatSession.findOneAndUpdate(
+            { sessionId, status: 'PENDING' },
+            { status: 'ENDED', endReason: 'TIMEOUT' },
+            { new: true }
+        );
+
+        if (!session) {
+            // Session was already accepted/rejected/cancelled
             return;
         }
-
-        session.status = 'ENDED';
-        session.endReason = 'TIMEOUT';
-        await session.save();
 
         this.requestTimeouts.delete(sessionId);
 
         console.log(`[ChatService] Chat request timed out: ${sessionId}`);
 
-        // Emit to user
+        // Emit CHAT_TIMEOUT to both parties
         if (this.io) {
-            this.io.to(`user:${session.userId}`).emit('CHAT_REJECTED', {
+            this.io.to(`user:${session.userId}`).emit('CHAT_TIMEOUT', {
                 sessionId,
-                reason: 'Request timed out - Astrologer did not respond'
+                reason: 'Request timed out - Astrologer did not respond in 30 seconds'
+            });
+            this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_TIMEOUT', {
+                sessionId,
+                reason: 'Request timed out'
             });
         }
+    }
+
+    /**
+     * Cancel a pending chat request (user initiated)
+     * Uses atomic operation to handle race conditions with astrologer accept
+     * Returns: { cancelled: boolean, reason?: string }
+     */
+    async cancelChatRequest(sessionId: string, userId: string): Promise<{ cancelled: boolean; reason?: string }> {
+        // Use atomic findOneAndUpdate to prevent race conditions
+        // Only cancel if still PENDING and belongs to this user
+        const session = await ChatSession.findOneAndUpdate(
+            {
+                sessionId,
+                status: 'PENDING',
+                userId: userId
+            },
+            {
+                status: 'ENDED',
+                endReason: 'USER_END'
+            },
+            { new: false } // Return the old document to check original status
+        );
+
+        if (!session) {
+            // Check why we couldn't cancel
+            const existingSession = await ChatSession.findOne({ sessionId });
+            if (!existingSession) {
+                return { cancelled: false, reason: 'session_not_found' };
+            }
+            if (existingSession.userId.toString() !== userId) {
+                return { cancelled: false, reason: 'unauthorized' };
+            }
+            if (existingSession.status === 'ACTIVE') {
+                return { cancelled: false, reason: 'already_started' };
+            }
+            if (existingSession.status === 'REJECTED' || existingSession.status === 'ENDED') {
+                return { cancelled: false, reason: 'already_ended' };
+            }
+            return { cancelled: false, reason: 'unknown' };
+        }
+
+        // Clear the request timeout
+        const timeout = this.requestTimeouts.get(sessionId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.requestTimeouts.delete(sessionId);
+        }
+
+        console.log(`[ChatService] Chat request cancelled by user: ${sessionId}`);
+
+        // Emit CHAT_CANCELLED to astrologer
+        if (this.io) {
+            this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_CANCELLED', {
+                sessionId,
+                reason: 'User cancelled the request'
+            });
+        }
+
+        return { cancelled: true };
     }
 
     /**

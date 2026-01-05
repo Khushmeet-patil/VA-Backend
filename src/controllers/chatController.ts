@@ -119,6 +119,46 @@ export const rejectChat = async (req: AuthRequest, res: Response) => {
 };
 
 /**
+ * POST /chat/cancel
+ * User cancels a pending chat request
+ */
+export const cancelChat = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.userId;
+        const { sessionId } = req.body;
+
+        if (!userId) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        if (!sessionId) {
+            return res.status(400).json({ message: 'sessionId is required' });
+        }
+
+        const result = await chatService.cancelChatRequest(sessionId, userId);
+
+        if (result.cancelled) {
+            res.json({
+                message: 'Chat request cancelled',
+                cancelled: true
+            });
+        } else {
+            // Return appropriate status based on reason
+            const statusCode = result.reason === 'already_started' ? 409 : 400;
+            res.status(statusCode).json({
+                message: `Cannot cancel: ${result.reason}`,
+                cancelled: false,
+                reason: result.reason
+            });
+        }
+
+    } catch (error: any) {
+        console.error('Cancel chat error:', error);
+        res.status(400).json({ message: error.message || 'Failed to cancel chat request' });
+    }
+};
+
+/**
  * POST /chat/end
  * Either party ends an active chat
  */

@@ -4,6 +4,7 @@ import {
     requestChat,
     acceptChat,
     rejectChat,
+    cancelChat,
     endChat,
     submitReview,
     getSession,
@@ -26,6 +27,9 @@ router.post('/request', authMiddleware, requestChat);
 // Astrologer accepts/rejects chat request
 router.post('/accept', authMiddleware, acceptChat);
 router.post('/reject', authMiddleware, rejectChat);
+
+// User cancels pending chat request
+router.post('/cancel', authMiddleware, cancelChat);
 
 // Either party ends chat
 router.post('/end', authMiddleware, endChat);
