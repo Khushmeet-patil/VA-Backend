@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import Astrologer from '../models/Astrologer';
 import Otp from '../models/Otp';
+import ChatSession from '../models/ChatSession';
+import ChatMessage from '../models/ChatMessage';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -230,15 +232,60 @@ export const getStats = async (req: Request, res: Response) => {
     }
 };
 
-// Get Astrologer's Chats (placeholder)
+// Get Astrologer's Chats
 export const getChats = async (req: Request, res: Response) => {
     try {
-        // Placeholder - would fetch from Chat collection
+        const astrologerId = (req as any).userId;
+
+        // Find sessions involving this astrologer (ACTIVE or ENDED)
+        const sessions = await ChatSession.find({
+            astrologerId,
+            status: { $in: ['ACTIVE', 'ENDED'] }
+        })
+            .populate('userId', 'name mobile')
+            .sort({ updatedAt: -1 });
+
+        const chatList = await Promise.all(sessions.map(async (session) => {
+            // Get last message
+            const lastMsg = await ChatMessage.findOne({ sessionId: session.sessionId })
+                .sort({ timestamp: -1 });
+
+            // Format time
+            let timeString = '';
+            if (lastMsg) {
+                const date = lastMsg.timestamp;
+                const now = new Date();
+                const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+
+                if (diffDays === 0) {
+                    timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } else if (diffDays === 1) {
+                    timeString = 'Yesterday';
+                } else {
+                    timeString = date.toLocaleDateString();
+                }
+            } else if (session.startTime) {
+                timeString = session.startTime.toLocaleDateString();
+            }
+
+            return {
+                id: session.sessionId,
+                userId: {
+                    name: (session.userId as any).name || 'User',
+                    mobile: (session.userId as any).mobile || ''
+                },
+                lastMessage: lastMsg ? lastMsg.text : (session.status === 'ACTIVE' ? 'Chat in progress...' : 'Chat ended'),
+                lastMessageTime: timeString,
+                unreadCount: 0 // TODO: Implement unread count
+            };
+        }));
+
         res.json({
             success: true,
-            data: []
+            data: chatList
         });
     } catch (error: any) {
+        console.error('getChats error:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

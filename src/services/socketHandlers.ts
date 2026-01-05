@@ -128,6 +128,18 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
+        // Handle join chat (handshake)
+        socket.on('join_chat', async (data: { sessionId: string }) => {
+            try {
+                const { sessionId } = data;
+                if (!sessionId) return;
+
+                await chatService.joinSession(sessionId, userType);
+            } catch (error) {
+                console.error('[Socket] Join chat error:', error);
+            }
+        });
+
         // Handle end chat request
         socket.on('end_chat', async (data: { sessionId: string }) => {
             try {

@@ -177,21 +177,19 @@ class ChatService {
         astrologer.activeSessionId = sessionId;
         await astrologer.save();
 
-        // Update session to ACTIVE
+        // Update session to ACTIVE (locked) but NOT billing yet
         session.status = 'ACTIVE';
-        session.startTime = new Date();
+        // startTime will be set when both parties join
         await session.save();
 
-        console.log(`[ChatService] Chat accepted: ${sessionId}`);
-
-        // Start billing timer
-        this.startBillingTimer(sessionId);
+        console.log(`[ChatService] Chat accepted (WAITING FOR JOIN): ${sessionId}`);
 
         // Emit CHAT_STARTED to both user and astrologer
+        // They should receive this and navigate to Chat Screen
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
                 sessionId,
-                startTime: session.startTime,
+                // No startTime yet
                 ratePerMinute: session.ratePerMinute,
                 astrologerId: session.astrologerId,
                 astrologerName: `${astrologer.firstName} ${astrologer.lastName}`
@@ -199,7 +197,7 @@ class ChatService {
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
                 sessionId,
-                startTime: session.startTime,
+                // No startTime yet
                 ratePerMinute: session.ratePerMinute,
                 userId: session.userId,
                 userName: user.name || 'User'
@@ -207,6 +205,53 @@ class ChatService {
         }
 
         return session;
+    }
+
+    /**
+     * Handle participant joining the chat room
+     * Start billing when both joined
+     */
+    async joinSession(sessionId: string, userType: 'user' | 'astrologer'): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) return; // Should allow re-joins?
+
+        console.log(`[ChatService] ${userType} joined session: ${sessionId}`);
+
+        let stateChanged = false;
+
+        if (userType === 'user' && !session.userJoined) {
+            session.userJoined = true;
+            stateChanged = true;
+        } else if (userType === 'astrologer' && !session.astrologerJoined) {
+            session.astrologerJoined = true;
+            stateChanged = true;
+        }
+
+        if (stateChanged) {
+            await session.save();
+        }
+
+        // Check if both joined and billing NOT started
+        if (session.userJoined && session.astrologerJoined && !session.startTime) {
+            console.log(`[ChatService] Both participants joined. STARTING BILLING for: ${sessionId}`);
+
+            session.startTime = new Date();
+            await session.save();
+
+            this.startBillingTimer(sessionId);
+
+            // Notify clients that timer has started
+            if (this.io) {
+                this.io.to(`user:${session.userId}`).emit('TIMER_STARTED', {
+                    sessionId,
+                    startTime: session.startTime
+                });
+                this.io.to(`astrologer:${session.astrologerId}`).emit('TIMER_STARTED', {
+                    sessionId,
+                    startTime: session.startTime
+                });
+            }
+        }
     }
 
     /**
@@ -287,14 +332,71 @@ class ChatService {
 
         // Stop billing timer
         this.stopBillingTimer(sessionId);
-
-        // Clear any grace period timer
         this.clearGracePeriod(sessionId);
+
+        // --- PARTIAL BILLING LOGIC ---
+        // Only if billing actually started
+        if (session.startTime) {
+            // Calculate exact duration and remaining charge
+            const endTime = new Date();
+            const startTime = session.startTime;
+            const durationMs = endTime.getTime() - startTime.getTime();
+            const durationMinutes = Math.max(0, durationMs / 60000); // Ensure no negative
+
+            // Calculate total expected cost
+            const totalExpectedCost = durationMinutes * session.ratePerMinute;
+
+            // Calculate what has NOT yet been billed
+            const alreadyCharged = session.totalAmount;
+            let remainingToCharge = totalExpectedCost - alreadyCharged;
+
+            // Round to 2 decimals
+            remainingToCharge = Math.round(remainingToCharge * 100) / 100;
+
+            console.log(`[ChatService] End Chat Billing Calc: Duration=${durationMinutes.toFixed(2)}m, Expected=${totalExpectedCost}, Charged=${alreadyCharged}, Remaining=${remainingToCharge}`);
+
+            if (remainingToCharge > 0) {
+                const user = await User.findById(session.userId);
+                const astrologer = await Astrologer.findById(session.astrologerId);
+
+                if (user && astrologer) {
+                    console.log(`[ChatService] Processing final partial deduction: ${remainingToCharge}`);
+                    const success = await this.processPayment(
+                        session,
+                        user,
+                        astrologer,
+                        remainingToCharge,
+                        `Chat session: ${sessionId} - Final Partial Settlement`
+                    );
+
+                    if (!success) {
+                        console.warn(`[ChatService] Failed to capture final partial amount ${remainingToCharge} from user ${user._id}`);
+                    }
+                }
+            }
+
+            // Update totalMinutes
+            session.totalMinutes = parseFloat(durationMinutes.toFixed(2));
+        } else {
+            console.log(`[ChatService] Ended session ${sessionId} before billing started.`);
+            // Ensure session.totalMinutes is set to 0 if not started
+            session.totalMinutes = 0;
+        }
+        // -----------------------------
 
         // Update session
         session.status = 'ENDED';
         session.endTime = new Date();
         session.endReason = endReason;
+        // Update totalMinutes to reflect the actual duration (e.g. 3.5 mins) or keep as "billed minutes count"?
+        // Let's store actual duration in minutes (float) for analytics, but TS model might expect number.
+        // If totalMinutes is used for "number of full minutes charged", we might leave it or update it.
+        // Let's update it to round up to nearest minute for display, or keeping it as is from processPayment?
+        // processPayment increments it. If we ran 3m 30s, processPayment ran 3 times. totalMinutes=3.
+        // It's better to store exact duration somewhere or just update totalMinutes to be accurate float.
+        // Assuming session.totalMinutes is a Number.
+        // Total minutes already updated in if/else block above
+
         await session.save();
 
         // Unlock astrologer
@@ -430,32 +532,37 @@ class ChatService {
     private async processPayment(
         session: IChatSession,
         user: any,
-        astrologer: any
+        astrologer: any,
+        amountOverride?: number,
+        descriptionOverride?: string
     ): Promise<boolean> {
         const mongoSession = await mongoose.startSession();
         mongoSession.startTransaction();
 
         try {
             const ratePerMinute = session.ratePerMinute;
+            const amountToDeduct = amountOverride !== undefined ? amountOverride : ratePerMinute;
 
             // Double-check balance within transaction
-            if (user.walletBalance < ratePerMinute) {
+            if (user.walletBalance < amountToDeduct) {
                 await mongoSession.abortTransaction();
                 return false;
             }
 
             // Deduct from user wallet
-            user.walletBalance -= ratePerMinute;
+            user.walletBalance -= amountToDeduct;
             await user.save({ session: mongoSession });
 
             // Add to astrologer earnings (full amount for now, can add platform fee later)
-            const astrologerShare = ratePerMinute; // Could be ratePerMinute * 0.7 for 70%
+            const astrologerShare = amountToDeduct; // Could be amountToDeduct * 0.7 for 70%
             astrologer.earnings += astrologerShare;
             await astrologer.save({ session: mongoSession });
 
             // Update session totals
-            session.totalMinutes += 1;
-            session.totalAmount += ratePerMinute;
+            if (amountOverride === undefined) {
+                session.totalMinutes += 1; // Only increment minutes if this is a full interval charge
+            }
+            session.totalAmount += amountToDeduct;
             session.astrologerEarnings += astrologerShare;
             await session.save({ session: mongoSession });
 
@@ -463,10 +570,10 @@ class ChatService {
             const transaction = new Transaction({
                 fromUser: user._id,
                 toAstrologer: astrologer._id,
-                amount: ratePerMinute,
+                amount: amountToDeduct,
                 type: 'debit',
                 status: 'success',
-                description: `Chat session: ${session.sessionId} - Minute ${session.totalMinutes}`
+                description: descriptionOverride || `Chat session: ${session.sessionId} - Minute ${session.totalMinutes}`
             });
             await transaction.save({ session: mongoSession });
 

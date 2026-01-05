@@ -25,6 +25,8 @@ export interface IChatSession extends Document {
         tob?: string;
         pob?: string;
     };
+    userJoined: boolean;
+    astrologerJoined: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -73,7 +75,9 @@ const ChatSessionSchema: Schema = new Schema({
         dob: { type: String },
         tob: { type: String },
         pob: { type: String }
-    }
+    },
+    userJoined: { type: Boolean, default: false },
+    astrologerJoined: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // Compound index for finding active sessions
