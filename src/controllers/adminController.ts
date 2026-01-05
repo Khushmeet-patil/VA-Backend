@@ -117,7 +117,9 @@ export const addWalletBalance = async (req: Request, res: Response) => {
         }
 
         const previousBalance = user.walletBalance || 0;
-        const newBalance = previousBalance + amount;
+        // Enforce 2 decimal precision
+        const safeAmount = Math.round(amount * 100) / 100;
+        const newBalance = Math.round((previousBalance + safeAmount) * 100) / 100;
 
         // Update user's wallet balance
         user.walletBalance = newBalance;
@@ -182,7 +184,9 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
             });
         }
 
-        const newBalance = previousBalance - amount;
+        // Enforce 2 decimal precision
+        const safeAmount = Math.round(amount * 100) / 100;
+        const newBalance = Math.round((previousBalance - safeAmount) * 100) / 100;
 
         // Update user's wallet balance
         user.walletBalance = newBalance;

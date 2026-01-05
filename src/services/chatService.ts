@@ -448,7 +448,17 @@ class ChatService {
             const durationMinutes = Math.max(0, durationMs / 60000); // Ensure no negative
 
             // Calculate total expected cost
-            const totalExpectedCost = durationMinutes * session.ratePerMinute;
+            let totalExpectedCost = 0;
+
+            // Per requirement: Billing starts ONLY after 1 minute is completed.
+            // If < 1 min, cost is 0.
+            // If >= 1 min, pro-rata per second billing applies for the full duration.
+            if (durationMs >= 60000) {
+                totalExpectedCost = durationMinutes * session.ratePerMinute;
+            } else {
+                console.log(`[ChatService] Chat duration ${durationMs}ms < 1 min. No charge applied.`);
+                totalExpectedCost = 0;
+            }
 
             // Calculate what has NOT yet been billed
             const alreadyCharged = session.totalAmount;
@@ -645,29 +655,34 @@ class ChatService {
 
         try {
             const ratePerMinute = session.ratePerMinute;
-            const amountToDeduct = amountOverride !== undefined ? amountOverride : ratePerMinute;
+            // Force rounding to 2 decimal places for the amount to deduct
+            const rawAmount = amountOverride !== undefined ? amountOverride : ratePerMinute;
+            const amountToDeduct = Math.round(rawAmount * 100) / 100;
 
             // Double-check balance within transaction
+            // Round balance for comparison to avoid floating point weirdness
             if (user.walletBalance < amountToDeduct) {
                 await mongoSession.abortTransaction();
                 return false;
             }
 
-            // Deduct from user wallet
-            user.walletBalance -= amountToDeduct;
+            // Deduct from user wallet & Round
+            user.walletBalance = Math.round((user.walletBalance - amountToDeduct) * 100) / 100;
             await user.save({ session: mongoSession });
 
             // Add to astrologer earnings (full amount for now, can add platform fee later)
             const astrologerShare = amountToDeduct; // Could be amountToDeduct * 0.7 for 70%
-            astrologer.earnings += astrologerShare;
+            // Round astrologer share and total earnings
+            const safeAstrologerShare = Math.round(astrologerShare * 100) / 100;
+            astrologer.earnings = Math.round((astrologer.earnings + safeAstrologerShare) * 100) / 100;
             await astrologer.save({ session: mongoSession });
 
-            // Update session totals
+            // Update session totals & Round
             if (amountOverride === undefined) {
                 session.totalMinutes += 1; // Only increment minutes if this is a full interval charge
             }
-            session.totalAmount += amountToDeduct;
-            session.astrologerEarnings += astrologerShare;
+            session.totalAmount = Math.round((session.totalAmount + amountToDeduct) * 100) / 100;
+            session.astrologerEarnings = Math.round((session.astrologerEarnings + safeAstrologerShare) * 100) / 100;
             await session.save({ session: mongoSession });
 
             // Create immutable transaction record
