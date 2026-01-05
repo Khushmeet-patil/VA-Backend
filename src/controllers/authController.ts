@@ -11,12 +11,12 @@ export const checkUser = async (req: Request, res: Response) => {
     try {
         const { mobile } = req.body;
         const user = await User.findOne({ mobile });
-        if (user && user.password && user.name) {
-            // User exists and has completed profile (has password and name)
+        if (user) {
+            // User exists
             return res.status(200).json({ exists: true, message: 'User exists' });
         } else {
-            // User does not exist or hasn't completed signup
-            return res.status(200).json({ exists: false, message: 'User does not exist or incomplete' });
+            // User does not exist
+            return res.status(200).json({ exists: false, message: 'User does not exist' });
         }
     } catch (error) {
         return res.status(500).json({ message: 'Server error', error });
@@ -71,73 +71,35 @@ export const verifyOtp = async (req: Request, res: Response) => {
         user.isVerified = true;
         await user.save();
 
-        return res.status(200).json({ success: true, message: 'OTP verified' });
+        // Generate Token immediately upon verification
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
+
+        return res.status(200).json({
+            success: true,
+            message: 'OTP verified',
+            token,
+            user
+        });
     } catch (error) {
         return res.status(500).json({ message: 'Server error', error });
     }
 };
 
-export const signup = async (req: Request, res: Response) => {
+// Update user profile after OTP login
+export const updateProfile = async (req: Request, res: Response) => {
     try {
-        const { mobile, name, gender, dob, tob, pob, password } = req.body;
+        const userId = (req as any).userId;
+        const { name, gender, dob, tob, pob } = req.body;
 
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        const user = await User.findOneAndUpdate(
-            { mobile },
-            { name, gender, dob, tob, pob, password: hashedPassword, isVerified: true },
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { name, gender, dob, tob, pob, isVerified: true },
             { new: true }
         );
 
-        if (!user) return res.status(400).json({ success: false, message: 'User not found to update' });
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-        // Generate Token
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
-
-        return res.status(201).json({ success: true, token, user });
-    } catch (error) {
-        return res.status(500).json({ message: 'Server error', error });
-    }
-};
-
-export const login = async (req: Request, res: Response) => {
-    try {
-        const { mobile, password } = req.body;
-        const user = await User.findOne({ mobile });
-
-        if (!user) return res.status(400).json({ success: false, message: 'User not found' });
-
-        const isMatch = await bcrypt.compare(password, user.password || '');
-        if (!isMatch) return res.status(400).json({ success: false, message: 'Invalid credentials' });
-
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
-
-        return res.status(200).json({ success: true, token, user });
-    } catch (error) {
-        return res.status(500).json({ message: 'Server error', error });
-    }
-};
-
-export const resetPassword = async (req: Request, res: Response) => {
-    try {
-        const { mobile, password } = req.body;
-
-        // Ideally we should check a reset token here, but for MVP assuming flow integrity 
-        // or check if isVerified was recently set? 
-        // We will just proceed for now as per requirements.
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        const user = await User.findOneAndUpdate(
-            { mobile },
-            { password: hashedPassword },
-            { new: true }
-        );
-
-        return res.status(200).json({ success: true, message: 'Password reset successfully' });
+        return res.status(200).json({ success: true, user, message: 'Profile updated' });
     } catch (error) {
         return res.status(500).json({ message: 'Server error', error });
     }

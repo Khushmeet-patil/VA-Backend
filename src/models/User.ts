@@ -41,7 +41,7 @@ const BirthProfileSchema: Schema = new Schema({
 
 const UserSchema: Schema = new Schema({
     mobile: { type: String, required: true, unique: true },
-    password: { type: String },
+    password: { type: String }, // Optional now as we use OTP only
     name: { type: String },
     gender: { type: String },
     dob: { type: String },
