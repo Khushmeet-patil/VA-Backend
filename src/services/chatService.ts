@@ -842,29 +842,16 @@ class ChatService {
     }
 
     /**
-     * Handle user disconnect - start grace period
+     * Handle user disconnect - NO AUTO-END
+     * Chat continues until explicitly ended by user/astrologer or insufficient balance
      */
     handleDisconnect(userId: string, isAstrologer: boolean): void {
         const userType = isAstrologer ? 'astrologer' : 'user';
-        console.log(`[ChatService] ${userType} disconnected: ${userId}`);
-
-        // Find active session for this user
-        const findSession = isAstrologer
-            ? ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
-            : ChatSession.findOne({ userId, status: 'ACTIVE' });
-
-        findSession.then(session => {
-            if (!session) return;
-
-            console.log(`[ChatService] Starting grace period for: ${session.sessionId}`);
-
-            // Start grace period timer
-            const timer = setTimeout(async () => {
-                await this.endChat(session.sessionId, 'DISCONNECT');
-            }, this.GRACE_PERIOD_MS);
-
-            this.gracePeriodTimers.set(session.sessionId, timer);
-        });
+        console.log(`[ChatService] ${userType} disconnected: ${userId} (chat continues, no auto-end)`);
+        // No grace period timer - chat stays active until:
+        // 1. User clicks "End Chat"
+        // 2. Astrologer clicks "End Chat"
+        // 3. User runs out of balance
     }
 
     /**
