@@ -232,7 +232,9 @@ class ChatService {
                 startTime: session.startTime,
                 ratePerMinute: session.ratePerMinute,
                 astrologerId: session.astrologerId,
-                astrologerName: `${astrologer.firstName} ${astrologer.lastName}`
+                astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
+                status: 'ACTIVE',
+                intakeDetails: session.intakeDetails, // Pass for auto-message
             });
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
@@ -240,7 +242,8 @@ class ChatService {
                 startTime: session.startTime,
                 ratePerMinute: session.ratePerMinute,
                 userId: session.userId,
-                userName: user.name || 'User'
+                userName: user.name || 'User',
+                status: 'ACTIVE',
             });
 
             // Also emit TIMER_STARTED immediately
