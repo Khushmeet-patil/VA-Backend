@@ -117,7 +117,16 @@ class ChatService {
 
         // Emit CHAT_REQUEST to astrologer
         if (this.io) {
-            this.io.to(`astrologer:${astrologerId}`).emit('CHAT_REQUEST', {
+            const roomName = `astrologer:${astrologerId}`;
+            const room = this.io.sockets.adapter.rooms.get(roomName);
+            const roomSize = room ? room.size : 0;
+            console.log(`[ChatService] Emitting CHAT_REQUEST to room: ${roomName}, connected sockets in room: ${roomSize}`);
+
+            if (roomSize === 0) {
+                console.warn(`[ChatService] WARNING: No sockets in room ${roomName}. Astrologer may be disconnected.`);
+            }
+
+            this.io.to(roomName).emit('CHAT_REQUEST', {
                 sessionId: session.sessionId,
                 userId: user._id,
                 userName: user.name || 'User',
@@ -125,6 +134,9 @@ class ChatService {
                 ratePerMinute,
                 userMobile: user.mobile
             });
+            console.log(`[ChatService] CHAT_REQUEST emitted successfully`);
+        } else {
+            console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
         }
 
         return session;

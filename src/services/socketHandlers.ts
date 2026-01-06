@@ -64,11 +64,12 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         const userId = socket.userId!;
         const userType = socket.userType!;
 
-        console.log(`[Socket] ${userType} connected: ${userId}`);
-
         // Join user-specific room for targeted events
         const roomName = `${userType}:${userId}`;
         socket.join(roomName);
+
+        // Enhanced logging for debugging
+        console.log(`[Socket] ${userType} connected: ID=${userId}, Room=${roomName}, SocketID=${socket.id}`);
 
         // Handle reconnect (clear grace period if any)
         chatService.handleReconnect(userId, userType === 'astrologer');
