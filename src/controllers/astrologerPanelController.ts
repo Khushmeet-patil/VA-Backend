@@ -72,19 +72,40 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
     try {
         const { mobile, otp } = req.body;
 
+        console.log(`[verifyAstrologerOtp] Attempting verification for mobile: ${mobile}, otp: ${otp}`);
+
         if (!mobile || !otp) {
             return res.status(400).json({ success: false, message: 'Mobile and OTP required' });
         }
 
-        // Dev bypass for testing
-        const isValidOtp = otp === '1234' || await Otp.findOne({ mobile, otp });
+        // Dev bypass for testing - specific test number with '1234' or allow '1234' for any dev testing
+        const isDevBypass = otp === '1234';
+
+        let isValidOtp = false;
+        if (isDevBypass) {
+            console.log(`[verifyAstrologerOtp] Dev bypass activated`);
+            isValidOtp = true;
+        } else {
+            // Check OTP in database
+            const storedOtp = await Otp.findOne({ mobile, otp });
+            if (storedOtp) {
+                console.log(`[verifyAstrologerOtp] Valid OTP found in database`);
+                isValidOtp = true;
+            } else {
+                console.log(`[verifyAstrologerOtp] OTP not found in database`);
+            }
+        }
 
         if (!isValidOtp) {
             return res.status(400).json({ success: false, message: 'Invalid OTP' });
         }
 
-        // Delete used OTP
-        await Otp.deleteOne({ mobile });
+        // Delete used OTP (don't fail if it doesn't exist - might be dev bypass)
+        try {
+            await Otp.deleteOne({ mobile });
+        } catch (deleteError) {
+            console.log(`[verifyAstrologerOtp] Error deleting OTP (non-critical):`, deleteError);
+        }
 
         // Find astrologer
         const astrologer = await Astrologer.findOne({ mobileNumber: mobile });
@@ -102,6 +123,8 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '30d' }
         );
+
+        console.log(`[verifyAstrologerOtp] Login successful for ${mobile}`);
 
         res.json({
             success: true,
@@ -124,6 +147,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             }
         });
     } catch (error: any) {
+        console.error(`[verifyAstrologerOtp] Server error:`, error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
