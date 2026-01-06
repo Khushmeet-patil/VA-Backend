@@ -182,7 +182,17 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
             } catch (error: any) {
                 console.error('[Socket] Accept chat error:', error);
-                socket.emit('error', { message: error.message || 'Failed to accept chat' });
+
+                // Check if this is a "cancelled or expired" error - handle gracefully
+                if (error.message && error.message.includes('cancelled or expired')) {
+                    // Emit a specific event so the astrologer app can show a proper notification
+                    socket.emit('CHAT_ACCEPT_FAILED', {
+                        sessionId: data.sessionId,
+                        reason: 'User cancelled the request before you could accept'
+                    });
+                } else {
+                    socket.emit('error', { message: error.message || 'Failed to accept chat' });
+                }
             }
         });
 
