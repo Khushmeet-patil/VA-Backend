@@ -11,7 +11,8 @@ import {
     getChatHistory,
     getActiveSession,
     getPendingRequests,
-    getConversation
+    getConversation,
+    getUserSessions
 } from '../controllers/chatController';
 
 const router = Router();
@@ -45,6 +46,9 @@ router.get('/history/:sessionId', authMiddleware, getChatHistory);
 
 // Get current active session (if any)
 router.get('/active', authMiddleware, getActiveSession);
+
+// Get all user sessions (for history screen)
+router.get('/sessions', authMiddleware, getUserSessions);
 
 // Get pending requests (for astrologers)
 router.get('/pending', authMiddleware, getPendingRequests);

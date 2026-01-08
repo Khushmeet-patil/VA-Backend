@@ -413,3 +413,45 @@ export const getConversation = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ message: 'Failed to get conversation' });
     }
 };
+
+/**
+ * GET /chat/sessions
+ * Get all chat sessions for the authenticated user (for history screen)
+ */
+export const getUserSessions = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.userId;
+        const userRole = req.userRole;
+
+        if (!userId) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        let sessions;
+        if (userRole === 'astrologer') {
+            // For astrologers, get sessions where they are the astrologer
+            sessions = await ChatSession.find({
+                astrologerId: userId,
+                status: { $in: ['COMPLETED', 'ENDED', 'CANCELLED'] }
+            })
+                .populate('userId', 'name mobile')
+                .sort({ createdAt: -1 })
+                .limit(50);
+        } else {
+            // For users, get sessions where they are the user
+            sessions = await ChatSession.find({
+                userId: userId,
+                status: { $in: ['COMPLETED', 'ENDED', 'CANCELLED', 'ACTIVE', 'PENDING'] }
+            })
+                .populate('astrologerId', 'firstName lastName')
+                .sort({ createdAt: -1 })
+                .limit(50);
+        }
+
+        res.json({ sessions });
+
+    } catch (error: any) {
+        console.error('Get user sessions error:', error);
+        res.status(500).json({ message: 'Failed to get sessions' });
+    }
+};
