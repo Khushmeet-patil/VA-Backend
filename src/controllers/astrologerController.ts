@@ -139,9 +139,22 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
 
         // Check if current user is following this astrologer
         let isFollowing = false;
+        let userRating = null;
         if (userId) {
             const follow = await AstrologerFollower.findOne({ userId, astrologerId: id });
             isFollowing = !!follow;
+
+            // Check if user has already rated this astrologer
+            const existingRating = await ChatReview.findOne({
+                userId,
+                astrologerId: id
+            });
+            if (existingRating) {
+                userRating = {
+                    rating: existingRating.rating,
+                    reviewText: existingRating.reviewText || ''
+                };
+            }
         }
 
         // Get rating distribution
@@ -161,6 +174,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
             data: {
                 ...astrologer,
                 isFollowing,
+                userRating,
                 ratingDistribution: ratingCounts
             }
         });
