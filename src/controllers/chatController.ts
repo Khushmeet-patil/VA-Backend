@@ -443,7 +443,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
                 userId: userId,
                 status: { $in: ['COMPLETED', 'ENDED', 'CANCELLED', 'ACTIVE', 'PENDING'] }
             })
-                .populate('astrologerId', 'firstName lastName')
+                .populate('astrologerId', 'firstName lastName profilePhoto')
                 .sort({ createdAt: -1 })
                 .limit(50);
         }
