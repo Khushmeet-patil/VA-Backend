@@ -139,6 +139,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
                 experience: astrologer.experience,
                 systemKnown: astrologer.systemKnown,
                 language: astrologer.language,
+                profilePhoto: astrologer.profilePhoto,
                 isOnline: astrologer.isOnline || false,
                 isBlocked: astrologer.isBlocked || false,
                 pricePerMin: astrologer.pricePerMin || 20,
@@ -173,6 +174,7 @@ export const getProfile = async (req: Request, res: Response) => {
                 experience: astrologer.experience,
                 systemKnown: astrologer.systemKnown,
                 language: astrologer.language,
+                profilePhoto: astrologer.profilePhoto,
                 isOnline: astrologer.isOnline || false,
                 isBlocked: astrologer.isBlocked || false,
                 pricePerMin: astrologer.pricePerMin || 20,
@@ -191,11 +193,16 @@ export const getProfile = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
-        const { firstName, lastName, bio, experience, systemKnown, language } = req.body;
+        const { firstName, lastName, bio, experience, systemKnown, language, profilePhoto } = req.body;
+
+        const updateData: any = { firstName, lastName, bio, experience, systemKnown, language };
+        if (profilePhoto !== undefined) {
+            updateData.profilePhoto = profilePhoto;
+        }
 
         const astrologer = await Astrologer.findByIdAndUpdate(
             astrologerId,
-            { firstName, lastName, bio, experience, systemKnown, language },
+            updateData,
             { new: true }
         );
 

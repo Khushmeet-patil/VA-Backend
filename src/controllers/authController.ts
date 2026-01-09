@@ -89,11 +89,16 @@ export const verifyOtp = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const { name, gender, dob, tob, pob } = req.body;
+        const { name, gender, dob, tob, pob, profilePhoto } = req.body;
+
+        const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
+        if (profilePhoto !== undefined) {
+            updateData.profilePhoto = profilePhoto;
+        }
 
         const user = await User.findByIdAndUpdate(
             userId,
-            { name, gender, dob, tob, pob, isVerified: true },
+            updateData,
             { new: true }
         );
 

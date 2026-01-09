@@ -13,6 +13,7 @@ export interface IAstrologer extends Document {
     systemKnown: string[];
     language: string[];
     bio: string;
+    profilePhoto?: string;  // Base64 encoded profile picture
     status: 'approved' | 'under_review' | 'rejected';
     specialties: string[];
     rating: number;
@@ -41,6 +42,7 @@ const AstrologerSchema: Schema = new Schema({
     systemKnown: [{ type: String }],
     language: [{ type: String }],
     bio: { type: String },
+    profilePhoto: { type: String },  // Base64 encoded profile picture
     status: { type: String, enum: ['approved', 'under_review', 'rejected'], default: 'under_review' },
     specialties: [{ type: String }],
     rating: { type: Number, default: 0 },
