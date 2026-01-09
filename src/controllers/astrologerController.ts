@@ -307,3 +307,96 @@ export const checkFollowStatus = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// Rate an astrologer (User)
+export const rateAstrologer = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { astrologerId, rating, reviewText } = req.body;
+
+        if (!astrologerId) {
+            return res.status(400).json({ success: false, message: 'Astrologer ID is required' });
+        }
+
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+        }
+
+        // Check if astrologer exists
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Check if user already rated this astrologer (allow updating existing rating)
+        const existingReview = await ChatReview.findOne({
+            userId,
+            astrologerId,
+            sessionId: { $regex: /^direct-/ }  // Direct ratings have sessionId starting with 'direct-'
+        });
+
+        if (existingReview) {
+            // Update existing rating
+            const oldRating = existingReview.rating;
+            existingReview.rating = rating;
+            existingReview.reviewText = reviewText;
+            await existingReview.save();
+
+            // Update astrologer's average rating
+            // Subtract old rating, add new rating
+            const newTotalSum = (astrologer.totalRatingSum || 0) - oldRating + rating;
+            const newAverage = astrologer.reviewsCount > 0 ? newTotalSum / astrologer.reviewsCount : rating;
+
+            await Astrologer.updateOne(
+                { _id: astrologerId },
+                {
+                    $set: {
+                        rating: Math.round(newAverage * 10) / 10,
+                        totalRatingSum: newTotalSum
+                    }
+                }
+            );
+
+            res.json({
+                success: true,
+                message: 'Rating updated successfully',
+                review: existingReview
+            });
+        } else {
+            // Create new rating
+            const review = new ChatReview({
+                sessionId: `direct-${userId}-${astrologerId}-${Date.now()}`,
+                userId,
+                astrologerId,
+                rating,
+                reviewText
+            });
+            await review.save();
+
+            // Update astrologer's average rating
+            const newReviewsCount = (astrologer.reviewsCount || 0) + 1;
+            const newTotalSum = (astrologer.totalRatingSum || 0) + rating;
+            const newAverage = newTotalSum / newReviewsCount;
+
+            await Astrologer.updateOne(
+                { _id: astrologerId },
+                {
+                    $set: {
+                        rating: Math.round(newAverage * 10) / 10,
+                        totalRatingSum: newTotalSum,
+                        reviewsCount: newReviewsCount
+                    }
+                }
+            );
+
+            res.json({
+                success: true,
+                message: 'Rating submitted successfully',
+                review
+            });
+        }
+    } catch (error: any) {
+        console.error('Rate astrologer error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};

@@ -6,7 +6,8 @@ import {
     getAstrologerReviews,
     followAstrologer,
     unfollowAstrologer,
-    checkFollowStatus
+    checkFollowStatus,
+    rateAstrologer
 } from '../controllers/astrologerController';
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth';
 
@@ -21,6 +22,7 @@ router.get('/reviews/:id', getAstrologerReviews);
 router.post('/apply', authMiddleware, applyForAstrologer);
 router.post('/follow', authMiddleware, followAstrologer);
 router.post('/unfollow', authMiddleware, unfollowAstrologer);
+router.post('/rate', authMiddleware, rateAstrologer);
 router.get('/follow-status/:astrologerId', authMiddleware, checkFollowStatus);
 
 export default router;
