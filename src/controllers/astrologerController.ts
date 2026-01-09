@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Astrologer from '../models/Astrologer';
 import User from '../models/User';
+import AstrologerFollower from '../models/AstrologerFollower';
+import ChatReview from '../models/ChatReview';
 
 // Apply for Astrologer (User)
 export const applyForAstrologer = async (req: Request, res: Response) => {
@@ -110,7 +112,7 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
         // Use lean() to get plain objects and avoid schema validation issues with old data
         const astrologers = await Astrologer.find({ status: 'approved', isBlocked: { $ne: true }, isOnline: true })
-            .select('firstName lastName systemKnown language bio experience rating isOnline pricePerMin priceRangeMin priceRangeMax profilePhoto')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties')
             .sort({ rating: -1 })
             .lean();
 
@@ -121,3 +123,187 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
     }
 };
 
+// Get detailed astrologer profile (Public with optional auth for follow status)
+export const getAstrologerProfile = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = (req as any).userId; // Optional - may be undefined for unauthenticated requests
+
+        const astrologer = await Astrologer.findById(id)
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties totalChats')
+            .lean();
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Check if current user is following this astrologer
+        let isFollowing = false;
+        if (userId) {
+            const follow = await AstrologerFollower.findOne({ userId, astrologerId: id });
+            isFollowing = !!follow;
+        }
+
+        // Get rating distribution
+        const ratingDistribution = await ChatReview.aggregate([
+            { $match: { astrologerId: astrologer._id } },
+            { $group: { _id: '$rating', count: { $sum: 1 } } },
+            { $sort: { _id: -1 } }
+        ]);
+
+        const ratingCounts: { [key: number]: number } = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+        ratingDistribution.forEach((r: any) => {
+            ratingCounts[r._id] = r.count;
+        });
+
+        res.json({
+            success: true,
+            data: {
+                ...astrologer,
+                isFollowing,
+                ratingDistribution: ratingCounts
+            }
+        });
+    } catch (error: any) {
+        console.error('Get astrologer profile error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Get astrologer reviews (Public)
+export const getAstrologerReviews = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const skip = (page - 1) * limit;
+
+        const reviews = await ChatReview.find({ astrologerId: id })
+            .populate('userId', 'name')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        const totalReviews = await ChatReview.countDocuments({ astrologerId: id });
+
+        res.json({
+            success: true,
+            data: {
+                reviews: reviews.map((r: any) => ({
+                    id: r._id,
+                    name: r.userId?.name || 'User',
+                    rating: r.rating,
+                    text: r.reviewText || '',
+                    date: r.createdAt
+                })),
+                pagination: {
+                    page,
+                    limit,
+                    total: totalReviews,
+                    hasMore: skip + reviews.length < totalReviews
+                }
+            }
+        });
+    } catch (error: any) {
+        console.error('Get astrologer reviews error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Follow an astrologer (User)
+export const followAstrologer = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { astrologerId } = req.body;
+
+        if (!astrologerId) {
+            return res.status(400).json({ success: false, message: 'Astrologer ID is required' });
+        }
+
+        // Check if astrologer exists
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Check if already following
+        const existingFollow = await AstrologerFollower.findOne({ userId, astrologerId });
+        if (existingFollow) {
+            return res.status(400).json({ success: false, message: 'Already following this astrologer' });
+        }
+
+        // Create follow record
+        await new AstrologerFollower({ userId, astrologerId }).save();
+
+        // Increment followers count
+        await Astrologer.updateOne({ _id: astrologerId }, { $inc: { followersCount: 1 } });
+
+        const updatedAstrologer = await Astrologer.findById(astrologerId).select('followersCount');
+
+        res.json({
+            success: true,
+            message: 'Now following astrologer',
+            followersCount: updatedAstrologer?.followersCount || 0
+        });
+    } catch (error: any) {
+        console.error('Follow astrologer error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Unfollow an astrologer (User)
+export const unfollowAstrologer = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { astrologerId } = req.body;
+
+        if (!astrologerId) {
+            return res.status(400).json({ success: false, message: 'Astrologer ID is required' });
+        }
+
+        // Check if following
+        const existingFollow = await AstrologerFollower.findOne({ userId, astrologerId });
+        if (!existingFollow) {
+            return res.status(400).json({ success: false, message: 'Not following this astrologer' });
+        }
+
+        // Delete follow record
+        await AstrologerFollower.deleteOne({ userId, astrologerId });
+
+        // Decrement followers count (ensure it doesn't go below 0)
+        await Astrologer.updateOne(
+            { _id: astrologerId, followersCount: { $gt: 0 } },
+            { $inc: { followersCount: -1 } }
+        );
+
+        const updatedAstrologer = await Astrologer.findById(astrologerId).select('followersCount');
+
+        res.json({
+            success: true,
+            message: 'Unfollowed astrologer',
+            followersCount: updatedAstrologer?.followersCount || 0
+        });
+    } catch (error: any) {
+        console.error('Unfollow astrologer error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Check follow status (User)
+export const checkFollowStatus = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { astrologerId } = req.params;
+
+        const follow = await AstrologerFollower.findOne({ userId, astrologerId });
+
+        res.json({
+            success: true,
+            isFollowing: !!follow
+        });
+    } catch (error: any) {
+        console.error('Check follow status error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};

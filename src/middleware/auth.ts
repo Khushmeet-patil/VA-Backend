@@ -56,3 +56,38 @@ export const adminMiddleware = (req: AuthRequest, res: Response, next: NextFunct
     }
     next();
 };
+
+// Optional auth middleware - extracts user info if token is present, but doesn't fail if not
+export const optionalAuthMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            // No token - continue without user info
+            return next();
+        }
+
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { id: string; role?: string };
+
+        // Check if this is an astrologer token
+        if (decoded.role === 'astrologer') {
+            const astrologer = await Astrologer.findById(decoded.id);
+            if (astrologer && astrologer.status === 'approved') {
+                req.userId = decoded.id;
+                req.userRole = 'astrologer';
+            }
+            return next();
+        }
+
+        // Regular user token
+        const user = await User.findById(decoded.id);
+        if (user && !user.isBlocked) {
+            req.userId = decoded.id;
+            req.userRole = user.role;
+        }
+        next();
+    } catch (error) {
+        // Invalid token - continue without user info
+        next();
+    }
+};

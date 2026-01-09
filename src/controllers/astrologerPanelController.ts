@@ -171,9 +171,11 @@ export const getProfile = async (req: Request, res: Response) => {
                 firstName: astrologer.firstName,
                 lastName: astrologer.lastName,
                 bio: astrologer.bio,
+                aboutMe: astrologer.aboutMe || '',
                 experience: astrologer.experience,
                 systemKnown: astrologer.systemKnown,
                 language: astrologer.language,
+                specialties: astrologer.specialties || [],
                 profilePhoto: astrologer.profilePhoto,
                 isOnline: astrologer.isOnline || false,
                 isBlocked: astrologer.isBlocked || false,
@@ -182,6 +184,10 @@ export const getProfile = async (req: Request, res: Response) => {
                 priceRangeMax: astrologer.priceRangeMax || 100,
                 city: astrologer.city,
                 country: astrologer.country,
+                rating: astrologer.rating || 0,
+                reviewsCount: astrologer.reviewsCount || 0,
+                followersCount: astrologer.followersCount || 0,
+                totalChats: astrologer.totalChats || 0,
             }
         });
     } catch (error: any) {
@@ -193,9 +199,15 @@ export const getProfile = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
-        const { firstName, lastName, bio, experience, systemKnown, language, profilePhoto } = req.body;
+        const { firstName, lastName, bio, aboutMe, experience, systemKnown, language, specialties, profilePhoto } = req.body;
 
         const updateData: any = { firstName, lastName, bio, experience, systemKnown, language };
+        if (aboutMe !== undefined) {
+            updateData.aboutMe = aboutMe;
+        }
+        if (specialties !== undefined) {
+            updateData.specialties = specialties;
+        }
         if (profilePhoto !== undefined) {
             updateData.profilePhoto = profilePhoto;
         }

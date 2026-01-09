@@ -13,10 +13,14 @@ export interface IAstrologer extends Document {
     systemKnown: string[];
     language: string[];
     bio: string;
-    profilePhoto?: string;  // Base64 encoded profile picture
+    aboutMe: string;                    // Detailed about section
+    profilePhoto?: string;              // Base64 encoded profile picture
     status: 'approved' | 'under_review' | 'rejected';
     specialties: string[];
     rating: number;
+    reviewsCount: number;               // Total number of reviews
+    totalRatingSum: number;             // Sum of all ratings (for calculating average)
+    followersCount: number;             // Number of followers
     isOnline: boolean;
     isBlocked: boolean;
     isBusy: boolean;                    // TRUE when in active chat
@@ -42,10 +46,14 @@ const AstrologerSchema: Schema = new Schema({
     systemKnown: [{ type: String }],
     language: [{ type: String }],
     bio: { type: String },
-    profilePhoto: { type: String },  // Base64 encoded profile picture
+    aboutMe: { type: String, default: '' },  // Detailed about section
+    profilePhoto: { type: String },          // Base64 encoded profile picture
     status: { type: String, enum: ['approved', 'under_review', 'rejected'], default: 'under_review' },
     specialties: [{ type: String }],
     rating: { type: Number, default: 0 },
+    reviewsCount: { type: Number, default: 0 },       // Total number of reviews
+    totalRatingSum: { type: Number, default: 0 },     // Sum of all ratings
+    followersCount: { type: Number, default: 0 },     // Number of followers
     isOnline: { type: Boolean, default: false },
     isBlocked: { type: Boolean, default: false },
     isBusy: { type: Boolean, default: false },
