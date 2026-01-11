@@ -10,6 +10,12 @@ export interface IChatMessage extends Document {
     senderId: mongoose.Types.ObjectId;  // User or Astrologer ID
     senderType: 'user' | 'astrologer';
     text: string;
+    type: 'text' | 'image' | 'file';
+    fileUrl?: string;
+    fileName?: string;
+    fileSize?: number;
+    status: 'pending' | 'sent' | 'delivered' | 'read';
+    replyToId?: mongoose.Types.ObjectId;
     timestamp: Date;
     createdAt: Date;
 }
@@ -31,8 +37,25 @@ const ChatMessageSchema: Schema = new Schema({
     },
     text: {
         type: String,
-        required: true,
-        maxlength: 2000  // Limit message length
+        required: false, // Optional if it's just media
+        maxlength: 2000
+    },
+    type: {
+        type: String,
+        enum: ['text', 'image', 'file'],
+        default: 'text'
+    },
+    fileUrl: { type: String },
+    fileName: { type: String },
+    fileSize: { type: Number },
+    status: {
+        type: String,
+        enum: ['pending', 'sent', 'delivered', 'read'],
+        default: 'sent'
+    },
+    replyToId: {
+        type: Schema.Types.ObjectId,
+        ref: 'ChatMessage'
     },
     timestamp: {
         type: Date,

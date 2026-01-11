@@ -732,23 +732,39 @@ class ChatService {
         sessionId: string,
         senderId: string,
         senderType: 'user' | 'astrologer',
-        text: string
-    ): Promise<void> {
+        text: string,
+        type: 'text' | 'image' | 'file' = 'text',
+        fileData?: { url: string; name?: string; size?: number },
+        replyToId?: string
+    ): Promise<any> {
         const message = new ChatMessage({
             sessionId,
             senderId,
             senderType,
             text,
-            timestamp: new Date()
+            type,
+            fileUrl: fileData?.url,
+            fileName: fileData?.name,
+            fileSize: fileData?.size,
+            replyToId: replyToId ? new mongoose.Types.ObjectId(replyToId) : undefined,
+            timestamp: new Date(),
+            status: 'sent'
         });
-        await message.save();
+        return await message.save();
+    }
+
+    /**
+     * Update message status (e.g. delivered, read)
+     */
+    async updateMessageStatus(messageId: string, status: 'delivered' | 'read'): Promise<void> {
+        await ChatMessage.findByIdAndUpdate(messageId, { status });
     }
 
     /**
      * Get messages for a session
      */
     async getMessages(sessionId: string): Promise<any[]> {
-        return ChatMessage.find({ sessionId }).sort({ timestamp: 1 });
+        return ChatMessage.find({ sessionId }).sort({ timestamp: 1 }).populate('replyToId');
     }
 
     /**
@@ -783,7 +799,8 @@ class ChatService {
         // Get messages (fetch limit + 1 to check if there are more)
         const messages = await ChatMessage.find(query)
             .sort({ timestamp: -1 }) // Newest first for "load earlier"
-            .limit(limit + 1);
+            .limit(limit + 1)
+            .populate('replyToId');
 
         const hasMore = messages.length > limit;
         const resultMessages = hasMore ? messages.slice(0, limit) : messages;

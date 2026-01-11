@@ -75,12 +75,18 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         chatService.handleReconnect(userId, userType === 'astrologer');
 
         // Handle sending messages
-        socket.on('send_message', async (data: { sessionId: string; text: string }) => {
+        socket.on('send_message', async (data: {
+            sessionId: string;
+            text: string;
+            type?: 'text' | 'image' | 'file';
+            fileData?: { url: string; name?: string; size?: number };
+            replyToId?: string;
+        }) => {
             try {
-                const { sessionId, text } = data;
+                const { sessionId, text, type = 'text', fileData, replyToId } = data;
 
-                if (!sessionId || !text) {
-                    socket.emit('error', { message: 'sessionId and text are required' });
+                if (!sessionId) {
+                    socket.emit('error', { message: 'sessionId is required' });
                     return;
                 }
 
@@ -102,15 +108,21 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 }
 
                 // Save message
-                await chatService.saveMessage(sessionId, userId, userType, text);
+                const savedMsg = await chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId);
 
                 // Broadcast to session room
                 const message = {
-                    messageId: Date.now().toString(),
+                    messageId: savedMsg._id.toString(),
                     senderId: userId,
                     senderType: userType,
                     text,
-                    timestamp: new Date().toISOString()
+                    type,
+                    fileUrl: savedMsg.fileUrl,
+                    fileName: savedMsg.fileName,
+                    fileSize: savedMsg.fileSize,
+                    replyTo: savedMsg.replyToId,
+                    timestamp: savedMsg.timestamp.toISOString(),
+                    status: 'sent'
                 };
 
                 // Emit to both participants
@@ -126,6 +138,51 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             } catch (error) {
                 console.error('[Socket] Send message error:', error);
                 socket.emit('error', { message: 'Failed to send message' });
+            }
+        });
+
+        // Handle typing indicator
+        socket.on('typing', async (data: { sessionId: string; isTyping: boolean }) => {
+            try {
+                const { sessionId, isTyping } = data;
+                const session = await chatService.getSession(sessionId);
+                if (!session || session.status !== 'ACTIVE') return;
+
+                const targetRoom = userType === 'user'
+                    ? `astrologer:${session.astrologerId}`
+                    : `user:${session.userId}`;
+
+                io.to(targetRoom).emit('TYPING_STATUS', {
+                    sessionId,
+                    userId,
+                    userType,
+                    isTyping
+                });
+            } catch (error) {
+                console.error('[Socket] Typing error:', error);
+            }
+        });
+
+        // Handle message status update (read receipt)
+        socket.on('message_status', async (data: { sessionId: string; messageId: string; status: 'delivered' | 'read' }) => {
+            try {
+                const { sessionId, messageId, status } = data;
+                const session = await chatService.getSession(sessionId);
+                if (!session) return;
+
+                await chatService.updateMessageStatus(messageId, status);
+
+                const targetRoom = userType === 'user'
+                    ? `astrologer:${session.astrologerId}`
+                    : `user:${session.userId}`;
+
+                io.to(targetRoom).emit('MESSAGE_STATUS_UPDATE', {
+                    sessionId,
+                    messageId,
+                    status
+                });
+            } catch (error) {
+                console.error('[Socket] Message status update error:', error);
             }
         });
 

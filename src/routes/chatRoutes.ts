@@ -12,10 +12,35 @@ import {
     getActiveSession,
     getPendingRequests,
     getConversation,
-    getUserSessions
+    getUserSessions,
+    uploadMedia,
+    updateMessageStatus
 } from '../controllers/chatController';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
+
+// Multer config for local storage
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = 'uploads/chat';
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 /**
  * Chat Routes
@@ -24,6 +49,12 @@ const router = Router();
 
 // User initiates chat request
 router.post('/request', authMiddleware, requestChat);
+
+// File Upload
+router.post('/upload', authMiddleware, upload.single('file'), uploadMedia);
+
+// Update message status (read receipts)
+router.post('/message-status', authMiddleware, updateMessageStatus);
 
 // Astrologer accepts/rejects chat request
 router.post('/accept', authMiddleware, acceptChat);

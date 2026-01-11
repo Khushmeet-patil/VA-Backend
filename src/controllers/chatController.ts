@@ -455,3 +455,51 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ message: 'Failed to get sessions' });
     }
 };
+
+/**
+ * Upload chat media
+ */
+export const uploadMedia = async (req: any, res: any) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ status: 'error', message: 'No file uploaded' });
+        }
+
+        // Generate URL for the uploaded file
+        // In local dev, this returns a relative path
+        // In production, this would be the S3/Cloudinary URL
+        const fileUrl = `/uploads/chat/${req.file.filename}`;
+
+        res.json({
+            status: 'success',
+            data: {
+                url: fileUrl,
+                name: req.file.originalname,
+                size: req.file.size,
+                type: req.file.mimetype.startsWith('image/') ? 'image' : 'file'
+            }
+        });
+    } catch (error) {
+        console.error('[ChatController] Upload error:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to upload media' });
+    }
+};
+
+/**
+ * Update message status (read receipts)
+ */
+export const updateMessageStatus = async (req: any, res: any) => {
+    try {
+        const { messageId, status } = req.body;
+        if (!messageId || !status) {
+            return res.status(400).json({ status: 'error', message: 'messageId and status are required' });
+        }
+
+        await chatService.updateMessageStatus(messageId, status);
+
+        res.json({ status: 'success' });
+    } catch (error) {
+        console.error('[ChatController] Update status error:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to update message status' });
+    }
+};
