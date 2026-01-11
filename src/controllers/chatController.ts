@@ -471,13 +471,11 @@ export const uploadMedia = async (req: any, res: any) => {
         const fileUrl = `/uploads/chat/${req.file.filename}`;
 
         res.json({
-            status: 'success',
-            data: {
-                url: fileUrl,
-                name: req.file.originalname,
-                size: req.file.size,
-                type: req.file.mimetype.startsWith('image/') ? 'image' : 'file'
-            }
+            success: true,
+            url: fileUrl,
+            fileName: req.file.originalname,
+            fileSize: req.file.size,
+            type: req.file.mimetype.startsWith('image/') ? 'image' : 'file'
         });
     } catch (error) {
         console.error('[ChatController] Upload error:', error);
