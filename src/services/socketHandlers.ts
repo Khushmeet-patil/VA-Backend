@@ -85,6 +85,8 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             try {
                 const { sessionId, text, type = 'text', fileData, replyToId } = data;
 
+                console.log('[Socket] send_message received:', { sessionId, type, hasFileData: !!fileData, from: userType });
+
                 if (!sessionId) {
                     socket.emit('error', { message: 'sessionId is required' });
                     return;
@@ -125,12 +127,22 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     status: 'sent'
                 };
 
+                // Log rooms and message content
+                const userRoom = `user:${session.userId}`;
+                const astrologerRoom = `astrologer:${session.astrologerId}`;
+                console.log('[Socket] Broadcasting RECEIVE_MESSAGE:', {
+                    userRoom,
+                    astrologerRoom,
+                    type: message.type,
+                    fileUrl: message.fileUrl
+                });
+
                 // Emit to both participants
-                io.to(`user:${session.userId}`).emit('RECEIVE_MESSAGE', {
+                io.to(userRoom).emit('RECEIVE_MESSAGE', {
                     sessionId,
                     ...message
                 });
-                io.to(`astrologer:${session.astrologerId}`).emit('RECEIVE_MESSAGE', {
+                io.to(astrologerRoom).emit('RECEIVE_MESSAGE', {
                     sessionId,
                     ...message
                 });
