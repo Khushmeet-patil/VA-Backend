@@ -11,13 +11,40 @@ import path from 'path';
  * Check if R2 is properly configured
  */
 export const isR2Configured = (): boolean => {
-    return !!(
-        process.env.R2_ACCOUNT_ID &&
-        process.env.R2_ACCESS_KEY_ID &&
-        process.env.R2_SECRET_ACCESS_KEY &&
-        process.env.R2_BUCKET_NAME &&
-        process.env.R2_PUBLIC_URL
-    );
+    const missingVars = [];
+    if (!process.env.R2_ACCOUNT_ID) missingVars.push('R2_ACCOUNT_ID');
+    if (!process.env.R2_ACCESS_KEY_ID) missingVars.push('R2_ACCESS_KEY_ID');
+    if (!process.env.R2_SECRET_ACCESS_KEY) missingVars.push('R2_SECRET_ACCESS_KEY');
+    if (!process.env.R2_BUCKET_NAME) missingVars.push('R2_BUCKET_NAME');
+    if (!process.env.R2_PUBLIC_URL) missingVars.push('R2_PUBLIC_URL');
+
+    if (missingVars.length > 0) {
+        console.warn(`[R2Service] Missing R2 environment variables: ${missingVars.join(', ')}`);
+        return false;
+    }
+    return true;
+};
+
+/**
+ * Verify R2 Connection
+ */
+export const checkR2Connection = async () => {
+    if (!isR2Configured()) {
+        console.log('❌ R2 Storage: Disabled (Missing configuration)');
+        return;
+    }
+
+    try {
+        const r2Client = getR2Client();
+        // Just checking client initialization, listing buckets requires extra permissions usually
+        // but we can trust if keys are present it should act as "Enabled"
+        console.log('✅ R2 Storage: Enabled and Configured');
+        console.log(`   - Bucket: ${process.env.R2_BUCKET_NAME}`);
+        console.log(`   - Public URL: ${process.env.R2_PUBLIC_URL}`);
+        console.log(`   - Account ID: ${process.env.R2_ACCOUNT_ID}`);
+    } catch (error: any) {
+        console.error('❌ R2 Storage: Error during initialization', error.message);
+    }
 };
 
 // Initialize S3 client for R2

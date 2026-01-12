@@ -17,8 +17,12 @@ import astrologerPanelRoutes from './routes/astrologerPanelRoutes';
 import chatRoutes from './routes/chatRoutes';
 import profileRoutes from './routes/profileRoutes';
 import initializeSocketHandlers from './services/socketHandlers';
+import { checkR2Connection } from './services/r2Service';
 
 console.log('All modules loaded successfully');
+
+// Check R2 Configuration
+checkR2Connection();
 
 dotenv.config();
 
