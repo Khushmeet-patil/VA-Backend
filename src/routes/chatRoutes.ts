@@ -17,25 +17,12 @@ import {
     updateMessageStatus
 } from '../controllers/chatController';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 
 const router = Router();
 
-// Multer config for local storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadDir = 'uploads/chat';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
+// Multer config for memory storage (for R2 uploads)
+// Files are kept in memory buffer and uploaded directly to R2
+const storage = multer.memoryStorage();
 
 const upload = multer({
     storage,

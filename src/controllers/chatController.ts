@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import chatService from '../services/chatService';
+import { uploadToR2 } from '../services/r2Service';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import ChatSession from '../models/ChatSession';
@@ -457,7 +458,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * Upload chat media
+ * Upload chat media to Cloudflare R2
  */
 export const uploadMedia = async (req: any, res: any) => {
     try {
@@ -465,10 +466,14 @@ export const uploadMedia = async (req: any, res: any) => {
             return res.status(400).json({ status: 'error', message: 'No file uploaded' });
         }
 
-        // Generate URL for the uploaded file
-        // In local dev, this returns a relative path
-        // In production, this would be the S3/Cloudinary URL
-        const fileUrl = `/uploads/chat/${req.file.filename}`;
+        // Upload to Cloudflare R2
+        const fileUrl = await uploadToR2(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype
+        );
+
+        console.log('[ChatController] Uploaded to R2:', fileUrl);
 
         res.json({
             success: true,
