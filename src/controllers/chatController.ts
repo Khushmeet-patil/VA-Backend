@@ -458,7 +458,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * Upload chat media to Cloudflare R2
+ * Upload chat media to Cloudflare R2 (with local fallback)
  */
 export const uploadMedia = async (req: any, res: any) => {
     try {
@@ -466,14 +466,38 @@ export const uploadMedia = async (req: any, res: any) => {
             return res.status(400).json({ status: 'error', message: 'No file uploaded' });
         }
 
-        // Upload to Cloudflare R2
-        const fileUrl = await uploadToR2(
+        let fileUrl: string;
+
+        // Try R2 upload first
+        const r2Url = await uploadToR2(
             req.file.buffer,
             req.file.originalname,
             req.file.mimetype
         );
 
-        console.log('[ChatController] Uploaded to R2:', fileUrl);
+        if (r2Url) {
+            // R2 upload succeeded
+            fileUrl = r2Url;
+            console.log('[ChatController] Uploaded to R2:', fileUrl);
+        } else {
+            // Fallback to local storage
+            const fs = await import('fs');
+            const path = await import('path');
+
+            const uploadDir = 'uploads/chat';
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+            const ext = path.extname(req.file.originalname);
+            const filename = `file-${uniqueSuffix}${ext}`;
+            const filepath = path.join(uploadDir, filename);
+
+            fs.writeFileSync(filepath, req.file.buffer);
+            fileUrl = `/uploads/chat/${filename}`;
+            console.log('[ChatController] Saved locally:', fileUrl);
+        }
 
         res.json({
             success: true,

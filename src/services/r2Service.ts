@@ -4,7 +4,21 @@ import path from 'path';
 /**
  * Cloudflare R2 Upload Service
  * R2 is S3-compatible, so we use the AWS SDK with R2 endpoint
+ * Falls back gracefully when R2 is not configured
  */
+
+/**
+ * Check if R2 is properly configured
+ */
+export const isR2Configured = (): boolean => {
+    return !!(
+        process.env.R2_ACCOUNT_ID &&
+        process.env.R2_ACCESS_KEY_ID &&
+        process.env.R2_SECRET_ACCESS_KEY &&
+        process.env.R2_BUCKET_NAME &&
+        process.env.R2_PUBLIC_URL
+    );
+};
 
 // Initialize S3 client for R2
 const getR2Client = () => {
@@ -59,19 +73,21 @@ const getMimeType = (filename: string): string => {
  * @param buffer - File buffer from multer
  * @param originalName - Original filename
  * @param mimeType - Optional MIME type (auto-detected if not provided)
- * @returns Public URL of the uploaded file
+ * @returns Public URL of the uploaded file, or null if R2 not configured
  */
 export const uploadToR2 = async (
     buffer: Buffer,
     originalName: string,
     mimeType?: string
-): Promise<string> => {
-    const bucketName = process.env.R2_BUCKET_NAME;
-    const publicUrl = process.env.R2_PUBLIC_URL;
-
-    if (!bucketName || !publicUrl) {
-        throw new Error('R2_BUCKET_NAME or R2_PUBLIC_URL not configured');
+): Promise<string | null> => {
+    // Check if R2 is configured
+    if (!isR2Configured()) {
+        console.warn('[R2Service] R2 not configured, skipping R2 upload');
+        return null;
     }
+
+    const bucketName = process.env.R2_BUCKET_NAME!;
+    const publicUrl = process.env.R2_PUBLIC_URL!;
 
     const r2Client = getR2Client();
     const key = generateUniqueFilename(originalName);
