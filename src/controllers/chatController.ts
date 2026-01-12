@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import chatService from '../services/chatService';
 import { uploadToR2 } from '../services/r2Service';
 import User from '../models/User';
@@ -466,24 +468,42 @@ export const uploadMedia = async (req: any, res: any) => {
             return res.status(400).json({ status: 'error', message: 'No file uploaded' });
         }
 
+        console.log('[ChatController] Upload request received, file:', req.file.originalname, 'size:', req.file.size);
+
         let fileUrl: string;
 
         // Try R2 upload first
-        const r2Url = await uploadToR2(
-            req.file.buffer,
-            req.file.originalname,
-            req.file.mimetype
-        );
+        try {
+            const r2Url = await uploadToR2(
+                req.file.buffer,
+                req.file.originalname,
+                req.file.mimetype
+            );
 
-        if (r2Url) {
-            // R2 upload succeeded
-            fileUrl = r2Url;
-            console.log('[ChatController] Uploaded to R2:', fileUrl);
-        } else {
-            // Fallback to local storage
-            const fs = await import('fs');
-            const path = await import('path');
+            if (r2Url) {
+                // R2 upload succeeded
+                fileUrl = r2Url;
+                console.log('[ChatController] Uploaded to R2:', fileUrl);
+            } else {
+                // Fallback to local storage
+                const uploadDir = 'uploads/chat';
+                if (!fs.existsSync(uploadDir)) {
+                    fs.mkdirSync(uploadDir, { recursive: true });
+                }
 
+                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+                const ext = path.extname(req.file.originalname);
+                const filename = `file-${uniqueSuffix}${ext}`;
+                const filepath = path.join(uploadDir, filename);
+
+                fs.writeFileSync(filepath, req.file.buffer);
+                fileUrl = `/uploads/chat/${filename}`;
+                console.log('[ChatController] Saved locally:', fileUrl);
+            }
+        } catch (uploadError: any) {
+            console.error('[ChatController] R2 upload failed, falling back to local:', uploadError.message);
+
+            // Fallback to local storage on R2 error
             const uploadDir = 'uploads/chat';
             if (!fs.existsSync(uploadDir)) {
                 fs.mkdirSync(uploadDir, { recursive: true });
@@ -496,7 +516,7 @@ export const uploadMedia = async (req: any, res: any) => {
 
             fs.writeFileSync(filepath, req.file.buffer);
             fileUrl = `/uploads/chat/${filename}`;
-            console.log('[ChatController] Saved locally:', fileUrl);
+            console.log('[ChatController] Saved locally (after R2 error):', fileUrl);
         }
 
         res.json({
@@ -506,9 +526,9 @@ export const uploadMedia = async (req: any, res: any) => {
             fileSize: req.file.size,
             type: req.file.mimetype.startsWith('image/') ? 'image' : 'file'
         });
-    } catch (error) {
-        console.error('[ChatController] Upload error:', error);
-        res.status(500).json({ status: 'error', message: 'Failed to upload media' });
+    } catch (error: any) {
+        console.error('[ChatController] Upload error:', error.message, error.stack);
+        res.status(500).json({ status: 'error', message: 'Failed to upload media: ' + error.message });
     }
 };
 
