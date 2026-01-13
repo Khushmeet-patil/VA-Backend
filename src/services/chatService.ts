@@ -465,15 +465,9 @@ class ChatService {
             // Calculate total expected cost
             let totalExpectedCost = 0;
 
-            // Per requirement: Billing starts ONLY after 1 minute is completed.
-            // If < 1 min, cost is 0.
-            // If >= 1 min, pro-rata per second billing applies for the full duration.
-            if (durationMs >= 60000) {
-                totalExpectedCost = durationMinutes * session.ratePerMinute;
-            } else {
-                console.log(`[ChatService] Chat duration ${durationMs}ms < 1 min. No charge applied.`);
-                totalExpectedCost = 0;
-            }
+            // Per requirement: Billing starts from the first second (per-second billing).
+            // Calculate total expected cost based on exact duration.
+            totalExpectedCost = durationMinutes * session.ratePerMinute;
 
             // Calculate what has NOT yet been billed
             const alreadyCharged = session.totalAmount;
