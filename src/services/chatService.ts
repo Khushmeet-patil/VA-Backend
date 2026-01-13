@@ -78,37 +78,62 @@ class ChatService {
             throw new Error('Astrologer is not approved');
         }
 
-        // Self-healing: Check if the "busy" state is actually due to an old/stuck session with THIS user
+        // Self-healing: Check if the "busy" state is actually stale
         if (astrologer.isBusy) {
             if (astrologer.activeSessionId) {
                 const blockingSession = await ChatSession.findOne({ sessionId: astrologer.activeSessionId });
 
-                // If the blocking session exists and belongs to THIS user, end it and proceed
-                if (blockingSession && blockingSession.userId.toString() === userId) {
+                if (!blockingSession) {
+                    // activeSessionId points to a non-existent session - clear stale state
+                    console.log(`[ChatService] Stale activeSessionId ${astrologer.activeSessionId} - session not found. Clearing busy state.`);
+                    astrologer.isBusy = false;
+                    astrologer.activeSessionId = undefined;
+                    await astrologer.save();
+                    // Continue to create new session
+                } else if (blockingSession.status !== 'ACTIVE' && blockingSession.status !== 'PENDING') {
+                    // The "blocking" session has already ended but busy state wasn't cleared
+                    // This can happen due to: app crash, network issues, server restart, etc.
+                    console.log(`[ChatService] Stale busy state detected. Session ${blockingSession.sessionId} status=${blockingSession.status}. Clearing astrologer busy state.`);
+                    astrologer.isBusy = false;
+                    astrologer.activeSessionId = undefined;
+                    await astrologer.save();
+                    // Continue to create new session
+                } else if (blockingSession.userId.toString() === userId) {
+                    // If the blocking session exists (ACTIVE/PENDING) and belongs to THIS user, end it and proceed
                     console.log(`[ChatService] Found stuck session ${blockingSession.sessionId} for user ${userId}. Auto-ending it.`);
                     try {
-                        // Force end the old session
-                        await this.endChat(blockingSession.sessionId, 'USER_END');
+                        if (blockingSession.status === 'ACTIVE') {
+                            // Force end the old session
+                            await this.endChat(blockingSession.sessionId, 'USER_END');
+                        } else if (blockingSession.status === 'PENDING') {
+                            // Cancel the pending request
+                            await this.cancelChatRequest(blockingSession.sessionId, userId);
+                        }
 
                         // Re-fetch astrologer to ensure state is clear
                         const refreshedAstrologer = await Astrologer.findById(astrologerId);
                         if (refreshedAstrologer && refreshedAstrologer.isBusy) {
-                            // Should not happen if endChat works, but safety check
-                            throw new Error('Astrologer is still busy after cleanup. Please try again.');
+                            // Shouldn't happen after endChat, but clear it anyway
+                            console.log(`[ChatService] Force clearing busy state after cleanup.`);
+                            refreshedAstrologer.isBusy = false;
+                            refreshedAstrologer.activeSessionId = undefined;
+                            await refreshedAstrologer.save();
                         }
                     } catch (err) {
                         console.error('[ChatService] Failed to clean up stuck session:', err);
-                        // Continue anyway if possible? No, safer to error if cleanup failed
                         throw new Error('Failed to close previous session. Please try again.');
                     }
                 } else {
+                    // Astrologer is genuinely busy with ANOTHER user's session
                     throw new Error('Astrologer is busy with another chat');
                 }
             } else {
-                // isBusy is true but no activeSessionId? Inconsistent state.
-                // We should probably clear it, but safer to block for now unless we are sure.
-                // Let's assume it's a valid busy state with missing ID (shouldn't happen).
-                throw new Error('Astrologer is busy with another call');
+                // isBusy is true but no activeSessionId? This is definitely inconsistent.
+                // Clear the orphaned busy state
+                console.log(`[ChatService] Orphaned busy state detected (no activeSessionId). Clearing.`);
+                astrologer.isBusy = false;
+                await astrologer.save();
+                // Continue to create new session
             }
         }
 
