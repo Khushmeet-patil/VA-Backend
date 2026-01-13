@@ -72,12 +72,44 @@ class ChatService {
             throw new Error('Astrologer is offline');
         }
 
-        if (astrologer.isBusy) {
-            throw new Error('Astrologer is busy with another chat');
-        }
+
 
         if (astrologer.status !== 'approved') {
             throw new Error('Astrologer is not approved');
+        }
+
+        // Self-healing: Check if the "busy" state is actually due to an old/stuck session with THIS user
+        if (astrologer.isBusy) {
+            if (astrologer.activeSessionId) {
+                const blockingSession = await ChatSession.findOne({ sessionId: astrologer.activeSessionId });
+
+                // If the blocking session exists and belongs to THIS user, end it and proceed
+                if (blockingSession && blockingSession.userId.toString() === userId) {
+                    console.log(`[ChatService] Found stuck session ${blockingSession.sessionId} for user ${userId}. Auto-ending it.`);
+                    try {
+                        // Force end the old session
+                        await this.endChat(blockingSession.sessionId, 'USER_END');
+
+                        // Re-fetch astrologer to ensure state is clear
+                        const refreshedAstrologer = await Astrologer.findById(astrologerId);
+                        if (refreshedAstrologer && refreshedAstrologer.isBusy) {
+                            // Should not happen if endChat works, but safety check
+                            throw new Error('Astrologer is still busy after cleanup. Please try again.');
+                        }
+                    } catch (err) {
+                        console.error('[ChatService] Failed to clean up stuck session:', err);
+                        // Continue anyway if possible? No, safer to error if cleanup failed
+                        throw new Error('Failed to close previous session. Please try again.');
+                    }
+                } else {
+                    throw new Error('Astrologer is busy with another chat');
+                }
+            } else {
+                // isBusy is true but no activeSessionId? Inconsistent state.
+                // We should probably clear it, but safer to block for now unless we are sure.
+                // Let's assume it's a valid busy state with missing ID (shouldn't happen).
+                throw new Error('Astrologer is busy with another call');
+            }
         }
 
         const ratePerMinute = astrologer.pricePerMin;
