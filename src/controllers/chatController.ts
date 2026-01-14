@@ -303,7 +303,20 @@ export const getChatHistory = async (req: AuthRequest, res: Response) => {
 
         const messages = await chatService.getMessages(sessionId);
 
-        res.json({ messages });
+        // Format messages for frontend (map replyToId to replyTo)
+        const formattedMessages = messages.map((msg: any) => ({
+            ...msg.toObject(),
+            replyTo: msg.replyToId ? {
+                id: msg.replyToId._id?.toString() || msg.replyToId.toString(),
+                text: msg.replyToId.text || '',
+                sender: msg.replyToId.senderType || 'user',
+                type: msg.replyToId.type || 'text',
+                fileUrl: msg.replyToId.fileUrl,
+            } : undefined,
+            replyToId: undefined, // Remove raw field
+        }));
+
+        res.json({ messages: formattedMessages });
 
     } catch (error: any) {
         console.error('Get chat history error:', error);
@@ -406,8 +419,21 @@ export const getConversation = async (req: AuthRequest, res: Response) => {
 
         const result = await chatService.getConversation(userId, astrologerId, limitNum, beforeDate);
 
+        // Format messages for frontend (map replyToId to replyTo)
+        const formattedMessages = result.messages.map((msg: any) => ({
+            ...msg.toObject(),
+            replyTo: msg.replyToId ? {
+                id: msg.replyToId._id?.toString() || msg.replyToId.toString(),
+                text: msg.replyToId.text || '',
+                sender: msg.replyToId.senderType || 'user',
+                type: msg.replyToId.type || 'text',
+                fileUrl: msg.replyToId.fileUrl,
+            } : undefined,
+            replyToId: undefined, // Remove raw field
+        }));
+
         res.json({
-            messages: result.messages,
+            messages: formattedMessages,
             hasMore: result.hasMore
         });
 

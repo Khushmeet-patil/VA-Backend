@@ -112,6 +112,21 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 // Save message
                 const savedMsg = await chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId);
 
+                // Fetch reply message if replyToId was provided
+                let replyTo: { id: string; text: string; sender: string; type?: string; fileUrl?: string } | undefined;
+                if (replyToId) {
+                    const replyMsg = await chatService.getMessage(replyToId);
+                    if (replyMsg) {
+                        replyTo = {
+                            id: replyMsg._id.toString(),
+                            text: replyMsg.text || '',
+                            sender: replyMsg.senderType,
+                            type: replyMsg.type,
+                            fileUrl: replyMsg.fileUrl,
+                        };
+                    }
+                }
+
                 // Broadcast to session room
                 const message = {
                     messageId: savedMsg._id.toString(),
@@ -122,7 +137,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     fileUrl: savedMsg.fileUrl,
                     fileName: savedMsg.fileName,
                     fileSize: savedMsg.fileSize,
-                    replyTo: savedMsg.replyToId,
+                    replyTo, // Include fully populated reply object
                     timestamp: savedMsg.timestamp.toISOString(),
                     status: 'sent'
                 };
@@ -134,7 +149,8 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     userRoom,
                     astrologerRoom,
                     type: message.type,
-                    fileUrl: message.fileUrl
+                    fileUrl: message.fileUrl,
+                    hasReplyTo: !!replyTo
                 });
 
                 // Emit to both participants

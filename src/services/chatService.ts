@@ -794,6 +794,13 @@ class ChatService {
     }
 
     /**
+     * Get a single message by ID (for populating replyTo)
+     */
+    async getMessage(messageId: string): Promise<any> {
+        return ChatMessage.findById(messageId);
+    }
+
+    /**
      * Get ALL messages between a user-astrologer pair (across all sessions)
      * Supports pagination for "load earlier" functionality
      */
