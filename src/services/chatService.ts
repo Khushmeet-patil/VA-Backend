@@ -666,10 +666,19 @@ class ChatService {
             });
         }
 
+        // CRITICAL FIX: If balance is now 0 or cannot afford another minute, end chat IMMEDIATELY
+        // This prevents the "extra minute" issue where chat continues after balance depletes
+        if (updatedUser.walletBalance <= 0) {
+            console.log(`[ChatService] Balance depleted (${updatedUser.walletBalance}), ending chat immediately: ${sessionId}`);
+            await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
+            return;
+        }
+
         // Check for LAST MINUTE WARNING
-        // If after this deduction, user cannot afford another minute but still has some balance
-        if (updatedUser.walletBalance < ratePerMinute && updatedUser.walletBalance > 0) {
-            console.log(`[ChatService] Sending last minute warning for: ${sessionId}`);
+        // Trigger when user has less than 2 minutes worth of balance remaining
+        // This gives user time to see warning and potentially recharge
+        if (updatedUser.walletBalance < ratePerMinute * 2 && updatedUser.walletBalance > 0) {
+            console.log(`[ChatService] Sending last minute warning for: ${sessionId}, balance: ${updatedUser.walletBalance}`);
             if (this.io) {
                 this.io.to(`user:${session.userId}`).emit('LAST_MINUTE_WARNING', {
                     sessionId,
