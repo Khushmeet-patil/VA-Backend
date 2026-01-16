@@ -111,9 +111,10 @@ export const updateApplicationStatus = async (req: Request, res: Response) => {
 export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
         // Use lean() to get plain objects and avoid schema validation issues with old data
-        const astrologers = await Astrologer.find({ status: 'approved', isBlocked: { $ne: true }, isOnline: true })
+        // Return all approved astrologers (online and offline) for the list
+        const astrologers = await Astrologer.find({ status: 'approved', isBlocked: { $ne: true } })
             .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag')
-            .sort({ rating: -1 })
+            .sort({ isOnline: -1, rating: -1 }) // Sort online first, then by rating
             .lean();
 
         res.json(astrologers);
