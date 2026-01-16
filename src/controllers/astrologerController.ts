@@ -112,7 +112,7 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
         // Use lean() to get plain objects and avoid schema validation issues with old data
         const astrologers = await Astrologer.find({ status: 'approved', isBlocked: { $ne: true }, isOnline: true })
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag')
             .sort({ rating: -1 })
             .lean();
 
@@ -130,7 +130,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
         const userId = (req as any).userId; // Optional - may be undefined for unauthenticated requests
 
         const astrologer = await Astrologer.findById(id)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties totalChats')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties totalChats tag')
             .lean();
 
         if (!astrologer) {
