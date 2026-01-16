@@ -20,7 +20,7 @@ export interface IUser extends Document {
     dob?: string;
     tob?: string;
     pob?: string;
-    profilePhoto?: string;  // Base64 encoded profile picture
+    profilePhoto?: string;  // R2 URL or base64 (legacy) profile picture
     otp?: string;
     otpExpires?: Date;
     isVerified: boolean;
@@ -48,7 +48,7 @@ const UserSchema: Schema = new Schema({
     dob: { type: String },
     tob: { type: String },
     pob: { type: String },
-    profilePhoto: { type: String },  // Base64 encoded profile picture
+    profilePhoto: { type: String },  // R2 URL or base64 (legacy) profile picture
     otp: { type: String },
     otpExpires: { type: Date },
     isVerified: { type: Boolean, default: false },

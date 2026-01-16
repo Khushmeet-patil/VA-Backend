@@ -136,6 +136,79 @@ export const uploadToR2 = async (
 };
 
 /**
+ * Upload base64 image to Cloudflare R2
+ * Extracts buffer from base64 string and uploads to R2
+ * @param base64Data - Base64 encoded image (with or without data URI prefix)
+ * @param folder - Folder path (e.g., 'profiles/astrologers' or 'profiles/users')
+ * @param userId - User/Astrologer ID for unique filename
+ * @returns Public URL of uploaded image, or null if R2 not configured
+ */
+export const uploadBase64ToR2 = async (
+    base64Data: string,
+    folder: string,
+    userId: string
+): Promise<string | null> => {
+    // Check if R2 is configured
+    if (!isR2Configured()) {
+        console.warn('[R2Service] R2 not configured, returning base64 as-is');
+        return null;
+    }
+
+    try {
+        // Extract MIME type and base64 content
+        let mimeType = 'image/jpeg';
+        let base64Content = base64Data;
+
+        // Handle data URI format: data:image/jpeg;base64,/9j/4AAQ...
+        if (base64Data.startsWith('data:')) {
+            const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+                mimeType = matches[1];
+                base64Content = matches[2];
+            }
+        }
+
+        // Convert base64 to buffer
+        const buffer = Buffer.from(base64Content, 'base64');
+
+        // Generate extension from MIME type
+        const extMap: Record<string, string> = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+        };
+        const ext = extMap[mimeType] || '.jpg';
+
+        // Generate unique key with folder structure
+        const timestamp = Date.now();
+        const key = `${folder}/${userId}-${timestamp}${ext}`;
+
+        const bucketName = process.env.R2_BUCKET_NAME!;
+        const publicUrl = process.env.R2_PUBLIC_URL!;
+
+        const r2Client = getR2Client();
+
+        const command = new PutObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+            Body: buffer,
+            ContentType: mimeType,
+        });
+
+        await r2Client.send(command);
+
+        // Return public URL
+        const url = `${publicUrl.replace(/\/$/, '')}/${key}`;
+        console.log('[R2Service] Uploaded profile photo:', url);
+        return url;
+    } catch (error: any) {
+        console.error('[R2Service] Error uploading base64 to R2:', error.message);
+        throw error;
+    }
+};
+
+/**
  * Delete file from Cloudflare R2
  * @param key - The file key (path) to delete
  */
@@ -169,6 +242,7 @@ export const getKeyFromUrl = (url: string): string | null => {
 
 export default {
     uploadToR2,
+    uploadBase64ToR2,
     deleteFromR2,
     getKeyFromUrl,
 };

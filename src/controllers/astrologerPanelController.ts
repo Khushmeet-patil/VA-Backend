@@ -4,6 +4,7 @@ import Astrologer from '../models/Astrologer';
 import Otp from '../models/Otp';
 import ChatSession from '../models/ChatSession';
 import ChatMessage from '../models/ChatMessage';
+import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -208,8 +209,44 @@ export const updateProfile = async (req: Request, res: Response) => {
         if (specialties !== undefined) {
             updateData.specialties = specialties;
         }
+
+        // Handle profile photo upload to R2
         if (profilePhoto !== undefined) {
-            updateData.profilePhoto = profilePhoto;
+            // Check if it's a base64 image (starts with data:image or is raw base64)
+            if (profilePhoto && (profilePhoto.startsWith('data:image') || profilePhoto.length > 500)) {
+                try {
+                    // Upload to R2
+                    const r2Url = await uploadBase64ToR2(profilePhoto, 'profiles/astrologers', astrologerId);
+                    if (r2Url) {
+                        // Delete old photo from R2 if it exists
+                        const astrologer = await Astrologer.findById(astrologerId);
+                        if (astrologer?.profilePhoto && astrologer.profilePhoto.includes('r2.')) {
+                            try {
+                                const oldKey = getKeyFromUrl(astrologer.profilePhoto);
+                                if (oldKey) {
+                                    await deleteFromR2(oldKey);
+                                    console.log('[AstrologerPanel] Deleted old profile photo from R2');
+                                }
+                            } catch (deleteError) {
+                                console.warn('[AstrologerPanel] Failed to delete old profile photo:', deleteError);
+                            }
+                        }
+                        updateData.profilePhoto = r2Url;
+                        console.log('[AstrologerPanel] Profile photo uploaded to R2:', r2Url);
+                    } else {
+                        // R2 not configured, store base64 as fallback
+                        updateData.profilePhoto = profilePhoto;
+                        console.log('[AstrologerPanel] R2 not configured, storing base64');
+                    }
+                } catch (uploadError: any) {
+                    console.error('[AstrologerPanel] Error uploading profile photo:', uploadError.message);
+                    // Fall back to storing base64
+                    updateData.profilePhoto = profilePhoto;
+                }
+            } else {
+                // It's already a URL or empty, store as-is
+                updateData.profilePhoto = profilePhoto;
+            }
         }
 
         const astrologer = await Astrologer.findByIdAndUpdate(

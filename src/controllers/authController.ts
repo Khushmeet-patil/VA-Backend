@@ -4,6 +4,7 @@ import User from '../models/User';
 import { sendSmsOtp } from '../services/smsService';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -92,8 +93,44 @@ export const updateProfile = async (req: Request, res: Response) => {
         const { name, gender, dob, tob, pob, profilePhoto } = req.body;
 
         const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
+
+        // Handle profile photo upload to R2
         if (profilePhoto !== undefined) {
-            updateData.profilePhoto = profilePhoto;
+            // Check if it's a base64 image (starts with data:image or is raw base64)
+            if (profilePhoto && (profilePhoto.startsWith('data:image') || profilePhoto.length > 500)) {
+                try {
+                    // Upload to R2
+                    const r2Url = await uploadBase64ToR2(profilePhoto, 'profiles/users', userId);
+                    if (r2Url) {
+                        // Delete old photo from R2 if it exists
+                        const existingUser = await User.findById(userId);
+                        if (existingUser?.profilePhoto && existingUser.profilePhoto.includes('r2.')) {
+                            try {
+                                const oldKey = getKeyFromUrl(existingUser.profilePhoto);
+                                if (oldKey) {
+                                    await deleteFromR2(oldKey);
+                                    console.log('[AuthController] Deleted old profile photo from R2');
+                                }
+                            } catch (deleteError) {
+                                console.warn('[AuthController] Failed to delete old profile photo:', deleteError);
+                            }
+                        }
+                        updateData.profilePhoto = r2Url;
+                        console.log('[AuthController] Profile photo uploaded to R2:', r2Url);
+                    } else {
+                        // R2 not configured, store base64 as fallback
+                        updateData.profilePhoto = profilePhoto;
+                        console.log('[AuthController] R2 not configured, storing base64');
+                    }
+                } catch (uploadError: any) {
+                    console.error('[AuthController] Error uploading profile photo:', uploadError.message);
+                    // Fall back to storing base64
+                    updateData.profilePhoto = profilePhoto;
+                }
+            } else {
+                // It's already a URL or empty, store as-is
+                updateData.profilePhoto = profilePhoto;
+            }
         }
 
         const user = await User.findByIdAndUpdate(

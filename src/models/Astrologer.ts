@@ -14,7 +14,7 @@ export interface IAstrologer extends Document {
     language: string[];
     bio: string;
     aboutMe: string;                    // Detailed about section
-    profilePhoto?: string;              // Base64 encoded profile picture
+    profilePhoto?: string;              // R2 URL or base64 (legacy) profile picture
     status: 'approved' | 'under_review' | 'rejected';
     specialties: string[];
     rating: number;
@@ -48,7 +48,7 @@ const AstrologerSchema: Schema = new Schema({
     language: [{ type: String }],
     bio: { type: String },
     aboutMe: { type: String, default: '' },  // Detailed about section
-    profilePhoto: { type: String },          // Base64 encoded profile picture
+    profilePhoto: { type: String },          // R2 URL or base64 (legacy) profile picture
     status: { type: String, enum: ['approved', 'under_review', 'rejected'], default: 'under_review' },
     specialties: [{ type: String }],
     rating: { type: Number, default: 0 },
