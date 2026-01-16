@@ -260,13 +260,14 @@ export const updateAstrologerStatus = async (req: Request, res: Response) => {
 export const updateAstrologer = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
-        const { isBlocked, priceRangeMin, priceRangeMax, pricePerMin } = req.body;
+        const { isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag } = req.body;
 
         const updateData: any = {};
         if (typeof isBlocked === 'boolean') updateData.isBlocked = isBlocked;
         if (typeof priceRangeMin === 'number') updateData.priceRangeMin = priceRangeMin;
         if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
         if (typeof pricePerMin === 'number') updateData.pricePerMin = pricePerMin;
+        if (tag) updateData.tag = tag;
 
         const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
