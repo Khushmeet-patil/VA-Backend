@@ -10,7 +10,8 @@ import {
     getChats,
     updateChatRate,
     requestWithdrawal,
-    getWithdrawalHistory
+    getWithdrawalHistory,
+    getSessionHistory
 } from '../controllers/astrologerPanelController';
 import { authMiddleware } from '../middleware/auth';
 
@@ -32,5 +33,8 @@ router.get('/chats', authMiddleware, getChats);
 // Withdrawal routes
 router.post('/withdraw', authMiddleware, requestWithdrawal);
 router.get('/withdrawals', authMiddleware, getWithdrawalHistory);
+
+// Session history route
+router.get('/sessions', authMiddleware, getSessionHistory);
 
 export default router;

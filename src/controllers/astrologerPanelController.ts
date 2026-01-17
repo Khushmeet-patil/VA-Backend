@@ -543,3 +543,64 @@ export const getWithdrawalHistory = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// Get Session History (individual sessions for history page)
+export const getSessionHistory = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+
+        // Find all ENDED sessions for this astrologer
+        const sessions = await ChatSession.find({
+            astrologerId,
+            status: 'ENDED'
+        })
+            .populate('userId', 'name mobile profilePhoto')
+            .sort({ endTime: -1 })
+            .limit(100);
+
+        // Format sessions for the frontend
+        const sessionHistory = sessions.map((session: any) => {
+            const user = session.userId;
+            const endTime = session.endTime || session.updatedAt;
+
+            // Format date and time
+            const dateObj = new Date(endTime);
+            const dateStr = dateObj.toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+            });
+            const timeStr = dateObj.toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+
+            return {
+                id: session._id,
+                sessionId: session.sessionId,
+                user: {
+                    id: user?._id,
+                    name: user?.name || 'User',
+                    mobile: user?.mobile || '',
+                    profilePhoto: user?.profilePhoto || null
+                },
+                duration: session.totalMinutes || 0,
+                earnings: session.astrologerEarnings || 0,
+                date: dateStr,
+                time: timeStr,
+                dateTime: endTime,
+                status: session.status,
+                endReason: session.endReason
+            };
+        });
+
+        res.json({
+            success: true,
+            data: sessionHistory
+        });
+    } catch (error: any) {
+        console.error('getSessionHistory error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
