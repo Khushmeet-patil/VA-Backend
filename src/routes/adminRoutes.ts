@@ -11,7 +11,9 @@ import {
     updateAstrologerStatus,
     updateAstrologer,
     bulkUpdateAstrologers,
-    createNotification
+    createNotification,
+    deleteUser,
+    addUser
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -25,6 +27,8 @@ router.put('/users/:userId', updateUser);
 router.get('/users/:userId/activity', getUserActivity);
 router.post('/users/:userId/wallet/add', addWalletBalance);
 router.post('/users/:userId/wallet/deduct', deductWalletBalance);
+router.post('/users', addUser);
+router.delete('/users/:userId', deleteUser);
 
 // Astrologers
 router.get('/astrologers', getAstrologers);

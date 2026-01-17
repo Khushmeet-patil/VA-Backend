@@ -329,6 +329,57 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
     }
 };
 
+// Add User (Admin)
+export const addUser = async (req: Request, res: Response) => {
+    try {
+        const { name, mobile, email, walletBalance, isBlocked } = req.body;
+
+        if (!name || !mobile) {
+            return res.status(400).json({ success: false, message: 'Name and Mobile are required' });
+        }
+
+        const existingUser = await User.findOne({ mobile });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'User with this mobile already exists' });
+        }
+
+        const newUser = new User({
+            name,
+            mobile,
+            walletBalance: walletBalance || 0,
+            isBlocked: isBlocked || false,
+            isVerified: true, // Admin created
+            role: 'user'
+        });
+
+        await newUser.save();
+
+        res.status(201).json({ success: true, data: newUser, message: 'User added successfully' });
+    } catch (error) {
+        console.error('Add user error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Delete User (Permanent Deletion)
+export const deleteUser = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const user = await User.findByIdAndDelete(userId);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Ideally, we should also clean up related data like Transactions, ChatSessions, etc.
+        // For now, we are just deleting the user record as requested.
+
+        res.status(200).json({ success: true, message: 'User deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
 // 3. Astrologer Management
 export const getAstrologers = async (req: Request, res: Response) => {
     try {
