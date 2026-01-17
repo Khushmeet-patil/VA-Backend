@@ -11,12 +11,110 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         const totalUsers = await User.countDocuments({ role: 'user' });
         const totalAstrologers = await Astrologer.countDocuments({ status: 'approved' });
 
-        // Earning stats (mock implementation for now, ideally aggregate from Transactions)
+        // 1. Total Earnings (Net Company Earnings - defined as Total Transaction Volume for now as comm is 0%)
+        const totalEarningsAgg = await Transaction.aggregate([
+            { $match: { type: 'debit', status: 'success' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalEarnings = totalEarningsAgg[0]?.total || 0;
+
+        // 2. Earnings Trend (Last 6 Months)
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+        sixMonthsAgo.setDate(1);
+        sixMonthsAgo.setHours(0, 0, 0, 0);
+
+        const earningsTrendAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    type: 'debit',
+                    status: 'success',
+                    createdAt: { $gte: sixMonthsAgo }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        month: { $month: "$createdAt" },
+                        year: { $year: "$createdAt" }
+                    },
+                    total: { $sum: "$amount" }
+                }
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        // Map trend to format: { name: 'JAN', earning: 1000 }
+        const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+        const trend = [];
+        // Fill in last 6 months even if empty
+        for (let i = 0; i < 6; i++) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - (5 - i));
+            const m = d.getMonth() + 1;
+            const y = d.getFullYear();
+
+            const found = earningsTrendAgg.find(item => item._id.month === m && item._id.year === y);
+            trend.push({
+                name: monthNames[m - 1],
+                earning: found ? found.total : 0
+            });
+        }
+
+        // 3. Last Month Earnings (For Growth Calc)
+        const lastMonthStart = new Date();
+        lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
+        lastMonthStart.setDate(1);
+        lastMonthStart.setHours(0, 0, 0, 0);
+
+        const thisMonthStart = new Date();
+        thisMonthStart.setDate(1);
+        thisMonthStart.setHours(0, 0, 0, 0);
+
+        const lastMonthEarningsAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    type: 'debit',
+                    status: 'success',
+                    createdAt: { $gte: lastMonthStart, $lt: thisMonthStart }
+                }
+            },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const lastMonthEarnings = lastMonthEarningsAgg[0]?.total || 0;
+
+        // Calculate Growth %
+        const thisMonthEarningsAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    type: 'debit',
+                    status: 'success',
+                    createdAt: { $gte: thisMonthStart }
+                }
+            },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const thisMonthEarnings = thisMonthEarningsAgg[0]?.total || 0;
+
+        let growthPercent = 0;
+        if (lastMonthEarnings > 0) {
+            growthPercent = ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings) * 100;
+        } else if (thisMonthEarnings > 0) {
+            growthPercent = 100;
+        }
+
         const earnings = {
-            daily: 100,
-            weekly: 500,
-            monthly: 2000,
-            yearly: 24000
+            monthly: totalEarnings, // Total Lifetime Earnings (as requested by 'Net Company Earnings' usually implies total or we can use thisMonth) - let's use Total Lifetime for the Big Card as per common dashboards, or strictly 'monthly' if named that.
+            // Wait, the variable 'earnings' in previous mock had 'monthly: 2000'. The frontend uses 'earnings.total' from 'realData.earnings?.monthly'.
+            // I should override the key to be clearer or map it correctly.
+            // Let's return a structure that matches what frontend expects or update frontend.
+            // Frontend expects: stats.earnings.total, stats.earnings.lastMonth, stats.earnings.growth, stats.earnings.trend
+
+            // I will structure the response to match perfectly:
+            total: totalEarnings,
+            lastMonth: lastMonthEarnings,
+            growth: parseFloat(growthPercent.toFixed(1)),
+            trend: trend
         };
 
         const newUsers = {
@@ -44,18 +142,25 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
 
+        // Total Payable (Sum of all Astrologer current earnings/wallet balances)
+        const totalPayableAgg = await Astrologer.aggregate([
+            { $match: { status: 'approved' } }, // Only approved ones? or all? Assuming all valid earnings.
+            { $group: { _id: null, total: { $sum: '$earnings' } } }
+        ]);
+        const totalPayable = totalPayableAgg[0]?.total || 0;
+
         res.status(200).json({
             success: true,
             data: {
                 totalUsers,
                 totalAstrologers,
-                earnings,
+                earnings, // Now contains { total, lastMonth, growth, trend }
                 newUsers,
                 newAstrologers,
                 financials: {
                     totalAddedByUser: totalAddedByUser[0]?.total || 0,
                     totalPaidToAstrologers: totalPaidToAstrologers[0]?.total || 0,
-                    // Pending/Left to pay would be calculated based on Astrologer's pending earnings
+                    totalPayable: totalPayable
                 }
             }
         });
