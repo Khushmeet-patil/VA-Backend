@@ -297,16 +297,32 @@ export const getStats = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        // Mock stats for now - replace with actual data from chat/earnings collections
+        // Calculate real earnings from ended chat sessions
+        const sessionsStats = await ChatSession.aggregate([
+            { $match: { astrologerId: astrologer._id, status: 'ENDED' } },
+            {
+                $group: {
+                    _id: null,
+                    lifetimeEarnings: { $sum: '$astrologerEarnings' },
+                    totalChats: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const stats = sessionsStats[0] || { lifetimeEarnings: 0, totalChats: 0 };
+
         res.json({
             success: true,
             data: {
-                totalChats: astrologer.totalChats || 0,
-                totalEarnings: astrologer.earnings || 0,
+                totalChats: stats.totalChats || astrologer.totalChats || 0,
+                lifetimeEarnings: stats.lifetimeEarnings || 0,
+                withdrawableBalance: astrologer.earnings || 0,
                 pendingEarnings: 0,
                 todayChats: 0,
             }
         });
+
+
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
