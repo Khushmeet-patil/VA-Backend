@@ -4,6 +4,7 @@ import Astrologer from '../models/Astrologer';
 import Otp from '../models/Otp';
 import ChatSession from '../models/ChatSession';
 import ChatMessage from '../models/ChatMessage';
+import Withdrawal from '../models/Withdrawal';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 
 // Check if astrologer exists by mobile
@@ -317,7 +318,7 @@ export const getStats = async (req: Request, res: Response) => {
                 totalChats: stats.totalChats || astrologer.totalChats || 0,
                 lifetimeEarnings: stats.lifetimeEarnings || 0,
                 withdrawableBalance: astrologer.earnings || 0,
-                pendingEarnings: 0,
+                pendingAmount: astrologer.pendingWithdrawal || 0,
                 todayChats: 0,
             }
         });
@@ -466,3 +467,79 @@ export const updateChatRate = async (req: Request, res: Response) => {
     }
 };
 
+// Request Withdrawal
+export const requestWithdrawal = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        const astrologer = await Astrologer.findById(astrologerId);
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        const withdrawableAmount = astrologer.earnings || 0;
+
+        if (withdrawableAmount <= 0) {
+            return res.status(400).json({ success: false, message: 'No balance available for withdrawal' });
+        }
+
+        // Create withdrawal request
+        const withdrawal = new Withdrawal({
+            astrologerId: astrologer._id,
+            amount: withdrawableAmount,
+            status: 'PENDING',
+            requestedAt: new Date()
+        });
+        await withdrawal.save();
+
+        // Update astrologer balances: move earnings to pending
+        astrologer.pendingWithdrawal = (astrologer.pendingWithdrawal || 0) + withdrawableAmount;
+        astrologer.earnings = 0;
+        await astrologer.save();
+
+        console.log(`[Withdrawal] Request created: ${withdrawal._id}, amount: ${withdrawableAmount}`);
+
+        res.json({
+            success: true,
+            message: 'Withdrawal request submitted successfully',
+            data: {
+                withdrawalId: withdrawal._id,
+                amount: withdrawableAmount,
+                status: 'PENDING',
+                newWithdrawableBalance: 0,
+                newPendingAmount: astrologer.pendingWithdrawal
+            }
+        });
+    } catch (error: any) {
+        console.error('requestWithdrawal error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Get Withdrawal History
+export const getWithdrawalHistory = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+
+        const withdrawals = await Withdrawal.find({ astrologerId })
+            .sort({ requestedAt: -1 })
+            .limit(50);
+
+        const formattedWithdrawals = withdrawals.map(w => ({
+            id: w._id,
+            amount: w.amount,
+            status: w.status,
+            requestedAt: w.requestedAt,
+            processedAt: w.processedAt,
+            notes: w.notes
+        }));
+
+        res.json({
+            success: true,
+            data: formattedWithdrawals
+        });
+    } catch (error: any) {
+        console.error('getWithdrawalHistory error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};

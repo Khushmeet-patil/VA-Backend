@@ -30,6 +30,7 @@ export interface IAstrologer extends Document {
     priceRangeMax: number;
     totalChats: number;
     earnings: number;
+    pendingWithdrawal: number;  // Amount pending payout
     tag: 'None' | 'Celebrity' | 'Top Choice' | 'Rising Star';
     createdAt: Date;
 }
@@ -64,6 +65,7 @@ const AstrologerSchema: Schema = new Schema({
     priceRangeMax: { type: Number, default: 100 },
     totalChats: { type: Number, default: 0 },
     earnings: { type: Number, default: 0 },
+    pendingWithdrawal: { type: Number, default: 0 },
     tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' }
 }, { timestamps: true });
 
