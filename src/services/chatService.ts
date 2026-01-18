@@ -1116,7 +1116,7 @@ class ChatService {
             throw new Error('You already have a pending chat request');
         }
 
-        // Create new chat session marked as continuation
+        // Create new chat session marked as continuation (NOT a free trial)
         const session = new ChatSession({
             userId,
             astrologerId,
@@ -1124,7 +1124,8 @@ class ChatService {
             status: 'PENDING',
             isContinuation: true,
             previousSessionId,
-            intakeDetails: previousSession.intakeDetails // Carry forward intake details
+            intakeDetails: previousSession.intakeDetails, // Carry forward intake details
+            isFreeTrialSession: false, // Explicitly NOT a free trial
         });
 
         await session.save();
