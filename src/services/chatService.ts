@@ -208,9 +208,14 @@ class ChatService {
             this.requestTimeouts.delete(sessionId);
         }
 
-        // Verify user still has enough balance
+        // Verify user still has enough balance (skip for free trial)
         const user = await User.findById(session.userId);
-        if (!user || user.walletBalance < session.ratePerMinute) {
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        if (!session.isFreeTrialSession && user.walletBalance < session.ratePerMinute) {
             // Atomic update to fail
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
