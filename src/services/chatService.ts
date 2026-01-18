@@ -972,6 +972,113 @@ class ChatService {
         return ChatSession.findOne({ astrologerId, status: 'ACTIVE' })
             .populate('userId', 'name');
     }
+
+    /**
+     * Create a continue chat request
+     * Called when user wants to continue a recently ended chat session
+     */
+    async createContinueChatRequest(
+        userId: string,
+        astrologerId: string,
+        previousSessionId: string
+    ): Promise<IChatSession> {
+        // Validate user exists and has sufficient balance
+        const user = await User.findById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Get astrologer and validate
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            throw new Error('Astrologer not found');
+        }
+
+        if (!astrologer.isOnline) {
+            throw new Error('Astrologer is offline');
+        }
+
+        if (astrologer.status !== 'approved') {
+            throw new Error('Astrologer is not approved');
+        }
+
+        // Check astrologer is not busy
+        if (astrologer.isBusy) {
+            throw new Error('Astrologer is busy with another chat');
+        }
+
+        const ratePerMinute = astrologer.pricePerMin;
+        const minBalanceRequired = ratePerMinute * 5; // 5 minutes minimum
+
+        // Check if user has enough balance for at least 5 minutes
+        if (user.walletBalance < minBalanceRequired) {
+            throw new Error(`Insufficient balance. Minimum ₹${minBalanceRequired} required for 5 minutes.`);
+        }
+
+        // Verify the previous session exists and is ended
+        const previousSession = await ChatSession.findOne({ sessionId: previousSessionId });
+        if (!previousSession) {
+            throw new Error('Previous session not found');
+        }
+        if (previousSession.status !== 'ENDED') {
+            throw new Error('Previous session is not ended');
+        }
+        if (previousSession.userId.toString() !== userId) {
+            throw new Error('Previous session does not belong to this user');
+        }
+        if (previousSession.astrologerId.toString() !== astrologerId) {
+            throw new Error('Previous session is with a different astrologer');
+        }
+
+        // Check for existing pending request from this user
+        const existingRequest = await ChatSession.findOne({
+            userId,
+            status: 'PENDING'
+        });
+        if (existingRequest) {
+            throw new Error('You already have a pending chat request');
+        }
+
+        // Create new chat session marked as continuation
+        const session = new ChatSession({
+            userId,
+            astrologerId,
+            ratePerMinute,
+            status: 'PENDING',
+            isContinuation: true,
+            previousSessionId,
+            intakeDetails: previousSession.intakeDetails // Carry forward intake details
+        });
+
+        await session.save();
+
+        console.log(`[ChatService] Continue chat request created: ${session.sessionId} (continues ${previousSessionId})`);
+
+        // Set auto-reject timeout
+        const timeout = setTimeout(async () => {
+            await this.timeoutChatRequest(session.sessionId);
+        }, this.REQUEST_TIMEOUT_MS);
+        this.requestTimeouts.set(session.sessionId, timeout);
+
+        // Emit CONTINUE_CHAT_REQUEST to astrologer (different event for clarity)
+        if (this.io) {
+            const roomName = `astrologer:${astrologerId}`;
+            const room = this.io.sockets.adapter.rooms.get(roomName);
+            const roomSize = room ? room.size : 0;
+            console.log(`[ChatService] Emitting CONTINUE_CHAT_REQUEST to room: ${roomName}, connected sockets: ${roomSize}`);
+
+            this.io.to(roomName).emit('CONTINUE_CHAT_REQUEST', {
+                sessionId: session.sessionId,
+                userId: user._id,
+                userName: user.name || 'User',
+                previousSessionId,
+                ratePerMinute,
+                userMobile: user.mobile
+            });
+        }
+
+        return session;
+    }
 }
 
 // Export singleton instance

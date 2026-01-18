@@ -297,6 +297,32 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
+        // Handle continue chat request (for users)
+        socket.on('continue_chat_request', async (data: { astrologerId: string; previousSessionId: string }) => {
+            try {
+                if (userType !== 'user') {
+                    socket.emit('error', { message: 'Only users can request continue chat' });
+                    return;
+                }
+
+                const { astrologerId, previousSessionId } = data;
+                console.log(`[Socket] Continue chat request from user ${userId} for astrologer ${astrologerId}`);
+
+                const session = await chatService.createContinueChatRequest(userId, astrologerId, previousSessionId);
+
+                // Emit confirmation to user
+                socket.emit('CONTINUE_CHAT_REQUEST_SENT', {
+                    sessionId: session.sessionId,
+                    astrologerId,
+                    previousSessionId
+                });
+
+            } catch (error: any) {
+                console.error('[Socket] Continue chat request error:', error);
+                socket.emit('CONTINUE_CHAT_ERROR', { message: error.message || 'Failed to send continue chat request' });
+            }
+        });
+
         // Handle disconnect
         socket.on('disconnect', () => {
             console.log(`[Socket] ${userType} disconnected: ${userId}`);

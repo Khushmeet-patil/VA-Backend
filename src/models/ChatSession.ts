@@ -27,6 +27,9 @@ export interface IChatSession extends Document {
     };
     userJoined: boolean;
     astrologerJoined: boolean;
+    // Continue Chat fields
+    isContinuation?: boolean;           // True if this is a continuation of a previous session
+    previousSessionId?: string;         // Reference to the previous session's sessionId
     createdAt: Date;
     updatedAt: Date;
 }
@@ -77,7 +80,10 @@ const ChatSessionSchema: Schema = new Schema({
         pob: { type: String }
     },
     userJoined: { type: Boolean, default: false },
-    astrologerJoined: { type: Boolean, default: false }
+    astrologerJoined: { type: Boolean, default: false },
+    // Continue Chat fields
+    isContinuation: { type: Boolean, default: false },
+    previousSessionId: { type: String }
 }, { timestamps: true });
 
 // Compound index for finding active sessions
