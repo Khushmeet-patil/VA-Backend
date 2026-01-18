@@ -5,6 +5,7 @@ import { sendSmsOtp } from '../services/smsService';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
+import ChatSession from '../models/ChatSession';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -162,15 +163,32 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // For existing old users (created before this feature), treat them as having used their trial
-        // Check if hasUsedFreeTrial is undefined (old user) - they shouldn't get free trial
+        // Check if hasUsedFreeTrial is undefined (old user) OR false
+        // We now check primarily based on CHAT HISTORY.
+        // If user has > 0 ENDED sessions, they HAVE used the trial (or are ineligible).
+        // If user has 0 ENDED sessions, they are eligible (hasUsedFreeTrial = false).
+
+        // 1. If flag is already true, trust it.
         let hasUsedFreeTrial = user.hasUsedFreeTrial;
-        if (hasUsedFreeTrial === undefined || hasUsedFreeTrial === null) {
-            // Old user without the field - mark them as having used trial
-            // This ensures only truly new signups get the free trial
-            hasUsedFreeTrial = true;
-            // Update the user in database to persist this
-            await User.findByIdAndUpdate(userId, { hasUsedFreeTrial: true });
+
+        if (!hasUsedFreeTrial) {
+            // 2. If flag is false, verify against chat history
+            // We count sessions where user participated and it ended (meaning they chatted)
+            const chatCount = await ChatSession.countDocuments({
+                userId: userId,
+                status: 'ENDED'
+                // We typically count 'ENDED' sessions. 'REJECTED' or 'TIMEOUT' don't count as "usage".
+            });
+
+            if (chatCount > 0) {
+                console.log(`[Auth] User ${userId} has ${chatCount} prior chats. Marking as ineligible for free trial.`);
+                // Update DB
+                await User.findByIdAndUpdate(userId, { hasUsedFreeTrial: true });
+                hasUsedFreeTrial = true;
+            } else {
+                // Count is 0. Eligible.
+                // console.log(`[Auth] User ${userId} has 0 prior chats. Eligible for free trial.`);
+            }
         }
 
         return res.status(200).json({
