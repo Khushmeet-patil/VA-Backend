@@ -39,6 +39,12 @@ class ChatService {
     // Map of request timeout timers: sessionId -> NodeJS.Timeout
     private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
+    // Map of free trial timers: sessionId -> NodeJS.Timeout
+    private freeTrialTimers: Map<string, NodeJS.Timeout> = new Map();
+
+    // Free trial duration (120 seconds = 2 minutes)
+    private readonly FREE_TRIAL_DURATION_MS = 120000;
+
     /**
      * Initialize the chat service with Socket.IO instance
      */
@@ -114,8 +120,11 @@ class ChatService {
 
         const ratePerMinute = astrologer.pricePerMin;
 
-        // Check if user has enough balance for at least 1 minute
-        if (user.walletBalance < ratePerMinute) {
+        // Check if user is eligible for free trial (first-time user)
+        const isEligibleForFreeTrial = !user.hasUsedFreeTrial;
+
+        // Check if user has enough balance for at least 1 minute (skip for free trial users)
+        if (!isEligibleForFreeTrial && user.walletBalance < ratePerMinute) {
             throw new Error(`Insufficient balance. Minimum ₹${ratePerMinute} required.`);
         }
 
@@ -134,7 +143,10 @@ class ChatService {
             astrologerId,
             ratePerMinute,
             status: 'PENDING',
-            intakeDetails
+            intakeDetails,
+            // Free trial for new users
+            isFreeTrialSession: isEligibleForFreeTrial,
+            freeTrialDurationSeconds: isEligibleForFreeTrial ? 120 : undefined,
         });
 
         await session.save();
@@ -252,10 +264,16 @@ class ChatService {
         // Use the updated session object from here
         session = updatedSession;
 
-        // Start billing timer immediately
-        this.startBillingTimer(sessionId);
-
-        console.log(`[ChatService] Chat accepted and BILLING STARTED: ${sessionId}`);
+        // Start appropriate timer based on session type
+        if (session.isFreeTrialSession) {
+            // Free trial - start countdown timer instead of billing
+            this.startFreeTrialTimer(sessionId, session.freeTrialDurationSeconds || 120);
+            console.log(`[ChatService] Chat accepted - FREE TRIAL STARTED: ${sessionId}`);
+        } else {
+            // Regular paid session - start billing timer immediately
+            this.startBillingTimer(sessionId);
+            console.log(`[ChatService] Chat accepted and BILLING STARTED: ${sessionId}`);
+        }
 
         // Emit CHAT_STARTED to both user and astrologer with startTime
         if (this.io) {
@@ -267,6 +285,9 @@ class ChatService {
                 astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
                 status: 'ACTIVE',
                 intakeDetails: session.intakeDetails, // Pass for auto-message
+                // Free trial info
+                isFreeTrialSession: session.isFreeTrialSession || false,
+                freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
             });
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
@@ -276,6 +297,9 @@ class ChatService {
                 userId: session.userId,
                 userName: user.name || 'User',
                 status: 'ACTIVE',
+                // Free trial info for astrologer
+                isFreeTrialSession: session.isFreeTrialSession || false,
+                freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
             });
 
             // Also emit TIMER_STARTED immediately
@@ -470,7 +494,7 @@ class ChatService {
      */
     async endChat(
         sessionId: string,
-        endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT'
+        endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED'
     ): Promise<IChatSession> {
         const session = await ChatSession.findOne({ sessionId });
         if (!session) {
@@ -481,13 +505,14 @@ class ChatService {
             throw new Error(`Cannot end session with status: ${session.status}`);
         }
 
-        // Stop billing timer
+        // Stop billing timer and free trial timer
         this.stopBillingTimer(sessionId);
+        this.stopFreeTrialTimer(sessionId);
         this.clearGracePeriod(sessionId);
 
         // --- PARTIAL BILLING LOGIC ---
-        // Only if billing actually started
-        if (session.startTime) {
+        // Only if billing actually started AND not a free trial session
+        if (session.startTime && !session.isFreeTrialSession) {
             // Calculate exact duration and remaining charge
             const endTime = new Date();
             const startTime = session.startTime;
@@ -605,6 +630,53 @@ class ChatService {
             this.billingTimers.delete(sessionId);
             console.log(`[ChatService] Stopped billing timer for: ${sessionId}`);
         }
+    }
+
+    /**
+     * Start the free trial countdown timer for a session
+     * Auto-ends the session after the trial duration
+     */
+    private startFreeTrialTimer(sessionId: string, durationSeconds: number): void {
+        console.log(`[ChatService] Starting FREE TRIAL timer for: ${sessionId}, duration: ${durationSeconds}s`);
+
+        const timer = setTimeout(async () => {
+            await this.endFreeTrialSession(sessionId);
+        }, durationSeconds * 1000);
+
+        this.freeTrialTimers.set(sessionId, timer);
+    }
+
+    /**
+     * Stop the free trial timer for a session
+     */
+    private stopFreeTrialTimer(sessionId: string): void {
+        const timer = this.freeTrialTimers.get(sessionId);
+        if (timer) {
+            clearTimeout(timer);
+            this.freeTrialTimers.delete(sessionId);
+            console.log(`[ChatService] Stopped free trial timer for: ${sessionId}`);
+        }
+    }
+
+    /**
+     * End a free trial session when the trial period expires
+     * Marks user as having used their free trial
+     */
+    private async endFreeTrialSession(sessionId: string): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session || session.status !== 'ACTIVE') {
+            console.log(`[ChatService] Free trial session already ended or not found: ${sessionId}`);
+            return;
+        }
+
+        console.log(`[ChatService] FREE TRIAL ENDED for session: ${sessionId}`);
+
+        // Mark user as having used their free trial
+        await User.findByIdAndUpdate(session.userId, { hasUsedFreeTrial: true });
+        console.log(`[ChatService] Marked user ${session.userId} as having used free trial`);
+
+        // End the chat with FREE_TRIAL_ENDED reason
+        await this.endChat(sessionId, 'FREE_TRIAL_ENDED' as any);
     }
 
     /**

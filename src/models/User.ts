@@ -27,6 +27,7 @@ export interface IUser extends Document {
     role: 'user' | 'admin' | 'astrologer';
     walletBalance: number;
     isBlocked: boolean;
+    hasUsedFreeTrial: boolean;  // True after user has used their one-time free trial chat
     birthProfiles: IBirthProfile[];  // Saved birth profiles for chat intake
     createdAt: Date;
 }
@@ -55,6 +56,7 @@ const UserSchema: Schema = new Schema({
     role: { type: String, enum: ['user', 'admin', 'astrologer'], default: 'user' },
     walletBalance: { type: Number, default: 0 },
     isBlocked: { type: Boolean, default: false },
+    hasUsedFreeTrial: { type: Boolean, default: false },
     birthProfiles: { type: [BirthProfileSchema], default: [] },
 }, { timestamps: true });
 

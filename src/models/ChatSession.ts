@@ -17,7 +17,7 @@ export interface IChatSession extends Document {
     totalMinutes: number;               // Completed billing cycles
     totalAmount: number;                // Total amount deducted from user
     astrologerEarnings: number;         // Total earnings for astrologer (may differ if platform fee)
-    endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT';
+    endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT' | 'FREE_TRIAL_ENDED';
     intakeDetails?: {                   // User's intake form data
         name?: string;
         gender?: string;
@@ -30,6 +30,9 @@ export interface IChatSession extends Document {
     // Continue Chat fields
     isContinuation?: boolean;           // True if this is a continuation of a previous session
     previousSessionId?: string;         // Reference to the previous session's sessionId
+    // Free Trial fields
+    isFreeTrialSession?: boolean;       // True if this is a free trial session for new users
+    freeTrialDurationSeconds?: number;  // Duration of free trial (default 120 = 2 minutes)
     createdAt: Date;
     updatedAt: Date;
 }
@@ -70,7 +73,7 @@ const ChatSessionSchema: Schema = new Schema({
     astrologerEarnings: { type: Number, default: 0 },
     endReason: {
         type: String,
-        enum: ['USER_END', 'ASTROLOGER_END', 'INSUFFICIENT_BALANCE', 'DISCONNECT', 'TIMEOUT']
+        enum: ['USER_END', 'ASTROLOGER_END', 'INSUFFICIENT_BALANCE', 'DISCONNECT', 'TIMEOUT', 'FREE_TRIAL_ENDED']
     },
     intakeDetails: {
         name: { type: String },
@@ -83,7 +86,10 @@ const ChatSessionSchema: Schema = new Schema({
     astrologerJoined: { type: Boolean, default: false },
     // Continue Chat fields
     isContinuation: { type: Boolean, default: false },
-    previousSessionId: { type: String }
+    previousSessionId: { type: String },
+    // Free Trial fields
+    isFreeTrialSession: { type: Boolean, default: false },
+    freeTrialDurationSeconds: { type: Number, default: 120 }
 }, { timestamps: true });
 
 // Compound index for finding active sessions
