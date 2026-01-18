@@ -1073,7 +1073,8 @@ class ChatService {
                 userName: user.name || 'User',
                 previousSessionId,
                 ratePerMinute,
-                userMobile: user.mobile
+                userMobile: user.mobile,
+                intakeDetails: previousSession.intakeDetails // Include intake details for the modal
             });
         }
 
