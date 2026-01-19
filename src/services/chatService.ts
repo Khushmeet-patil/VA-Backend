@@ -6,6 +6,7 @@ import ChatReview from '../models/ChatReview';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
+import fcmService from './fcmService';
 
 /**
  * ChatService - Core billing and session management
@@ -50,6 +51,7 @@ class ChatService {
      */
     initialize(io: SocketIOServer) {
         this.io = io;
+        fcmService.initializeFCM(); // Initialize FCM
         console.log('[ChatService] Initialized');
     }
 
@@ -179,6 +181,17 @@ class ChatService {
                 userMobile: user.mobile
             });
             console.log(`[ChatService] CHAT_REQUEST emitted successfully`);
+
+            // Send FCM High Priority Notification to Astrologer
+            // This will trigger the "call" screen on their device
+            await fcmService.sendChatRequestNotification(
+                astrologer.fcmToken,
+                user.name || 'User',
+                session.sessionId,
+                astrologerId,
+                userId.toString(),
+                user.profilePhoto
+            );
         } else {
             console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
         }
@@ -316,6 +329,21 @@ class ChatService {
                 sessionId,
                 startTime: session.startTime
             });
+            this.io.to(`astrologer:${session.astrologerId}`).emit('TIMER_STARTED', {
+                sessionId,
+                startTime: session.startTime
+            });
+        }
+
+        // Send FCM Notification to User knowing that Astrologer accepted
+        const astrologerUser = await Astrologer.findById(session.astrologerId); // Re-fetch or use existing
+        if (astrologerUser) {
+            await fcmService.sendChatAcceptedNotification(
+                user.fcmToken,
+                `${astrologerUser.firstName} ${astrologerUser.lastName}`,
+                sessionId,
+                session.astrologerId.toString()
+            );
         }
 
         return session;
@@ -400,6 +428,17 @@ class ChatService {
                 reason: 'Astrologer declined the request'
             });
         }
+
+        // Send FCM Notification to User
+        const astrologer = await Astrologer.findById(session.astrologerId);
+        const user = await User.findById(session.userId);
+        if (astrologer && user) {
+            await fcmService.sendChatRejectedNotification(
+                user.fcmToken,
+                `${astrologer.firstName} ${astrologer.lastName}`,
+                'Astrologer declined the request'
+            );
+        }
     }
 
     /**
@@ -432,6 +471,16 @@ class ChatService {
                 sessionId,
                 reason: 'Request timed out'
             });
+        }
+
+        // Send FCM Notification to User
+        const user = await User.findById(session.userId);
+        if (user) {
+            await fcmService.sendChatRejectedNotification(
+                user.fcmToken,
+                'System',
+                'Request timed out - Astrologer did not respond'
+            );
         }
     }
 

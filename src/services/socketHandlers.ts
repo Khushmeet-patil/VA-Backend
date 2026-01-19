@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import chatService from './chatService';
+import fcmService from './fcmService';
 
 /**
  * Socket.IO Event Handlers
@@ -110,7 +111,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 }
 
                 // Save message
-                const savedMsg = await chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId);
+                const savedMsg = await chatService.saveMessage(sessionId, userId, socket.userType!, text, type, fileData, replyToId);
 
                 // Fetch reply message if replyToId was provided
                 let replyTo: { id: string; text: string; sender: string; type?: string; fileUrl?: string } | undefined;
@@ -162,6 +163,57 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     sessionId,
                     ...message
                 });
+
+                // Check if recipient is in the room
+                const room = io.sockets.adapter.rooms.get(sessionId);
+                const roomSize = room ? room.size : 0;
+
+                // If only 1 person in room (the sender), then recipient is offline/background
+                if (roomSize <= 1) {
+                    // console.log(`[Socket] Recipient not in room ${sessionId}, sending FCM notification`);
+
+                    // Get session to find recipient
+                    const session = await chatService.getSession(sessionId);
+                    if (session) {
+                        let recipientToken: string | undefined;
+
+                        // Determine recipient based on sender type
+                        if (userType === 'user') {
+                            const astrologer = await Astrologer.findById(session.astrologerId);
+                            recipientToken = astrologer?.fcmToken;
+                        } else {
+                            const user = await User.findById(session.userId);
+                            recipientToken = user?.fcmToken;
+                        }
+
+                        if (recipientToken) {
+                            const senderName = userType === 'user' ? 'User' : 'Astrologer';
+                            // Improving name resolution
+                            let actualSenderName = senderName;
+                            let senderPhoto: string | undefined;
+
+                            if (userType === 'user') {
+                                const u = await User.findById(userId);
+                                actualSenderName = u?.name || 'User';
+                                senderPhoto = u?.profilePhoto;
+                            } else {
+                                const a = await Astrologer.findById(userId);
+                                actualSenderName = a?.firstName || 'Astrologer';
+                                senderPhoto = a?.profilePhoto;
+                            }
+
+                            await fcmService.sendMessageNotification(
+                                recipientToken,
+                                actualSenderName,
+                                text || (type === 'image' ? 'Sent an image' : 'Sent a file'),
+                                sessionId,
+                                userId,
+                                userType,
+                                senderPhoto
+                            );
+                        }
+                    }
+                }
 
             } catch (error) {
                 console.error('[Socket] Send message error:', error);

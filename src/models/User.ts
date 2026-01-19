@@ -29,6 +29,7 @@ export interface IUser extends Document {
     isBlocked: boolean;
     hasUsedFreeTrial: boolean;  // True after user has used their one-time free trial chat
     birthProfiles: IBirthProfile[];  // Saved birth profiles for chat intake
+    fcmToken?: string;  // FCM device token for push notifications
     createdAt: Date;
 }
 
@@ -58,6 +59,7 @@ const UserSchema: Schema = new Schema({
     isBlocked: { type: Boolean, default: false },
     hasUsedFreeTrial: { type: Boolean, default: false },
     birthProfiles: { type: [BirthProfileSchema], default: [] },
+    fcmToken: { type: String },
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);

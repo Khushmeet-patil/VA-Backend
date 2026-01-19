@@ -1,6 +1,7 @@
 
 import { Request, Response } from 'express';
 import User from '../models/User';
+import Astrologer from '../models/Astrologer';
 import { sendSmsOtp } from '../services/smsService';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -197,6 +198,50 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             hasUsedFreeTrial: hasUsedFreeTrial
         });
     } catch (error) {
+        return res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Register FCM token
+export const registerFcmToken = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { fcmToken, userType } = req.body; // userType: 'user' | 'astrologer'
+
+        if (!fcmToken) {
+            return res.status(400).json({ success: false, message: 'FCM token required' });
+        }
+
+        console.log(`[Auth] Registering FCM token for ${userType} ${userId}: ${fcmToken.substring(0, 10)}...`);
+
+        if (userType === 'astrologer') {
+            // Check if user is also an astrologer (userId in token is User ID)
+            // But Astrologer model uses 'userId' field ref to User, or _id?
+            // Astrologer.userId references User._id. The token contains User._id.
+            // So we find Astrologer where userId matches.
+            const astrologer = await Astrologer.findOne({ userId: userId });
+
+            if (astrologer) {
+                astrologer.fcmToken = fcmToken;
+                await astrologer.save();
+                return res.status(200).json({ success: true, message: 'Astrologer FCM token updated' });
+            } else {
+                // Should not happen if logged in as astrologer
+                return res.status(404).json({ success: false, message: 'Astrologer profile not found' });
+            }
+        } else {
+            // Default to updating User model
+            const user = await User.findById(userId);
+            if (user) {
+                user.fcmToken = fcmToken;
+                await user.save();
+                return res.status(200).json({ success: true, message: 'User FCM token updated' });
+            } else {
+                return res.status(404).json({ success: false, message: 'User not found' });
+            }
+        }
+    } catch (error) {
+        console.error('[Auth] Error registering FCM token:', error);
         return res.status(500).json({ message: 'Server error', error });
     }
 };
