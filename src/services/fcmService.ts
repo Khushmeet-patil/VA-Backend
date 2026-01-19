@@ -26,10 +26,35 @@ export const initializeFCM = (): boolean => {
         // 1. Try to load from environment variable (useful for Railway)
         if (process.env.FIREBASE_SERVICE_ACCOUNT) {
             try {
-                serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+                let jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+
+                // If it looks like base64 (doesn't start with {), try decoding it
+                if (!jsonStr.startsWith('{')) {
+                    try {
+                        const decoded = Buffer.from(jsonStr, 'base64').toString('utf8');
+                        if (decoded.startsWith('{')) {
+                            jsonStr = decoded;
+                            console.log('[FCM] Decoding service account from Base64');
+                        }
+                    } catch (e) {
+                        // Not valid base64 or failed to decode, continue with raw string
+                    }
+                }
+
+                // Make parsing more resilient by replacing literal newlines if any
+                // (Common issue when pasting multiline JSON into env vars)
+                if (jsonStr.includes('\n')) {
+                    jsonStr = jsonStr.replace(/\n/g, '\\n');
+                }
+
+                serviceAccount = JSON.parse(jsonStr);
                 console.log('[FCM] Using service account from environment variable');
             } catch (e: any) {
                 console.error('[FCM] Failed to parse FIREBASE_SERVICE_ACCOUNT env var:', e.message);
+                // Last ditch effort: if it was a parsing error, log the beginning of the string for debugging
+                if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+                    console.log('[FCM] Env var starts with:', process.env.FIREBASE_SERVICE_ACCOUNT.substring(0, 50));
+                }
             }
         }
 
