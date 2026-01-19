@@ -21,15 +21,31 @@ export const initializeFCM = (): boolean => {
     }
 
     try {
-        // Try to load service account from file
-        const serviceAccountPath = path.join(__dirname, '../../firebase-service-account.json');
+        let serviceAccount;
 
-        if (!fs.existsSync(serviceAccountPath)) {
-            console.warn('[FCM] firebase-service-account.json not found. Push notifications disabled.');
-            return false;
+        // 1. Try to load from environment variable (useful for Railway)
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+            try {
+                serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+                console.log('[FCM] Using service account from environment variable');
+            } catch (e: any) {
+                console.error('[FCM] Failed to parse FIREBASE_SERVICE_ACCOUNT env var:', e.message);
+            }
         }
 
-        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+        // 2. Fallback to local file
+        if (!serviceAccount) {
+            const serviceAccountPath = path.join(__dirname, '../../firebase-service-account.json');
+            if (fs.existsSync(serviceAccountPath)) {
+                serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+                console.log('[FCM] Using service account from local file');
+            }
+        }
+
+        if (!serviceAccount) {
+            console.warn('[FCM] Firebase service account not found (env or file). Push notifications disabled.');
+            return false;
+        }
 
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
