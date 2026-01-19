@@ -28,12 +28,18 @@ export const initializeFCM = (): boolean => {
             try {
                 let jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
 
+                // Remove surrounding quotes if any (common when copy-pasting from .env files)
+                if ((jsonStr.startsWith('"') && jsonStr.endsWith('"')) ||
+                    (jsonStr.startsWith("'") && jsonStr.endsWith("'"))) {
+                    jsonStr = jsonStr.substring(1, jsonStr.length - 1).trim();
+                }
+
                 // If it looks like base64 (doesn't start with {), try decoding it
                 if (!jsonStr.startsWith('{')) {
                     try {
                         const decoded = Buffer.from(jsonStr, 'base64').toString('utf8');
-                        if (decoded.startsWith('{')) {
-                            jsonStr = decoded;
+                        if (decoded.trim().startsWith('{')) {
+                            jsonStr = decoded.trim();
                             console.log('[FCM] Decoding service account from Base64');
                         }
                     } catch (e) {
@@ -41,17 +47,27 @@ export const initializeFCM = (): boolean => {
                     }
                 }
 
-                // Make parsing more resilient by replacing literal newlines if any
-                // (Common issue when pasting multiline JSON into env vars)
-                if (jsonStr.includes('\n')) {
-                    jsonStr = jsonStr.replace(/\n/g, '\\n');
-                }
+                // Attempt to parse the JSON
+                try {
+                    serviceAccount = JSON.parse(jsonStr);
+                    console.log('[FCM] Using service account from environment variable');
+                } catch (parseError: any) {
+                    console.warn('[FCM] Initial JSON parse failed, attempting sanitization...');
 
-                serviceAccount = JSON.parse(jsonStr);
-                console.log('[FCM] Using service account from environment variable');
+                    // Try replacing literal newlines with \n
+                    const sanitized = jsonStr.replace(/\n/g, '\\n');
+                    try {
+                        serviceAccount = JSON.parse(sanitized);
+                        console.log('[FCM] Parsed service account after newline sanitization');
+                    } catch (secondError: any) {
+                        // One last try: if it has escaped backslashes, fix them
+                        const fixedEscapes = jsonStr.replace(/\\\\n/g, '\\n');
+                        serviceAccount = JSON.parse(fixedEscapes);
+                        console.log('[FCM] Parsed service account after escape fix');
+                    }
+                }
             } catch (e: any) {
                 console.error('[FCM] Failed to parse FIREBASE_SERVICE_ACCOUNT env var:', e.message);
-                // Last ditch effort: if it was a parsing error, log the beginning of the string for debugging
                 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
                     console.log('[FCM] Env var starts with:', process.env.FIREBASE_SERVICE_ACCOUNT.substring(0, 50));
                 }
