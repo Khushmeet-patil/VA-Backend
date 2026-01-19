@@ -467,10 +467,13 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
                 .sort({ createdAt: -1 })
                 .limit(50);
         } else {
-            // For users, get sessions where they are the user
+            // For users, only get sessions where the chat actually started
+            // (both parties joined) - exclude pending/rejected/cancelled sessions
             sessions = await ChatSession.find({
                 userId: userId,
-                status: { $in: ['COMPLETED', 'ENDED', 'CANCELLED', 'ACTIVE', 'PENDING'] }
+                status: { $in: ['ACTIVE', 'ENDED'] },
+                userJoined: true,
+                astrologerJoined: true
             })
                 .populate('astrologerId', 'firstName lastName profilePhoto')
                 .sort({ createdAt: -1 })

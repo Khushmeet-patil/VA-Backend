@@ -549,10 +549,13 @@ export const getSessionHistory = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
 
-        // Find all ENDED sessions for this astrologer
+        // Find all ENDED sessions for this astrologer where chat actually started
+        // (both parties joined)
         const sessions = await ChatSession.find({
             astrologerId,
-            status: 'ENDED'
+            status: 'ENDED',
+            userJoined: true,
+            astrologerJoined: true
         })
             .populate('userId', 'name mobile profilePhoto')
             .sort({ endTime: -1 })
