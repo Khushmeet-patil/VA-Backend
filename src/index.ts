@@ -18,11 +18,16 @@ import chatRoutes from './routes/chatRoutes';
 import profileRoutes from './routes/profileRoutes';
 import initializeSocketHandlers from './services/socketHandlers';
 import { checkR2Connection } from './services/r2Service';
+import notificationService from './services/notificationService';
+import notificationRoutes from './routes/notificationRoutes';
 
 console.log('All modules loaded successfully');
 
 // Check R2 Configuration
 checkR2Connection();
+
+// Initialize Firebase Cloud Messaging
+notificationService.initialize();
 
 dotenv.config();
 
@@ -63,6 +68,7 @@ app.use('/api/astrologer', astrologerRoutes);
 app.use('/api/panel', astrologerPanelRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/profiles', profileRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Root route
 app.get('/', (req, res) => {

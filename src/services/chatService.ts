@@ -6,6 +6,7 @@ import ChatReview from '../models/ChatReview';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
+import notificationService from './notificationService';
 
 /**
  * ChatService - Core billing and session management
@@ -181,6 +182,23 @@ class ChatService {
             console.log(`[ChatService] CHAT_REQUEST emitted successfully`);
         } else {
             console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
+        }
+
+        // Send high-priority FCM notification to astrologer
+        // This ensures the astrologer receives the request even if app is killed/background
+        try {
+            await notificationService.sendHighPriorityChatRequest(astrologerId, {
+                sessionId: session.sessionId,
+                userId: userId,
+                userName: user.name || 'User',
+                userMobile: user.mobile,
+                ratePerMinute,
+                intakeDetails,
+            });
+            console.log(`[ChatService] High-priority FCM sent to astrologer ${astrologerId}`);
+        } catch (fcmError) {
+            // Don't fail the request if FCM fails - socket might still work
+            console.error(`[ChatService] FCM notification error:`, fcmError);
         }
 
         return session;

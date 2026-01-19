@@ -32,6 +32,8 @@ export interface IAstrologer extends Document {
     earnings: number;
     pendingWithdrawal: number;  // Amount pending payout
     tag: 'None' | 'Celebrity' | 'Top Choice' | 'Rising Star';
+    fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
+    fcmTokenUpdatedAt?: Date;  // When the FCM token was last updated
     createdAt: Date;
 }
 
@@ -66,7 +68,9 @@ const AstrologerSchema: Schema = new Schema({
     totalChats: { type: Number, default: 0 },
     earnings: { type: Number, default: 0 },
     pendingWithdrawal: { type: Number, default: 0 },
-    tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' }
+    tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' },
+    fcmToken: { type: String },  // Firebase Cloud Messaging token
+    fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

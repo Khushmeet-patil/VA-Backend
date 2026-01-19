@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import chatService from './chatService';
+import notificationService from './notificationService';
 
 /**
  * Socket.IO Event Handlers
@@ -162,6 +163,42 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     sessionId,
                     ...message
                 });
+
+                // Send FCM push notification to the OTHER participant if they're not connected
+                // This handles cases when recipient is offline, app in background, or on different screen
+                try {
+                    const targetRoom = userType === 'user' ? astrologerRoom : userRoom;
+                    const roomSockets = io.sockets.adapter.rooms.get(targetRoom);
+                    const recipientConnected = roomSockets && roomSockets.size > 0;
+
+                    if (!recipientConnected) {
+                        // Recipient not connected via socket, send FCM notification
+                        const senderName = userType === 'user'
+                            ? (await User.findById(userId))?.name || 'User'
+                            : (await Astrologer.findById(userId))?.firstName || 'Astrologer';
+
+                        const recipientId = userType === 'user'
+                            ? session.astrologerId.toString()
+                            : session.userId.toString();
+                        const recipientType = userType === 'user' ? 'astrologer' : 'user';
+
+                        // Get astrologer info for user app navigation
+                        const astrologer = await Astrologer.findById(session.astrologerId);
+
+                        await notificationService.sendChatMessageNotification(
+                            recipientId,
+                            recipientType,
+                            senderName,
+                            type === 'text' ? text : `Sent a ${type}`,
+                            sessionId,
+                            session.astrologerId.toString(),
+                            astrologer ? `${astrologer.firstName} ${astrologer.lastName}` : undefined
+                        );
+                    }
+                } catch (fcmError) {
+                    // Don't fail the message send if FCM fails
+                    console.error('[Socket] FCM notification error:', fcmError);
+                }
 
             } catch (error) {
                 console.error('[Socket] Send message error:', error);
