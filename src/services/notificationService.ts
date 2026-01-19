@@ -26,7 +26,17 @@ class NotificationService {
 
         const projectId = process.env.FIREBASE_PROJECT_ID;
         const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+        // Handle both escaped \\n and actual newlines in private key
+        let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+        if (privateKey) {
+            privateKey = privateKey.replace(/\\n/g, '\n');
+        }
+
+        // Debug logging to help identify issues
+        console.log('[NotificationService] Checking Firebase credentials...');
+        console.log(`[NotificationService] FIREBASE_PROJECT_ID: ${projectId ? 'SET' : 'MISSING'}`);
+        console.log(`[NotificationService] FIREBASE_CLIENT_EMAIL: ${clientEmail ? 'SET' : 'MISSING'}`);
+        console.log(`[NotificationService] FIREBASE_PRIVATE_KEY: ${privateKey ? `SET (${privateKey.length} chars)` : 'MISSING'}`);
 
         if (!projectId || !clientEmail || !privateKey) {
             console.warn('[NotificationService] Firebase credentials not configured. Push notifications disabled.');
