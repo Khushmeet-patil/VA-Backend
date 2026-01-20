@@ -186,12 +186,12 @@ class NotificationService {
                 return false;
             }
 
+            // IMPORTANT: Data-only message (no notification field)
+            // This ensures the background handler ALWAYS runs, even when app is killed
+            // The notifee library on client will display the full-screen notification
             const message: admin.messaging.Message = {
                 token: astrologer.fcmToken,
-                notification: {
-                    title: 'Incoming Chat Request',
-                    body: `${request.userName} wants to chat with you`,
-                },
+                // NO notification field - data-only message
                 data: {
                     type: 'chat_request',
                     sessionId: request.sessionId,
@@ -200,18 +200,11 @@ class NotificationService {
                     userMobile: request.userMobile || '',
                     ratePerMinute: String(request.ratePerMinute),
                     intakeDetails: request.intakeDetails ? JSON.stringify(request.intakeDetails) : '',
-                    click_action: 'OPEN_INCOMING_CALL',
                 },
                 android: {
                     priority: 'high',
-                    notification: {
-                        channelId: 'incoming_chat_requests',
-                        priority: 'max',
-                        defaultSound: true,
-                        defaultVibrateTimings: true,
-                        visibility: 'public',
-                        // Full screen intent handled by client
-                    },
+                    // TTL of 30 seconds (matches incoming call timeout)
+                    ttl: 30 * 1000,
                 },
             };
 
