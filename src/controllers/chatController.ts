@@ -461,7 +461,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
             // For astrologers, get sessions where they are the astrologer
             sessions = await ChatSession.find({
                 astrologerId: userId,
-                status: { $in: ['COMPLETED', 'ENDED', 'CANCELLED'] }
+                status: { $in: ['COMPLETED', 'ENDED'] }
             })
                 .populate('userId', 'name mobile')
                 .sort({ createdAt: -1 })

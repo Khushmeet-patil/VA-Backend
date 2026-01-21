@@ -301,7 +301,7 @@ export const getStats = async (req: Request, res: Response) => {
 
         // Calculate real earnings from ended chat sessions
         const sessionsStats = await ChatSession.aggregate([
-            { $match: { astrologerId: astrologer._id, status: 'ENDED' } },
+            { $match: { astrologerId: astrologer._id, status: 'ENDED', astrologerEarnings: { $gt: 0 } } },
             {
                 $group: {
                     _id: null,
@@ -331,7 +331,8 @@ export const getStats = async (req: Request, res: Response) => {
                 $match: {
                     astrologerId: astrologer._id,
                     status: 'ENDED',
-                    updatedAt: { $gte: startOfToday, $lte: endOfToday }
+                    updatedAt: { $gte: startOfToday, $lte: endOfToday },
+                    astrologerEarnings: { $gt: 0 }
                 }
             },
             {
@@ -590,7 +591,8 @@ export const getSessionHistory = async (req: Request, res: Response) => {
             astrologerId,
             status: 'ENDED',
             userJoined: true,
-            astrologerJoined: true
+            astrologerJoined: true,
+            astrologerEarnings: { $gt: 0 }
         })
             .populate('userId', 'name mobile profilePhoto')
             .sort({ endTime: -1 })
