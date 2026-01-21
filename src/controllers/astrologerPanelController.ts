@@ -298,6 +298,7 @@ export const getStats = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
+
         // Calculate real earnings from ended chat sessions
         const sessionsStats = await ChatSession.aggregate([
             { $match: { astrologerId: astrologer._id, status: 'ENDED' } },
@@ -305,21 +306,55 @@ export const getStats = async (req: Request, res: Response) => {
                 $group: {
                     _id: null,
                     lifetimeEarnings: { $sum: '$astrologerEarnings' },
-                    totalChats: { $sum: 1 }
+                    totalChats: { $sum: 1 },
+                    totalDuration: { $sum: '$totalMinutes' }
                 }
             }
         ]);
 
-        const stats = sessionsStats[0] || { lifetimeEarnings: 0, totalChats: 0 };
+        const stats = sessionsStats[0] || { lifetimeEarnings: 0, totalChats: 0, totalDuration: 0 };
+
+        // Calculate Average Chat Time (in minutes)
+        const avgChatTime = stats.totalChats > 0
+            ? Math.round(stats.totalDuration / stats.totalChats)
+            : 0;
+
+        // Calculate Today's Stats
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const endOfToday = new Date();
+        endOfToday.setHours(23, 59, 59, 999);
+
+        const todayStats = await ChatSession.aggregate([
+            {
+                $match: {
+                    astrologerId: astrologer._id,
+                    status: 'ENDED',
+                    updatedAt: { $gte: startOfToday, $lte: endOfToday }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    todayEarnings: { $sum: '$astrologerEarnings' },
+                    todayChats: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const todayData = todayStats[0] || { todayEarnings: 0, todayChats: 0 };
 
         res.json({
             success: true,
             data: {
-                totalChats: stats.totalChats || astrologer.totalChats || 0,
+                totalChats: stats.totalChats || 0,
                 lifetimeEarnings: stats.lifetimeEarnings || 0,
                 withdrawableBalance: astrologer.earnings || 0,
                 pendingAmount: astrologer.pendingWithdrawal || 0,
-                todayChats: 0,
+                todayChats: todayData.todayChats,
+                todayEarnings: todayData.todayEarnings,
+                averageChatTime: avgChatTime,
             }
         });
 
