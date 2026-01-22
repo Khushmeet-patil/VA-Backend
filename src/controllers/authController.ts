@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import ChatSession from '../models/ChatSession';
+import Transaction from '../models/Transaction';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -198,6 +199,37 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             hasUsedFreeTrial: hasUsedFreeTrial
         });
     } catch (error) {
+        return res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Get wallet transactions for authenticated user
+export const getWalletTransactions = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { type } = req.query; // 'credit', 'debit', or undefined for all
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+
+        // Build query filter
+        const filter: any = { fromUser: userId, status: 'success' };
+        if (type === 'credit' || type === 'debit') {
+            filter.type = type;
+        }
+
+        const transactions = await Transaction.find(filter)
+            .sort({ createdAt: -1 })
+            .limit(100)
+            .select('_id type amount description createdAt');
+
+        return res.status(200).json({
+            success: true,
+            transactions
+        });
+    } catch (error) {
+        console.error('[Auth] Error fetching wallet transactions:', error);
         return res.status(500).json({ message: 'Server error', error });
     }
 };
