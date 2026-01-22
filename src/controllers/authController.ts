@@ -204,6 +204,7 @@ export const getWalletBalance = async (req: Request, res: Response) => {
 };
 
 // Get wallet transactions for authenticated user
+// Get wallet transactions for authenticated user with aggregation
 export const getWalletTransactions = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
@@ -219,14 +220,74 @@ export const getWalletTransactions = async (req: Request, res: Response) => {
             filter.type = type;
         }
 
+        // Fetch larger batch to allow for aggregation
         const transactions = await Transaction.find(filter)
             .sort({ createdAt: -1 })
-            .limit(100)
-            .select('_id type amount description createdAt');
+            .limit(500)
+            .populate('toAstrologer', 'firstName lastName')
+            .select('_id type amount description createdAt toAstrologer');
+
+        // Aggregation Logic
+        const aggregatedTransactions: any[] = [];
+        const sessionGroups = new Map<string, any>();
+
+        for (const t of transactions) {
+            // Check if it's a chat session debit
+            const sessionMatch = t.description?.match(/Chat session: ([a-zA-Z0-9-]+)/);
+
+            if (sessionMatch && t.type === 'debit') {
+                const sessionId = sessionMatch[1];
+
+                if (sessionGroups.has(sessionId)) {
+                    // Update existing group
+                    const group = sessionGroups.get(sessionId);
+                    group.amount += t.amount;
+                    // Keep the latest date (already sorted desc, so first allowed was latest, but let's be safe)
+                    if (new Date(t.createdAt) > new Date(group.createdAt)) {
+                        group.createdAt = t.createdAt;
+                    }
+                } else {
+                    // Create new group
+                    let description = 'Chat Session';
+                    if (t.toAstrologer && (t.toAstrologer as any).firstName) {
+                        const astro = t.toAstrologer as any;
+                        const name = `${astro.firstName} ${astro.lastName || ''}`.trim();
+                        description = `Chat with ${name}`;
+                    }
+
+                    sessionGroups.set(sessionId, {
+                        _id: sessionId, // Use session ID as the key for the view
+                        type: 'debit',
+                        amount: t.amount,
+                        description: description,
+                        createdAt: t.createdAt,
+                        toAstrologer: t.toAstrologer // Keep ref just in case
+                    });
+                }
+            } else {
+                // Non-chat transaction or credit, add directly
+                aggregatedTransactions.push(t);
+            }
+        }
+
+        // Combine aggregated sessions into the list
+        aggregatedTransactions.push(...Array.from(sessionGroups.values()));
+
+        // Sort again by date descending
+        aggregatedTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        // Limit to 100 for response
+        const finalTransactions = aggregatedTransactions.slice(0, 100).map(t => ({
+            _id: t._id,
+            type: t.type,
+            amount: parseFloat(t.amount.toFixed(2)), // Ensure aggregation didn't introduce floating point errors
+            description: t.description,
+            createdAt: t.createdAt
+        }));
 
         return res.status(200).json({
             success: true,
-            transactions
+            transactions: finalTransactions
         });
     } catch (error) {
         console.error('[Auth] Error fetching wallet transactions:', error);
