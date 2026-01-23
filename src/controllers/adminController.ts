@@ -6,6 +6,8 @@ import Transaction from '../models/Transaction';
 import Notification from '../models/Notification';
 import ChatReview from '../models/ChatReview';
 import AstrologerFollower from '../models/AstrologerFollower';
+import Banner from '../models/Banner';
+import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 
 // 1. Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
@@ -525,6 +527,138 @@ export const createNotification = async (req: Request, res: Response) => {
 
         res.status(201).json({ success: true, message: 'Notification sent', data: notification });
     } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// 5. Banner Management
+
+// Create a new banner
+export const createBanner = async (req: Request, res: Response) => {
+    try {
+        const { imageBase64, title, subtitle, backgroundColor, navigationType, navigationValue, isActive, order } = req.body;
+
+        if (!imageBase64) {
+            return res.status(400).json({ success: false, message: 'Image is required' });
+        }
+
+        // Upload image to Cloudflare R2
+        const imageUrl = await uploadBase64ToR2(imageBase64, 'banners', `banner-${Date.now()}`);
+        if (!imageUrl) {
+            return res.status(500).json({ success: false, message: 'Failed to upload image to R2' });
+        }
+
+        const banner = await Banner.create({
+            imageUrl,
+            title,
+            subtitle,
+            backgroundColor,
+            navigationType: navigationType || 'none',
+            navigationValue,
+            isActive: isActive !== undefined ? isActive : true,
+            order: order || 0
+        });
+
+        res.status(201).json({ success: true, message: 'Banner created successfully', data: banner });
+    } catch (error) {
+        console.error('Create banner error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Get all banners (Admin view)
+export const getBanners = async (req: Request, res: Response) => {
+    try {
+        const banners = await Banner.find().sort({ order: 1, createdAt: -1 });
+        res.status(200).json({ success: true, data: banners });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Get active banners (App API)
+export const getActiveBanners = async (req: Request, res: Response) => {
+    try {
+        const banners = await Banner.find({ isActive: true }).sort({ order: 1 });
+        res.status(200).json({ success: true, data: banners });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Update a banner
+export const updateBanner = async (req: Request, res: Response) => {
+    try {
+        const { bannerId } = req.params;
+        const { imageBase64, title, subtitle, backgroundColor, navigationType, navigationValue, isActive, order } = req.body;
+
+        const banner = await Banner.findById(bannerId);
+        if (!banner) {
+            return res.status(404).json({ success: false, message: 'Banner not found' });
+        }
+
+        // If new image is provided, upload to R2 and delete old one
+        let imageUrl = banner.imageUrl;
+        if (imageBase64) {
+            const newImageUrl = await uploadBase64ToR2(imageBase64, 'banners', `banner-${Date.now()}`);
+            if (newImageUrl) {
+                // Delete old image from R2
+                const oldKey = getKeyFromUrl(banner.imageUrl);
+                if (oldKey) {
+                    try {
+                        await deleteFromR2(oldKey);
+                    } catch (e) {
+                        console.warn('Failed to delete old banner image:', e);
+                    }
+                }
+                imageUrl = newImageUrl;
+            }
+        }
+
+        // Update banner fields
+        banner.imageUrl = imageUrl;
+        if (title !== undefined) banner.title = title;
+        if (subtitle !== undefined) banner.subtitle = subtitle;
+        if (backgroundColor !== undefined) banner.backgroundColor = backgroundColor;
+        if (navigationType !== undefined) banner.navigationType = navigationType;
+        if (navigationValue !== undefined) banner.navigationValue = navigationValue;
+        if (isActive !== undefined) banner.isActive = isActive;
+        if (order !== undefined) banner.order = order;
+
+        await banner.save();
+
+        res.status(200).json({ success: true, message: 'Banner updated successfully', data: banner });
+    } catch (error) {
+        console.error('Update banner error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Delete a banner
+export const deleteBanner = async (req: Request, res: Response) => {
+    try {
+        const { bannerId } = req.params;
+
+        const banner = await Banner.findById(bannerId);
+        if (!banner) {
+            return res.status(404).json({ success: false, message: 'Banner not found' });
+        }
+
+        // Delete image from R2
+        const key = getKeyFromUrl(banner.imageUrl);
+        if (key) {
+            try {
+                await deleteFromR2(key);
+            } catch (e) {
+                console.warn('Failed to delete banner image from R2:', e);
+            }
+        }
+
+        await Banner.findByIdAndDelete(bannerId);
+
+        res.status(200).json({ success: true, message: 'Banner deleted successfully' });
+    } catch (error) {
+        console.error('Delete banner error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };

@@ -16,7 +16,12 @@ import {
     addUser,
     getUserReviews,
     deleteReview,
-    getUserFollows
+    getUserFollows,
+    createBanner,
+    getBanners,
+    getActiveBanners,
+    updateBanner,
+    deleteBanner
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -47,5 +52,13 @@ router.delete('/reviews/:reviewId', deleteReview);
 // Notifications
 router.post('/notifications', createNotification);
 
+// Banners
+router.post('/banners', createBanner);
+router.get('/banners', getBanners);
+router.get('/banners/active', getActiveBanners);
+router.put('/banners/:bannerId', updateBanner);
+router.delete('/banners/:bannerId', deleteBanner);
+
 export default router;
+
 
