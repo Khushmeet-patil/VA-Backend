@@ -159,7 +159,7 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             return res.status(401).json({ success: false, message: 'Not authenticated' });
         }
 
-        const user = await User.findById(userId).select('walletBalance hasUsedFreeTrial createdAt');
+        const user = await User.findById(userId).select('walletBalance hasUsedFreeTrial createdAt profilePhoto');
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -196,7 +196,8 @@ export const getWalletBalance = async (req: Request, res: Response) => {
         return res.status(200).json({
             success: true,
             walletBalance: user.walletBalance || 0,
-            hasUsedFreeTrial: hasUsedFreeTrial
+            hasUsedFreeTrial: hasUsedFreeTrial,
+            profilePhoto: user.profilePhoto // Return latest profile photo (Cloudflare URL)
         });
     } catch (error) {
         return res.status(500).json({ message: 'Server error', error });
