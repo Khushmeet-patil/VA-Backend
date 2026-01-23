@@ -536,7 +536,7 @@ export const createNotification = async (req: Request, res: Response) => {
 // Create a new banner
 export const createBanner = async (req: Request, res: Response) => {
     try {
-        const { imageBase64, title, subtitle, backgroundColor, navigationType, navigationValue, isActive, order } = req.body;
+        const { imageBase64, navigationType, navigationValue, isActive } = req.body;
 
         if (!imageBase64) {
             return res.status(400).json({ success: false, message: 'Image is required' });
@@ -550,13 +550,9 @@ export const createBanner = async (req: Request, res: Response) => {
 
         const banner = await Banner.create({
             imageUrl,
-            title,
-            subtitle,
-            backgroundColor,
             navigationType: navigationType || 'none',
             navigationValue,
-            isActive: isActive !== undefined ? isActive : true,
-            order: order || 0
+            isActive: isActive !== undefined ? isActive : true
         });
 
         res.status(201).json({ success: true, message: 'Banner created successfully', data: banner });
@@ -569,7 +565,7 @@ export const createBanner = async (req: Request, res: Response) => {
 // Get all banners (Admin view)
 export const getBanners = async (req: Request, res: Response) => {
     try {
-        const banners = await Banner.find().sort({ order: 1, createdAt: -1 });
+        const banners = await Banner.find().sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: banners });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -579,7 +575,7 @@ export const getBanners = async (req: Request, res: Response) => {
 // Get active banners (App API)
 export const getActiveBanners = async (req: Request, res: Response) => {
     try {
-        const banners = await Banner.find({ isActive: true }).sort({ order: 1 });
+        const banners = await Banner.find({ isActive: true }).sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: banners });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -590,7 +586,7 @@ export const getActiveBanners = async (req: Request, res: Response) => {
 export const updateBanner = async (req: Request, res: Response) => {
     try {
         const { bannerId } = req.params;
-        const { imageBase64, title, subtitle, backgroundColor, navigationType, navigationValue, isActive, order } = req.body;
+        const { imageBase64, navigationType, navigationValue, isActive } = req.body;
 
         const banner = await Banner.findById(bannerId);
         if (!banner) {
@@ -617,13 +613,9 @@ export const updateBanner = async (req: Request, res: Response) => {
 
         // Update banner fields
         banner.imageUrl = imageUrl;
-        if (title !== undefined) banner.title = title;
-        if (subtitle !== undefined) banner.subtitle = subtitle;
-        if (backgroundColor !== undefined) banner.backgroundColor = backgroundColor;
         if (navigationType !== undefined) banner.navigationType = navigationType;
         if (navigationValue !== undefined) banner.navigationValue = navigationValue;
         if (isActive !== undefined) banner.isActive = isActive;
-        if (order !== undefined) banner.order = order;
 
         await banner.save();
 
