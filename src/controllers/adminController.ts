@@ -4,6 +4,8 @@ import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import Notification from '../models/Notification';
+import ChatReview from '../models/ChatReview';
+import AstrologerFollower from '../models/AstrologerFollower';
 
 // 1. Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
@@ -199,6 +201,47 @@ export const getUserActivity = async (req: Request, res: Response) => {
         // For now returning transactions as activity
         const transactions = await Transaction.find({ fromUser: userId }).sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: transactions });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const getUserReviews = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const reviews = await ChatReview.find({ userId: userId })
+            .populate({
+                path: 'astrologerId',
+                select: 'firstName lastName profilePhoto'
+            })
+            .sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: reviews });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const getUserFollows = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const follows = await AstrologerFollower.find({ userId: userId })
+            .populate({
+                path: 'astrologerId',
+                select: 'firstName lastName profilePhoto specialties experience rating followersCount'
+            })
+            .sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: follows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const deleteReview = async (req: Request, res: Response) => {
+    try {
+        const { reviewId } = req.params;
+        const review = await ChatReview.findByIdAndDelete(reviewId);
+        if (!review) return res.status(404).json({ success: false, message: 'Review not found' });
+        res.status(200).json({ success: true, message: 'Review deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }

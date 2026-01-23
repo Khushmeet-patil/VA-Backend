@@ -13,7 +13,10 @@ import {
     bulkUpdateAstrologers,
     createNotification,
     deleteUser,
-    addUser
+    addUser,
+    getUserReviews,
+    deleteReview,
+    getUserFollows
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -25,6 +28,8 @@ router.get('/dashboard', getDashboardStats);
 router.get('/users', getAllUsers);
 router.put('/users/:userId', updateUser);
 router.get('/users/:userId/activity', getUserActivity);
+router.get('/users/:userId/reviews', getUserReviews);
+router.get('/users/:userId/follows', getUserFollows);
 router.post('/users/:userId/wallet/add', addWalletBalance);
 router.post('/users/:userId/wallet/deduct', deductWalletBalance);
 router.post('/users', addUser);
@@ -35,6 +40,9 @@ router.get('/astrologers', getAstrologers);
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
+
+// Reviews
+router.delete('/reviews/:reviewId', deleteReview);
 
 // Notifications
 router.post('/notifications', createNotification);
