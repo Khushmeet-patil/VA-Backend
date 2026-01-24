@@ -93,9 +93,13 @@ export const verifyOtp = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const { name, gender, dob, tob, pob, profilePhoto } = req.body;
+        const { name, gender, dob, tob, pob, lat, lon, timezone, profilePhoto } = req.body;
 
         const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
+
+        if (lat !== undefined) updateData.lat = lat;
+        if (lon !== undefined) updateData.lon = lon;
+        if (timezone !== undefined) updateData.timezone = timezone;
 
         // Handle profile photo upload to R2
         if (profilePhoto !== undefined) {

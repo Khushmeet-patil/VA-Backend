@@ -9,6 +9,9 @@ export interface IBirthProfile {
     dateOfBirth: string;  // ISO date string
     timeOfBirth: string;  // HH:mm format
     placeOfBirth: string;
+    lat?: number;
+    lon?: number;
+    timezone?: string;
     createdAt: Date;
 }
 
@@ -20,6 +23,9 @@ export interface IUser extends Document {
     dob?: string;
     tob?: string;
     pob?: string;
+    lat?: number;
+    lon?: number;
+    timezone?: string;
     profilePhoto?: string;  // R2 URL or base64 (legacy) profile picture
     otp?: string;
     otpExpires?: Date;
@@ -40,6 +46,9 @@ const BirthProfileSchema: Schema = new Schema({
     dateOfBirth: { type: String, required: true },
     timeOfBirth: { type: String, required: true },
     placeOfBirth: { type: String, required: true },
+    lat: { type: Number },
+    lon: { type: Number },
+    timezone: { type: String },
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -51,6 +60,9 @@ const UserSchema: Schema = new Schema({
     dob: { type: String },
     tob: { type: String },
     pob: { type: String },
+    lat: { type: Number },
+    lon: { type: Number },
+    timezone: { type: String },
     profilePhoto: { type: String },  // R2 URL or base64 (legacy) profile picture
     otp: { type: String },
     otpExpires: { type: Date },

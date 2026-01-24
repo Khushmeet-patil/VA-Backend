@@ -36,6 +36,9 @@ export const getProfiles = async (req: AuthRequest, res: Response) => {
             dateOfBirth: user.dob || '',
             timeOfBirth: user.tob || '',
             placeOfBirth: user.pob || '',
+            lat: user.lat,
+            lon: user.lon,
+            timezone: user.timezone,
             isDefault: true,
         };
 
@@ -57,7 +60,7 @@ export const getProfiles = async (req: AuthRequest, res: Response) => {
 export const createProfile = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
-        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth } = req.body;
+        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth, lat, lon, timezone } = req.body;
 
         if (!userId) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -80,6 +83,9 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
             dateOfBirth,
             timeOfBirth,
             placeOfBirth,
+            lat,
+            lon,
+            timezone,
             createdAt: new Date(),
         };
 
@@ -150,7 +156,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
         const { id } = req.params;
-        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth } = req.body;
+        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth, lat, lon, timezone } = req.body;
 
         if (!userId) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -168,6 +174,9 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
             if (dateOfBirth) user.dob = dateOfBirth;
             if (timeOfBirth) user.tob = timeOfBirth;
             if (placeOfBirth) user.pob = placeOfBirth;
+            if (lat !== undefined) user.lat = lat;
+            if (lon !== undefined) user.lon = lon;
+            if (timezone !== undefined) user.timezone = timezone;
             await user.save();
 
             return res.json({
@@ -179,6 +188,9 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
                     dateOfBirth: user.dob,
                     timeOfBirth: user.tob,
                     placeOfBirth: user.pob,
+                    lat: user.lat,
+                    lon: user.lon,
+                    timezone: user.timezone,
                     isDefault: true,
                 },
             });
@@ -198,6 +210,9 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         if (dateOfBirth) profile.dateOfBirth = dateOfBirth;
         if (timeOfBirth) profile.timeOfBirth = timeOfBirth;
         if (placeOfBirth) profile.placeOfBirth = placeOfBirth;
+        if (lat !== undefined) profile.lat = lat;
+        if (lon !== undefined) profile.lon = lon;
+        if (timezone !== undefined) profile.timezone = timezone;
 
         await user.save();
 
