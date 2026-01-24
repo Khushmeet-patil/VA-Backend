@@ -6,12 +6,16 @@ export interface IBirthProfile {
     _id?: mongoose.Types.ObjectId;
     name: string;
     gender: string;
-    dateOfBirth: string;  // ISO date string
+    dateOfBirth: string;  // ISO date string YYYY-MM-DD
     timeOfBirth: string;  // HH:mm format
     placeOfBirth: string;
     lat?: number;
     lon?: number;
+<<<<<<< HEAD
     timezone?: string;
+=======
+    tzone?: number;
+>>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     createdAt: Date;
 }
 
@@ -25,7 +29,11 @@ export interface IUser extends Document {
     pob?: string;
     lat?: number;
     lon?: number;
+<<<<<<< HEAD
     timezone?: string;
+=======
+    tzone?: number;
+>>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     profilePhoto?: string;  // R2 URL or base64 (legacy) profile picture
     otp?: string;
     otpExpires?: Date;
@@ -35,8 +43,9 @@ export interface IUser extends Document {
     isBlocked: boolean;
     hasUsedFreeTrial: boolean;  // True after user has used their one-time free trial chat
     birthProfiles: IBirthProfile[];  // Saved birth profiles for chat intake
-    fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
-    fcmTokenUpdatedAt?: Date;  // When the FCM token was last updated
+    fcmToken?: string;  // Firebase Cloud Messaging token
+    fcmTokenUpdatedAt?: Date;  // When FCM token was last updated
+    zodiacSign?: string; // User's preferred Zodiac Sign
     createdAt: Date;
 }
 
@@ -48,7 +57,11 @@ const BirthProfileSchema: Schema = new Schema({
     placeOfBirth: { type: String, required: true },
     lat: { type: Number },
     lon: { type: Number },
+<<<<<<< HEAD
     timezone: { type: String },
+=======
+    tzone: { type: Number },
+>>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -62,7 +75,11 @@ const UserSchema: Schema = new Schema({
     pob: { type: String },
     lat: { type: Number },
     lon: { type: Number },
+<<<<<<< HEAD
     timezone: { type: String },
+=======
+    tzone: { type: Number },
+>>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     profilePhoto: { type: String },  // R2 URL or base64 (legacy) profile picture
     otp: { type: String },
     otpExpires: { type: Date },
@@ -74,7 +91,7 @@ const UserSchema: Schema = new Schema({
     birthProfiles: { type: [BirthProfileSchema], default: [] },
     fcmToken: { type: String },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
+    zodiacSign: { type: String }, // User's preferred Zodiac Sign
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);
-

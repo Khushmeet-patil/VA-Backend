@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
+import horoscopeService from '../services/horoscopeService';
 
 /**
  * Profile Controller
@@ -76,8 +77,8 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Create new profile
-        const newProfile = {
+        // Create new profile object
+        const newProfile: any = {
             name,
             gender,
             dateOfBirth,
@@ -88,6 +89,20 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
             timezone,
             createdAt: new Date(),
         };
+
+        // Geocode Place of Birth
+        if (placeOfBirth) {
+            try {
+                const geo = await horoscopeService.getGeoDetails(placeOfBirth);
+                if (geo.status && geo.data) {
+                    newProfile.lat = geo.data.latitude;
+                    newProfile.lon = geo.data.longitude;
+                    newProfile.tzone = geo.data.timezone;
+                }
+            } catch (error) {
+                console.warn('[ProfileController] Geocoding failed:', error);
+            }
+        }
 
         user.birthProfiles.push(newProfile);
         await user.save();
@@ -209,10 +224,26 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         if (gender) profile.gender = gender;
         if (dateOfBirth) profile.dateOfBirth = dateOfBirth;
         if (timeOfBirth) profile.timeOfBirth = timeOfBirth;
+<<<<<<< HEAD
         if (placeOfBirth) profile.placeOfBirth = placeOfBirth;
         if (lat !== undefined) profile.lat = lat;
         if (lon !== undefined) profile.lon = lon;
         if (timezone !== undefined) profile.timezone = timezone;
+=======
+        if (placeOfBirth) {
+            profile.placeOfBirth = placeOfBirth;
+            try {
+                const geo = await horoscopeService.getGeoDetails(placeOfBirth);
+                if (geo.status && geo.data) {
+                    profile.lat = geo.data.latitude;
+                    profile.lon = geo.data.longitude;
+                    profile.tzone = geo.data.timezone;
+                }
+            } catch (error) {
+                console.warn('[ProfileController] Geocoding failed:', error);
+            }
+        }
+>>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
 
         await user.save();
 
