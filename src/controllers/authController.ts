@@ -91,25 +91,22 @@ export const verifyOtp = async (req: Request, res: Response) => {
 };
 
 // Update user profile after OTP login
+// Update user profile after OTP login
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-<<<<<<< HEAD
-        const { name, gender, dob, tob, pob, lat, lon, timezone, profilePhoto } = req.body;
-=======
-        const { name, gender, dob, tob, pob, profilePhoto, zodiacSign } = req.body;
->>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
+        const { name, gender, dob, tob, pob, lat: reqLat, lon: reqLon, timezone, profilePhoto, zodiacSign } = req.body;
 
         const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
         if (zodiacSign) updateData.zodiacSign = zodiacSign;
 
-        // 1. Geocode Place of Birth if provided
-        let lat = req.body.lat;
-        let lon = req.body.lon;
-        let tzone = req.body.tzone || 5.5;
+        // 1. Geocode Place of Birth if provided AND lat/lon not provided by frontend
+        let lat = reqLat;
+        let lon = reqLon;
+        let tzone = req.body.tzone || 5.5; // Default to India if not provided
 
-        // If POB is new/changed
-        if (pob) {
+        // If POB is new/changed and we don't have lat/lon from frontend
+        if (pob && (lat === undefined || lon === undefined)) {
             try {
                 const geo = await horoscopeService.getGeoDetails(pob);
                 if (geo.status && geo.data) {
@@ -117,9 +114,6 @@ export const updateProfile = async (req: Request, res: Response) => {
                     lon = geo.data.longitude;
                     tzone = geo.data.timezone;
 
-                    updateData.lat = lat;
-                    updateData.lon = lon;
-                    updateData.tzone = tzone;
                     console.log(`[AuthController] Geocoded ${pob}: ${lat}, ${lon}`);
                 }
             } catch (geoError) {
@@ -159,7 +153,7 @@ export const updateProfile = async (req: Request, res: Response) => {
                 const [hour, min] = tob.split(':').map(Number);
 
                 if (d && m && y && !isNaN(hour) && !isNaN(min)) {
-                    console.log(`[AuthController] Fetching Astro Details for Sign: ${d}-${m}-${y} ${hour}:${min}`);
+                    // console.log(`[AuthController] Fetching Astro Details for Sign: ${d}-${m}-${y} ${hour}:${min}`);
 
                     const astroPayload = {
                         day: d,
@@ -175,11 +169,8 @@ export const updateProfile = async (req: Request, res: Response) => {
                     const astroData = await horoscopeService.getAstroDetails(astroPayload);
                     if (astroData && astroData.sign) {
                         // API returns "sign" which is Moon Sign (Rashi) in Vedic context
-                        // or sometimes we might want "sun_sign" if user specifically meant Western.
-                        // User said "Rashi i.e. zodiac sign". 
-                        // "sign" is usually Moon Sign in Vedic APIs.
                         updateData.zodiacSign = astroData.sign;
-                        console.log(`[AuthController] Calculated Zodiac Sign: ${astroData.sign}`);
+                        // console.log(`[AuthController] Calculated Zodiac Sign: ${astroData.sign}`);
                     }
                 }
 
@@ -191,6 +182,7 @@ export const updateProfile = async (req: Request, res: Response) => {
         if (lat !== undefined) updateData.lat = lat;
         if (lon !== undefined) updateData.lon = lon;
         if (timezone !== undefined) updateData.timezone = timezone;
+        if (tzone !== undefined) updateData.tzone = tzone;
 
         // Handle profile photo upload to R2
         if (profilePhoto !== undefined) {

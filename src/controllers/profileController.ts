@@ -171,7 +171,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
         const { id } = req.params;
-        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth, lat, lon, timezone } = req.body;
+        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth, lat: reqLat, lon: reqLon, timezone } = req.body;
 
         if (!userId) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -180,6 +180,26 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Prepare values
+        let lat = reqLat;
+        let lon = reqLon;
+        let tzone: number | undefined;
+
+        // Fallback geocoding if place changed and no coords provided
+        // Only if placeOfBirth is provided (implies update) and lat/lon are missing
+        if (placeOfBirth && (lat === undefined || lon === undefined)) {
+            try {
+                const geo = await horoscopeService.getGeoDetails(placeOfBirth);
+                if (geo.status && geo.data) {
+                    lat = geo.data.latitude;
+                    lon = geo.data.longitude;
+                    tzone = geo.data.timezone;
+                }
+            } catch (error) {
+                console.warn('[ProfileController] Geocoding failed:', error);
+            }
         }
 
         // If updating default profile, update user's main fields
@@ -192,6 +212,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
             if (lat !== undefined) user.lat = lat;
             if (lon !== undefined) user.lon = lon;
             if (timezone !== undefined) user.timezone = timezone;
+            if (tzone !== undefined) user.tzone = tzone;
             await user.save();
 
             return res.json({
@@ -206,6 +227,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
                     lat: user.lat,
                     lon: user.lon,
                     timezone: user.timezone,
+                    tzone: user.tzone,
                     isDefault: true,
                 },
             });
@@ -224,26 +246,11 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         if (gender) profile.gender = gender;
         if (dateOfBirth) profile.dateOfBirth = dateOfBirth;
         if (timeOfBirth) profile.timeOfBirth = timeOfBirth;
-<<<<<<< HEAD
         if (placeOfBirth) profile.placeOfBirth = placeOfBirth;
         if (lat !== undefined) profile.lat = lat;
         if (lon !== undefined) profile.lon = lon;
         if (timezone !== undefined) profile.timezone = timezone;
-=======
-        if (placeOfBirth) {
-            profile.placeOfBirth = placeOfBirth;
-            try {
-                const geo = await horoscopeService.getGeoDetails(placeOfBirth);
-                if (geo.status && geo.data) {
-                    profile.lat = geo.data.latitude;
-                    profile.lon = geo.data.longitude;
-                    profile.tzone = geo.data.timezone;
-                }
-            } catch (error) {
-                console.warn('[ProfileController] Geocoding failed:', error);
-            }
-        }
->>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
+        if (tzone !== undefined) profile.tzone = tzone;
 
         await user.save();
 

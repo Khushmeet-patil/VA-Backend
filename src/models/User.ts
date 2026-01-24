@@ -1,4 +1,3 @@
-
 import mongoose, { Schema, Document } from 'mongoose';
 
 // Birth profile interface for storing multiple profiles per user
@@ -11,11 +10,8 @@ export interface IBirthProfile {
     placeOfBirth: string;
     lat?: number;
     lon?: number;
-<<<<<<< HEAD
     timezone?: string;
-=======
     tzone?: number;
->>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     createdAt: Date;
 }
 
@@ -29,11 +25,8 @@ export interface IUser extends Document {
     pob?: string;
     lat?: number;
     lon?: number;
-<<<<<<< HEAD
     timezone?: string;
-=======
     tzone?: number;
->>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     profilePhoto?: string;  // R2 URL or base64 (legacy) profile picture
     otp?: string;
     otpExpires?: Date;
@@ -57,11 +50,8 @@ const BirthProfileSchema: Schema = new Schema({
     placeOfBirth: { type: String, required: true },
     lat: { type: Number },
     lon: { type: Number },
-<<<<<<< HEAD
     timezone: { type: String },
-=======
     tzone: { type: Number },
->>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -75,11 +65,8 @@ const UserSchema: Schema = new Schema({
     pob: { type: String },
     lat: { type: Number },
     lon: { type: Number },
-<<<<<<< HEAD
     timezone: { type: String },
-=======
     tzone: { type: Number },
->>>>>>> 9765ed2e8e201388f7a4c50b6acdc8b71ef48c69
     profilePhoto: { type: String },  // R2 URL or base64 (legacy) profile picture
     otp: { type: String },
     otpExpires: { type: Date },
