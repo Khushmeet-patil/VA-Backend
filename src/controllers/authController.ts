@@ -96,9 +96,31 @@ export const verifyOtp = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const { name, gender, dob, tob, pob, lat: reqLat, lon: reqLon, timezone, profilePhoto, zodiacSign } = req.body;
+        const {
+            name,
+            gender,
+            dob, dateOfBirth,
+            tob, timeOfBirth,
+            pob, placeOfBirth,
+            lat: reqLat,
+            lon: reqLon,
+            timezone,
+            profilePhoto,
+            zodiacSign
+        } = req.body;
 
-        const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
+        const finalDob = dob || dateOfBirth;
+        const finalTob = tob || timeOfBirth;
+        const finalPob = pob || placeOfBirth;
+
+        const updateData: any = {
+            name,
+            gender,
+            dob: finalDob,
+            tob: finalTob,
+            pob: finalPob,
+            isVerified: true
+        };
         if (zodiacSign) updateData.zodiacSign = zodiacSign;
 
         // 1. Geocode Place of Birth if provided AND lat/lon not provided by frontend
@@ -107,9 +129,9 @@ export const updateProfile = async (req: Request, res: Response) => {
         let tzone = req.body.tzone || 5.5; // Default to India if not provided
 
         // If POB is new/changed and we don't have lat/lon from frontend
-        if (pob && (lat === undefined || lon === undefined)) {
+        if (finalPob && (lat === undefined || lon === undefined)) {
             try {
-                const geo = await geoService.getGeoDetails(pob);
+                const geo = await geoService.getGeoDetails(finalPob);
                 if (geo.status && geo.data && geo.data.length > 0) {
                     // Extract first result from array
                     const firstMatch = geo.data[0];
@@ -120,7 +142,7 @@ export const updateProfile = async (req: Request, res: Response) => {
                     updateData.lat = lat;
                     updateData.lon = lon;
                     updateData.tzone = tzone;
-                    console.log(`[AuthController] Geocoded ${pob}: ${lat}, ${lon}`);
+                    console.log(`[AuthController] Geocoded ${finalPob}: ${lat}, ${lon}`);
                 }
             } catch (geoError) {
                 console.warn('[AuthController] Geocoding failed:', geoError);
