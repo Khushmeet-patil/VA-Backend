@@ -1,5 +1,17 @@
 import axios from 'axios';
 
+interface DailyPrediction {
+    personal_life: string;
+    profession: string;
+    health: string;
+    travel: string;
+    luck: string[] | string;
+    lucky_color: string;
+    lucky_number: string;
+    mood: string;
+    emotions?: string;
+}
+
 class HoroscopeService {
     private userId: string;
     private apiKey: string;
@@ -92,7 +104,7 @@ class HoroscopeService {
      * Get Daily Prediction
      */
     // --- Helper for Deterministic "Fake" Data based on Sign + Date ---
-    private getDynamicFallback(sign: string, type: 'daily' | 'monthly' | 'yearly', dateContext: string) {
+    private getDynamicFallback(sign: string, type: 'daily' | 'monthly' | 'yearly', dateContext: string): DailyPrediction | string[] {
         const qualities = ['Productive', 'Calm', 'Challenge', 'Growth', 'Reflection', 'Joy', 'Focus'];
         const colors = ['Red', 'Blue', 'Green', 'Yellow', 'White', 'Orange', 'Purple', 'Pink'];
         const moods = ['Optimistic', 'Serious', 'Playful', 'Determined', 'Relaxed'];
@@ -120,7 +132,8 @@ class HoroscopeService {
                 luck: [color, colors[(hash + 1) % colors.length]],
                 lucky_color: `${color}, ${colors[(hash + 1) % colors.length]}`,
                 lucky_number: number.toString(),
-                mood: mood
+                mood: mood,
+                emotions: `You may feel ${quality.toLowerCase()} today.`
             };
         } else if (type === 'monthly') {
             return [
@@ -143,9 +156,33 @@ class HoroscopeService {
                 ? `sun_sign_prediction/daily/${sign}`
                 : `sun_sign_prediction/daily/${day === 'tomorrow' ? 'next' : 'previous'}/${sign}`;
 
-            const data = await this.callApi(endpoint, { timezone });
+            const response = await this.callApi(endpoint, { timezone });
             console.log(`[HoroscopeService] ✅ Successfully fetched REAL API data for ${sign} (${day}).`);
-            return data;
+
+            // Check if response has the expected data (API returns flattened fields directly in response usually, or nested?)
+            // Based on user provided JSON: { personal_life: "...", profession: "...", ... }
+            // The callApi returns response.data
+
+            // Missing Data Backfill (Lucky Color, Number, Mood not in API)
+            // We generate them deterministically so UI is rich
+            const generated = this.getDynamicFallback(sign, 'daily', day) as DailyPrediction;
+
+            // Merge API data with generated data for missing fields
+            return {
+                status: true,
+                prediction: {
+                    personal_life: response.personal_life || generated.personal_life,
+                    profession: response.profession || generated.profession,
+                    health: response.health || generated.health,
+                    travel: response.travel || generated.travel,
+                    emotions: response.emotions || generated.emotions,
+                    luck: response.luck || (Array.isArray(generated.luck) ? generated.luck.join(', ') : generated.luck), // API luck is string, Fallback is array
+                    // Backfilled properties
+                    lucky_color: generated.lucky_color,
+                    lucky_number: generated.lucky_number,
+                    mood: generated.mood
+                }
+            };
         } catch (error: any) {
             // Check if error is due to authorization/plan limits
             const isAuthError = error.message?.includes('authorized') || error.message?.includes('plan');
