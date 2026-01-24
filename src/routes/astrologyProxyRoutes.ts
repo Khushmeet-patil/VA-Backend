@@ -13,7 +13,8 @@ router.get('/geo-details', async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Place parameter is required' });
         }
 
-        const result = await geoService.getGeoDetails(place);
+        const maxRows = req.query.maxRows ? parseInt(req.query.maxRows as string) : 6;
+        const result = await geoService.getGeoDetails(place, maxRows);
         if (result.status && result.data) {
             return res.json(result.data);
         } else {

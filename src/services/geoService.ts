@@ -20,11 +20,11 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-export const getGeoDetails = async (place: string): Promise<{ status: boolean; data: any[] | null }> => {
+export const getGeoDetails = async (place: string, maxRows: number = 6): Promise<{ status: boolean; data: any[] | null }> => {
     try {
-        const response = await api.post('/geo_details_json', {
-            place_with_country_code: false,
-            place
+        const response = await api.post('/geo_details', {
+            place,
+            max_rows: maxRows
         });
 
         if (response.data && response.data.geonames) {
