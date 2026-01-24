@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
 import geoService from '../services/geoService';
+import astrologyService from '../services/astrologyService';
 
 /**
  * Profile Controller
@@ -99,9 +100,36 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
                     newProfile.lat = parseFloat(firstMatch.latitude);
                     newProfile.lon = parseFloat(firstMatch.longitude);
                     newProfile.tzone = parseFloat(firstMatch.timezone);
+                    newProfile.tzone = parseFloat(firstMatch.timezone);
                 }
             } catch (error) {
                 console.warn('[ProfileController] Geocoding failed:', error);
+            }
+        }
+
+        // Fetch Astro Sign if lat/lon/tzone available
+        if (newProfile.lat && newProfile.lon && newProfile.dateOfBirth && newProfile.timeOfBirth) {
+            try {
+                const date = new Date(newProfile.dateOfBirth);
+                // Handle time string "HH:mm"
+                const [hours, minutes] = newProfile.timeOfBirth.split(':').map(Number);
+
+                const astroData = await astrologyService.getAstroDetails({
+                    day: date.getDate(),
+                    month: date.getMonth() + 1,
+                    year: date.getFullYear(),
+                    hour: hours || 0,
+                    min: minutes || 0,
+                    lat: newProfile.lat,
+                    lon: newProfile.lon,
+                    tzone: newProfile.tzone || 5.5, // Default to India if missing
+                });
+
+                if (astroData && astroData.sign) {
+                    newProfile.sign = astroData.sign;
+                }
+            } catch (error) {
+                console.error('[ProfileController] Failed to fetch astro sign:', error);
             }
         }
 
@@ -238,6 +266,41 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         if (lon !== undefined) profile.lon = lon;
         if (timezone !== undefined) profile.timezone = timezone;
         if (tzone !== undefined) profile.tzone = tzone;
+
+        if (tzone !== undefined) profile.tzone = tzone;
+
+        // If birth details changed, re-fetch sign
+        if (dateOfBirth || timeOfBirth || placeOfBirth || lat !== undefined || lon !== undefined) {
+            try {
+                // Use updated or existing values
+                const pDate = profile.dateOfBirth ? new Date(profile.dateOfBirth) : new Date();
+                const pTime = profile.timeOfBirth || "12:00";
+                const pLat = profile.lat;
+                const pLon = profile.lon;
+                const pTzone = profile.tzone || 5.5;
+
+                if (pLat && pLon) {
+                    const [hours, minutes] = pTime.split(':').map(Number);
+
+                    const astroData = await astrologyService.getAstroDetails({
+                        day: pDate.getDate(),
+                        month: pDate.getMonth() + 1,
+                        year: pDate.getFullYear(),
+                        hour: hours || 0,
+                        min: minutes || 0,
+                        lat: pLat,
+                        lon: pLon,
+                        tzone: pTzone,
+                    });
+
+                    if (astroData && astroData.sign) {
+                        profile.sign = astroData.sign;
+                    }
+                }
+            } catch (error) {
+                console.error('[ProfileController] Failed to update astro sign:', error);
+            }
+        }
 
         await user.save();
 

@@ -12,6 +12,7 @@ export interface IBirthProfile {
     lon?: number;
     timezone?: string;
     tzone?: number;
+    sign?: string;
     createdAt: Date;
 }
 
@@ -52,6 +53,7 @@ const BirthProfileSchema: Schema = new Schema({
     lon: { type: Number },
     timezone: { type: String },
     tzone: { type: Number },
+    sign: { type: String },
     createdAt: { type: Date, default: Date.now }
 });
 
