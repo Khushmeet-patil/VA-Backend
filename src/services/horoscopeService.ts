@@ -19,8 +19,8 @@ class HoroscopeService {
 
     constructor() {
         // AstrologyAPI requires both UserID and API Key
-        this.userId = process.env.ASTRO_USER_ID || '';
-        this.apiKey = process.env.ASTRO_API_KEY || '';
+        this.userId = (process.env.ASTRO_USER_ID || '').trim();
+        this.apiKey = (process.env.ASTRO_API_KEY || '').trim();
         this.baseURL = 'https://json.astrologyapi.com/v1';
     }
 
@@ -29,7 +29,8 @@ class HoroscopeService {
         const token = Buffer.from(`${this.userId}:${this.apiKey}`).toString('base64');
         return {
             'Authorization': `Basic ${token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept-Language': 'en'
         };
     }
 
@@ -151,13 +152,12 @@ class HoroscopeService {
      */
     async getDailyPrediction(sign: string, day: 'yesterday' | 'today' | 'tomorrow' = 'today', timezone: number = 5.5) {
         try {
-            console.log(`[HoroscopeService] Fetching daily prediction for ${sign} (${day}) from API...`);
+            const normalizedSign = sign.toLowerCase().trim();
             const endpoint = day === 'today'
-                ? `sun_sign_prediction/daily/${sign}`
-                : `sun_sign_prediction/daily/${day === 'tomorrow' ? 'next' : 'previous'}/${sign}`;
+                ? `sun_sign_prediction/daily/${normalizedSign}`
+                : `sun_sign_prediction/daily/${day === 'tomorrow' ? 'next' : 'previous'}/${normalizedSign}`;
 
             const response = await this.callApi(endpoint, { timezone });
-            console.log(`[HoroscopeService] ✅ Successfully fetched REAL API data for ${sign} (${day}).`);
 
             // Check if response has the expected data (API returns flattened fields directly in response usually, or nested?)
             // Based on user provided JSON: { personal_life: "...", profession: "...", ... }
@@ -185,10 +185,10 @@ class HoroscopeService {
             };
         } catch (error: any) {
             // Check if error is due to authorization/plan limits
-            const isAuthError = error.message?.includes('authorized') || error.message?.includes('plan');
+            const isAuthError = error.message?.includes('authorized') || error.message?.includes('plan') || error.message?.includes('405');
 
             if (isAuthError) {
-                console.log(`[HoroscopeService] ℹ️ Plan limit for ${sign} (${day}). Using generated fallback.`);
+                // Silent fallback for plan limits
             } else {
                 console.warn(`[HoroscopeService] ❌ API call failed for ${sign} ${day}:`, error.message);
             }
