@@ -25,19 +25,19 @@ class HoroscopeService {
     }
 
     // --- 1. FIXED AUTHENTICATION ---
-    private getHeaders() {
+    private getHeaders(language: string = 'en') {
         const token = Buffer.from(`${this.userId}:${this.apiKey}`).toString('base64');
         return {
             'Authorization': `Basic ${token}`,
             'Content-Type': 'application/json',
-            'Accept-Language': 'en'
+            'Accept-Language': language
         };
     }
 
-    private async callApi(endpoint: string, data: any) {
+    private async callApi(endpoint: string, data: any, language: string = 'en') {
         try {
             const response = await axios.post(`${this.baseURL}/${endpoint}`, data, {
-                headers: this.getHeaders() // Use Headers, not params
+                headers: this.getHeaders(language) // Use Headers, not params
             });
             return response.data;
         } catch (error: any) {
@@ -50,8 +50,8 @@ class HoroscopeService {
      * Get Rashi/Sign Details (My Rashi)
      * Endpoint: astro_details
      */
-    async getAstroDetails(data: { day: number; month: number; year: number; hour: number; min: number; lat: number; lon: number; tzone: number }) {
-        return this.callApi('astro_details', data);
+    async getAstroDetails(data: { day: number; month: number; year: number; hour: number; min: number; lat: number; lon: number; tzone: number }, language: string = 'en') {
+        return this.callApi('astro_details', data, language);
     }
 
     /**
