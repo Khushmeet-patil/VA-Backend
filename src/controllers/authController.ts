@@ -99,20 +99,88 @@ export const updateProfile = async (req: Request, res: Response) => {
         const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
         if (zodiacSign) updateData.zodiacSign = zodiacSign;
 
-        // Geocode Place of Birth if provided
+        // 1. Geocode Place of Birth if provided
+        let lat = req.body.lat;
+        let lon = req.body.lon;
+        let tzone = req.body.tzone || 5.5;
+
+        // If POB is new/changed
         if (pob) {
             try {
-                // Check if we need to geocode (e.g. if pob changed or lat/lon missing)
-                // For simplicity, we re-geocode if POB is provided in update
                 const geo = await horoscopeService.getGeoDetails(pob);
                 if (geo.status && geo.data) {
-                    updateData.lat = geo.data.latitude;
-                    updateData.lon = geo.data.longitude;
-                    updateData.tzone = geo.data.timezone;
-                    console.log(`[AuthController] Geocoded ${pob}: ${updateData.lat}, ${updateData.lon}`);
+                    lat = geo.data.latitude;
+                    lon = geo.data.longitude;
+                    tzone = geo.data.timezone;
+
+                    updateData.lat = lat;
+                    updateData.lon = lon;
+                    updateData.tzone = tzone;
+                    console.log(`[AuthController] Geocoded ${pob}: ${lat}, ${lon}`);
                 }
             } catch (geoError) {
                 console.warn('[AuthController] Geocoding failed:', geoError);
+            }
+        }
+
+        // 2. Fetch Zodiac Sign (Rashi) if birth details are present
+        // We need DOB, TOB, and Lat/Lon
+        if (dob && tob && lat && lon) {
+            try {
+                // Parse DOB (Expected format: DD-MM-YYYY or ISO)
+                // Try to handle DD-MM-YYYY common in India
+                let d, m, y;
+                if (dob.includes('-')) {
+                    const parts = dob.split('-');
+                    if (parts[0].length === 4) {
+                        // YYYY-MM-DD
+                        y = parseInt(parts[0]);
+                        m = parseInt(parts[1]);
+                        d = parseInt(parts[2]);
+                    } else {
+                        // DD-MM-YYYY
+                        d = parseInt(parts[0]);
+                        m = parseInt(parts[1]);
+                        y = parseInt(parts[2]);
+                    }
+                } else {
+                    // Fallback or other format
+                    const dateObj = new Date(dob);
+                    d = dateObj.getDate();
+                    m = dateObj.getMonth() + 1;
+                    y = dateObj.getFullYear();
+                }
+
+                // Parse TOB (HH:mm)
+                const [hour, min] = tob.split(':').map(Number);
+
+                if (d && m && y && !isNaN(hour) && !isNaN(min)) {
+                    console.log(`[AuthController] Fetching Astro Details for Sign: ${d}-${m}-${y} ${hour}:${min}`);
+
+                    const astroPayload = {
+                        day: d,
+                        month: m,
+                        year: y,
+                        hour: hour,
+                        min: min,
+                        lat: lat,
+                        lon: lon,
+                        tzone: tzone
+                    };
+
+                    const astroData = await horoscopeService.getAstroDetails(astroPayload);
+                    if (astroData && astroData.sign) {
+                        // API returns "sign" which is Moon Sign (Rashi) in Vedic context
+                        // or sometimes we might want "sun_sign" if user specifically meant Western.
+                        // User said "Rashi i.e. zodiac sign". 
+                        // "sign" is usually Moon Sign in Vedic APIs.
+                        updateData.zodiacSign = astroData.sign;
+                        console.log(`[AuthController] Calculated Zodiac Sign: ${astroData.sign}`);
+                    }
+                }
+
+            } catch (astroError) {
+                console.warn('[AuthController] Failed to fetch astro details:', astroError);
             }
         }
 
