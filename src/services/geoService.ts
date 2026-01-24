@@ -24,7 +24,7 @@ export const getGeoDetails = async (place: string, maxRows: number = 6): Promise
     try {
         const response = await api.post('/geo_details', {
             place,
-            max_rows: maxRows
+            maxRows: maxRows
         });
 
         if (response.data && response.data.geonames) {
