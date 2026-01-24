@@ -111,15 +111,34 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         if (newProfile.lat && newProfile.lon && newProfile.dateOfBirth && newProfile.timeOfBirth) {
             try {
                 const date = new Date(newProfile.dateOfBirth);
-                // Handle time string "HH:mm"
-                const [hours, minutes] = newProfile.timeOfBirth.split(':').map(Number);
+                // Parse time string which could be "14:30" or "02:30 PM"
+                let hours = 0;
+                let minutes = 0;
+                const timeStr = newProfile.timeOfBirth.trim();
+
+                if (timeStr.match(/PM|AM/i)) {
+                    const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+                    if (match) {
+                        hours = parseInt(match[1]);
+                        minutes = parseInt(match[2]);
+                        const period = match[3].toUpperCase();
+                        if (period === 'PM' && hours !== 12) hours += 12;
+                        if (period === 'AM' && hours === 12) hours = 0;
+                    }
+                } else {
+                    const parts = timeStr.split(':');
+                    if (parts.length >= 2) {
+                        hours = parseInt(parts[0]);
+                        minutes = parseInt(parts[1]);
+                    }
+                }
 
                 const astroData = await astrologyService.getAstroDetails({
                     day: date.getDate(),
                     month: date.getMonth() + 1,
                     year: date.getFullYear(),
-                    hour: hours || 0,
-                    min: minutes || 0,
+                    hour: hours,
+                    min: minutes,
                     lat: newProfile.lat,
                     lon: newProfile.lon,
                     tzone: newProfile.tzone || 5.5, // Default to India if missing
@@ -280,14 +299,34 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
                 const pTzone = profile.tzone || 5.5;
 
                 if (pLat && pLon) {
-                    const [hours, minutes] = pTime.split(':').map(Number);
+                    // Parse time string which could be "14:30" or "02:30 PM"
+                    let hours = 0;
+                    let minutes = 0;
+                    const timeStr = pTime.trim();
+
+                    if (timeStr.match(/PM|AM/i)) {
+                        const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+                        if (match) {
+                            hours = parseInt(match[1]);
+                            minutes = parseInt(match[2]);
+                            const period = match[3].toUpperCase();
+                            if (period === 'PM' && hours !== 12) hours += 12;
+                            if (period === 'AM' && hours === 12) hours = 0;
+                        }
+                    } else {
+                        const parts = timeStr.split(':');
+                        if (parts.length >= 2) {
+                            hours = parseInt(parts[0]);
+                            minutes = parseInt(parts[1]);
+                        }
+                    }
 
                     const astroData = await astrologyService.getAstroDetails({
                         day: pDate.getDate(),
                         month: pDate.getMonth() + 1,
                         year: pDate.getFullYear(),
-                        hour: hours || 0,
-                        min: minutes || 0,
+                        hour: hours,
+                        min: minutes,
                         lat: pLat,
                         lon: pLon,
                         tzone: pTzone,

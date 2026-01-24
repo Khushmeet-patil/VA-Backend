@@ -148,14 +148,35 @@ export const updateProfile = async (req: Request, res: Response) => {
             if (finalLat && finalLon && finalDob && finalTob) {
                 try {
                     const date = new Date(finalDob);
-                    const [hours, minutes] = finalTob.split(':').map(Number);
+
+                    // Parse time string which could be "14:30" or "02:30 PM"
+                    let hours = 0;
+                    let minutes = 0;
+                    const timeStr = finalTob.trim();
+
+                    if (timeStr.match(/PM|AM/i)) {
+                        const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+                        if (match) {
+                            hours = parseInt(match[1]);
+                            minutes = parseInt(match[2]);
+                            const period = match[3].toUpperCase();
+                            if (period === 'PM' && hours !== 12) hours += 12;
+                            if (period === 'AM' && hours === 12) hours = 0;
+                        }
+                    } else {
+                        const parts = timeStr.split(':');
+                        if (parts.length >= 2) {
+                            hours = parseInt(parts[0]);
+                            minutes = parseInt(parts[1]);
+                        }
+                    }
 
                     const astroData = await astrologyService.getAstroDetails({
                         day: date.getDate(),
                         month: date.getMonth() + 1,
                         year: date.getFullYear(),
-                        hour: hours || 0,
-                        min: minutes || 0,
+                        hour: hours,
+                        min: minutes,
                         lat: finalLat,
                         lon: finalLon,
                         tzone: finalTzone,
