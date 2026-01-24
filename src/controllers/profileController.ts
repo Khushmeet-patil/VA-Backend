@@ -99,8 +99,9 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
                     const firstMatch = geo.data[0];
                     newProfile.lat = parseFloat(firstMatch.latitude);
                     newProfile.lon = parseFloat(firstMatch.longitude);
-                    newProfile.tzone = parseFloat(firstMatch.timezone);
-                    newProfile.tzone = parseFloat(firstMatch.timezone);
+                    const parsedTzone = parseFloat(firstMatch.timezone);
+                    newProfile.tzone = isNaN(parsedTzone) ? 5.5 : parsedTzone;
+
                 }
             } catch (error) {
                 console.warn('[ProfileController] Geocoding failed:', error);
@@ -165,7 +166,10 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
 
     } catch (error: any) {
         console.error('Create profile error:', error);
-        res.status(500).json({ message: 'Failed to create profile' });
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: 'Validation Error', error: error.message });
+        }
+        res.status(500).json({ message: 'Failed to create profile', error: error.message });
     }
 };
 

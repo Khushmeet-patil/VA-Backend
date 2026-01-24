@@ -137,7 +137,8 @@ export const updateProfile = async (req: Request, res: Response) => {
                     const firstMatch = geo.data[0];
                     lat = parseFloat(firstMatch.latitude);
                     lon = parseFloat(firstMatch.longitude);
-                    tzone = parseFloat(firstMatch.timezone);
+                    const parsedTzone = parseFloat(firstMatch.timezone);
+                    tzone = isNaN(parsedTzone) ? 5.5 : parsedTzone;
 
                     updateData.lat = lat;
                     updateData.lon = lon;
