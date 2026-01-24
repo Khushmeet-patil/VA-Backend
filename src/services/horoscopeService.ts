@@ -93,14 +93,18 @@ class HoroscopeService {
      */
     async getDailyPrediction(sign: string, day: 'yesterday' | 'today' | 'tomorrow' = 'today', timezone: number = 5.5) {
         try {
+            console.log(`[HoroscopeService] Fetching daily prediction for ${sign} (${day}) from API...`);
             // Handling the sub-path logic correctly
             const endpoint = day === 'today'
                 ? `sun_sign_prediction/daily/${sign}`
                 : `sun_sign_prediction/daily/${day === 'tomorrow' ? 'next' : 'previous'}/${sign}`;
 
-            return await this.callApi(endpoint, { timezone });
+            const data = await this.callApi(endpoint, { timezone });
+            console.log(`[HoroscopeService] ✅ Successfully fetched REAL API data for ${sign} (${day}).`);
+            return data;
         } catch (error: any) {
-            console.warn(`[HoroscopeService] API call failed for ${sign} ${day}:`, error.message);
+            console.warn(`[HoroscopeService] ❌ API call failed for ${sign} ${day}:`, error.message);
+            console.log(`[HoroscopeService] ⚠️ Using FALLBACK data for ${sign} (${day}).`);
             // Fallback for unauthorized plans or API errors
             return {
                 status: true,
@@ -162,9 +166,13 @@ class HoroscopeService {
      */
     async getMonthlyPrediction(sign: string, timezone: number = 5.5) {
         try {
-            return await this.callApi(`horoscope_prediction/monthly/${sign}`, { timezone });
+            console.log(`[HoroscopeService] Fetching MONTHLY prediction for ${sign} from API...`);
+            const data = await this.callApi(`horoscope_prediction/monthly/${sign}`, { timezone });
+            console.log(`[HoroscopeService] ✅ Successfully fetched REAL MONTHLY API data for ${sign}.`);
+            return data;
         } catch (error: any) {
-            console.warn(`[HoroscopeService] API call failed for monthly ${sign}:`, error.message);
+            console.warn(`[HoroscopeService] ❌ API call failed for monthly ${sign}:`, error.message);
+            console.log(`[HoroscopeService] ⚠️ Using FALLBACK MONTHLY data for ${sign}.`);
             return {
                 status: true,
                 prediction: [
@@ -179,9 +187,13 @@ class HoroscopeService {
      */
     async getYearlyPrediction(sign: string, year: number, timezone: number = 5.5) {
         try {
-            return await this.callApi(`horoscope_prediction/yearly/${sign}`, { year, timezone });
+            console.log(`[HoroscopeService] Fetching YEARLY prediction for ${sign} (${year}) from API...`);
+            const data = await this.callApi(`horoscope_prediction/yearly/${sign}`, { year, timezone });
+            console.log(`[HoroscopeService] ✅ Successfully fetched REAL YEARLY API data for ${sign}.`);
+            return data;
         } catch (error: any) {
-            console.warn(`[HoroscopeService] API call failed for yearly ${sign}:`, error.message);
+            console.warn(`[HoroscopeService] ❌ API call failed for yearly ${sign}:`, error.message);
+            console.log(`[HoroscopeService] ⚠️ Using FALLBACK YEARLY data for ${sign}.`);
             return {
                 status: true,
                 prediction: [
