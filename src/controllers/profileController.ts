@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
-import horoscopeService from '../services/horoscopeService';
+import geoService from '../services/geoService';
 
 /**
  * Profile Controller
@@ -93,11 +93,12 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         // Geocode Place of Birth
         if (placeOfBirth) {
             try {
-                const geo = await horoscopeService.getGeoDetails(placeOfBirth);
-                if (geo.status && geo.data) {
-                    newProfile.lat = geo.data.latitude;
-                    newProfile.lon = geo.data.longitude;
-                    newProfile.tzone = geo.data.timezone;
+                const geo = await geoService.getGeoDetails(placeOfBirth);
+                if (geo.status && geo.data && geo.data.length > 0) {
+                    const firstMatch = geo.data[0];
+                    newProfile.lat = parseFloat(firstMatch.latitude);
+                    newProfile.lon = parseFloat(firstMatch.longitude);
+                    newProfile.tzone = parseFloat(firstMatch.timezone);
                 }
             } catch (error) {
                 console.warn('[ProfileController] Geocoding failed:', error);
@@ -188,20 +189,6 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         let tzone: number | undefined;
 
         // Fallback geocoding if place changed and no coords provided
-        // Only if placeOfBirth is provided (implies update) and lat/lon are missing
-        if (placeOfBirth && (lat === undefined || lon === undefined)) {
-            try {
-                const geo = await horoscopeService.getGeoDetails(placeOfBirth);
-                if (geo.status && geo.data) {
-                    lat = geo.data.latitude;
-                    lon = geo.data.longitude;
-                    tzone = geo.data.timezone;
-                }
-            } catch (error) {
-                console.warn('[ProfileController] Geocoding failed:', error);
-            }
-        }
-
         // If updating default profile, update user's main fields
         if (id === 'default') {
             if (name) user.name = name;

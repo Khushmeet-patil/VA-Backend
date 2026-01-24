@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import ChatSession from '../models/ChatSession';
 import Transaction from '../models/Transaction';
-import horoscopeService from '../services/horoscopeService';
+import geoService from '../services/geoService';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -108,12 +108,17 @@ export const updateProfile = async (req: Request, res: Response) => {
         // If POB is new/changed and we don't have lat/lon from frontend
         if (pob && (lat === undefined || lon === undefined)) {
             try {
-                const geo = await horoscopeService.getGeoDetails(pob);
-                if (geo.status && geo.data) {
-                    lat = geo.data.latitude;
-                    lon = geo.data.longitude;
-                    tzone = geo.data.timezone;
+                const geo = await geoService.getGeoDetails(pob);
+                if (geo.status && geo.data && geo.data.length > 0) {
+                    // Extract first result from array
+                    const firstMatch = geo.data[0];
+                    lat = parseFloat(firstMatch.latitude);
+                    lon = parseFloat(firstMatch.longitude);
+                    tzone = parseFloat(firstMatch.timezone);
 
+                    updateData.lat = lat;
+                    updateData.lon = lon;
+                    updateData.tzone = tzone;
                     console.log(`[AuthController] Geocoded ${pob}: ${lat}, ${lon}`);
                 }
             } catch (geoError) {
@@ -121,63 +126,6 @@ export const updateProfile = async (req: Request, res: Response) => {
             }
         }
 
-        // 2. Fetch Zodiac Sign (Rashi) if birth details are present
-        // We need DOB, TOB, and Lat/Lon
-        if (dob && tob && lat && lon) {
-            try {
-                // Parse DOB (Expected format: DD-MM-YYYY or ISO)
-                // Try to handle DD-MM-YYYY common in India
-                let d, m, y;
-                if (dob.includes('-')) {
-                    const parts = dob.split('-');
-                    if (parts[0].length === 4) {
-                        // YYYY-MM-DD
-                        y = parseInt(parts[0]);
-                        m = parseInt(parts[1]);
-                        d = parseInt(parts[2]);
-                    } else {
-                        // DD-MM-YYYY
-                        d = parseInt(parts[0]);
-                        m = parseInt(parts[1]);
-                        y = parseInt(parts[2]);
-                    }
-                } else {
-                    // Fallback or other format
-                    const dateObj = new Date(dob);
-                    d = dateObj.getDate();
-                    m = dateObj.getMonth() + 1;
-                    y = dateObj.getFullYear();
-                }
-
-                // Parse TOB (HH:mm)
-                const [hour, min] = tob.split(':').map(Number);
-
-                if (d && m && y && !isNaN(hour) && !isNaN(min)) {
-                    // console.log(`[AuthController] Fetching Astro Details for Sign: ${d}-${m}-${y} ${hour}:${min}`);
-
-                    const astroPayload = {
-                        day: d,
-                        month: m,
-                        year: y,
-                        hour: hour,
-                        min: min,
-                        lat: lat,
-                        lon: lon,
-                        tzone: tzone
-                    };
-
-                    const astroData = await horoscopeService.getAstroDetails(astroPayload);
-                    if (astroData && astroData.sign) {
-                        // API returns "sign" which is Moon Sign (Rashi) in Vedic context
-                        updateData.zodiacSign = astroData.sign;
-                        // console.log(`[AuthController] Calculated Zodiac Sign: ${astroData.sign}`);
-                    }
-                }
-
-            } catch (astroError) {
-                console.warn('[AuthController] Failed to fetch astro details:', astroError);
-            }
-        }
 
         if (lat !== undefined) updateData.lat = lat;
         if (lon !== undefined) updateData.lon = lon;
