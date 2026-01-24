@@ -9,6 +9,7 @@ import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Ser
 import ChatSession from '../models/ChatSession';
 import Transaction from '../models/Transaction';
 import geoService from '../services/geoService';
+import astrologyService from '../services/astrologyService';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -131,6 +132,43 @@ export const updateProfile = async (req: Request, res: Response) => {
         if (lon !== undefined) updateData.lon = lon;
         if (timezone !== undefined) updateData.timezone = timezone;
         if (tzone !== undefined) updateData.tzone = tzone;
+
+        // Fetch Zodiac Sign if lat/lon/dob/tob available
+        // Use either new values or fallback to existing user values (we'd need to fetch user for fallback if not provided)
+        // For simplicity, we only trigger if we have enough info in this request or if we fetch the user first.
+        // Let's fetch the user first to get current values if not provided.
+        const existingUser = await User.findById(userId);
+        if (existingUser) {
+            const finalLat = updateData.lat ?? existingUser.lat;
+            const finalLon = updateData.lon ?? existingUser.lon;
+            const finalDob = updateData.dob ?? existingUser.dob;
+            const finalTob = updateData.tob ?? existingUser.tob;
+            const finalTzone = updateData.tzone ?? existingUser.tzone ?? 5.5;
+
+            if (finalLat && finalLon && finalDob && finalTob) {
+                try {
+                    const date = new Date(finalDob);
+                    const [hours, minutes] = finalTob.split(':').map(Number);
+
+                    const astroData = await astrologyService.getAstroDetails({
+                        day: date.getDate(),
+                        month: date.getMonth() + 1,
+                        year: date.getFullYear(),
+                        hour: hours || 0,
+                        min: minutes || 0,
+                        lat: finalLat,
+                        lon: finalLon,
+                        tzone: finalTzone,
+                    });
+
+                    if (astroData && astroData.sign) {
+                        updateData.zodiacSign = astroData.sign;
+                    }
+                } catch (error) {
+                    console.error('[AuthController] Failed to fetch zodiac sign:', error);
+                }
+            }
+        }
 
         // Handle profile photo upload to R2
         if (profilePhoto !== undefined) {
