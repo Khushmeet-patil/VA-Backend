@@ -10,5 +10,6 @@ router.post('/panchang', horoscopeController.getLuckyTime);
 router.post('/monthly', horoscopeController.getMonthlyPrediction);
 router.post('/yearly', horoscopeController.getYearlyPrediction);
 router.get('/remedies/:sign', horoscopeController.getRemedies);
+router.get('/places', horoscopeController.searchPlaces);
 
 export default router;

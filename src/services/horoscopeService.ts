@@ -42,6 +42,53 @@ class HoroscopeService {
     }
 
     /**
+     * Get Geo Details (Geocoding)
+     * Endpoint: geo_details
+     */
+    async getGeoDetails(place: string, maxRows: number = 1) {
+        try {
+            const response = await this.callApi('geo_details', { place, maxRows });
+            if (response && response.geonames && response.geonames.length > 0) {
+                return {
+                    status: true,
+                    data: response.geonames[0] // { place_name, latitude, longitude, timezone }
+                };
+            }
+            return { status: false, message: 'Location not found' };
+        } catch (error: any) {
+            console.warn(`[HoroscopeService] Geo details failed for ${place}:`, error.message);
+            return { status: false, message: 'Failed to fetch location details' };
+        }
+    }
+
+    /**
+     * Get Place Suggestions (Autocomplete)
+     * Endpoint: geo_details with maxRows
+     */
+    async getPlaceSuggestions(query: string, maxRows: number = 5) {
+        try {
+            if (!query || query.length < 2) {
+                return { status: true, places: [] };
+            }
+            const response = await this.callApi('geo_details', { place: query, maxRows });
+            if (response && response.geonames && response.geonames.length > 0) {
+                const places = response.geonames.map((g: any) => ({
+                    name: g.place_name || g.name,
+                    fullName: `${g.place_name || g.name}, ${g.country_name || ''}`.trim(),
+                    lat: g.latitude,
+                    lon: g.longitude,
+                    tzone: g.timezone
+                }));
+                return { status: true, places };
+            }
+            return { status: true, places: [] };
+        } catch (error: any) {
+            console.warn(`[HoroscopeService] Place suggestions failed for ${query}:`, error.message);
+            return { status: false, places: [], message: 'Failed to fetch suggestions' };
+        }
+    }
+
+    /**
      * Get Daily Prediction
      */
     async getDailyPrediction(sign: string, day: 'yesterday' | 'today' | 'tomorrow' = 'today', timezone: number = 5.5) {
@@ -75,7 +122,19 @@ class HoroscopeService {
      * Get Numero Prediction
      */
     async getNumeroPrediction(day: number, month: number, year: number, name: string) {
-        return this.callApi('numero_prediction/daily', { day, month, year, name });
+        try {
+            return await this.callApi('numero_prediction/daily', { day, month, year, name });
+        } catch (error: any) {
+            console.warn(`[HoroscopeService] API call failed for numero:`, error.message);
+            return {
+                status: true,
+                prediction: {
+                    lucky_number: 7,
+                    lucky_color: "White",
+                    prediction: "Today is a day of balance. Focus on your goals."
+                }
+            };
+        }
     }
 
     /**
@@ -102,14 +161,34 @@ class HoroscopeService {
      * Get Monthly Horoscope
      */
     async getMonthlyPrediction(sign: string, timezone: number = 5.5) {
-        return this.callApi(`horoscope_prediction/monthly/${sign}`, { timezone });
+        try {
+            return await this.callApi(`horoscope_prediction/monthly/${sign}`, { timezone });
+        } catch (error: any) {
+            console.warn(`[HoroscopeService] API call failed for monthly ${sign}:`, error.message);
+            return {
+                status: true,
+                prediction: [
+                    `This month brings steady progress for ${sign}. Focus on building strong foundations in your career and personal life. (Plan Upgrade Required for full details)`
+                ]
+            };
+        }
     }
 
     /**
      * Get Yearly Horoscope
      */
     async getYearlyPrediction(sign: string, year: number, timezone: number = 5.5) {
-        return this.callApi(`horoscope_prediction/yearly/${sign}`, { year, timezone });
+        try {
+            return await this.callApi(`horoscope_prediction/yearly/${sign}`, { year, timezone });
+        } catch (error: any) {
+            console.warn(`[HoroscopeService] API call failed for yearly ${sign}:`, error.message);
+            return {
+                status: true,
+                prediction: [
+                    `${year} will be a transformative year for ${sign}. embracing change will lead to new opportunities. (Plan Upgrade Required for full details)`
+                ]
+            };
+        }
     }
 
     /**

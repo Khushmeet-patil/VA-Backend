@@ -88,3 +88,17 @@ export const getRemedies = async (req: Request, res: Response) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+export const searchPlaces = async (req: Request, res: Response) => {
+    try {
+        const { query } = req.query;
+        if (!query || typeof query !== 'string') {
+            res.status(400).json({ message: 'Query parameter is required' });
+            return;
+        }
+        const data = await horoscopeService.getPlaceSuggestions(query);
+        res.json(data);
+    } catch (error: any) {
+        res.status(500).json({ message: error.message });
+    }
+};

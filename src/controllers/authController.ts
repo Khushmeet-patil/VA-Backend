@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import ChatSession from '../models/ChatSession';
 import Transaction from '../models/Transaction';
+import horoscopeService from '../services/horoscopeService';
 
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -97,6 +98,23 @@ export const updateProfile = async (req: Request, res: Response) => {
 
         const updateData: any = { name, gender, dob, tob, pob, isVerified: true };
         if (zodiacSign) updateData.zodiacSign = zodiacSign;
+
+        // Geocode Place of Birth if provided
+        if (pob) {
+            try {
+                // Check if we need to geocode (e.g. if pob changed or lat/lon missing)
+                // For simplicity, we re-geocode if POB is provided in update
+                const geo = await horoscopeService.getGeoDetails(pob);
+                if (geo.status && geo.data) {
+                    updateData.lat = geo.data.latitude;
+                    updateData.lon = geo.data.longitude;
+                    updateData.tzone = geo.data.timezone;
+                    console.log(`[AuthController] Geocoded ${pob}: ${updateData.lat}, ${updateData.lon}`);
+                }
+            } catch (geoError) {
+                console.warn('[AuthController] Geocoding failed:', geoError);
+            }
+        }
 
         // Handle profile photo upload to R2
         if (profilePhoto !== undefined) {
