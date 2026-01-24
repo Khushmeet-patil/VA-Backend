@@ -31,6 +31,7 @@ export interface IUser extends Document {
     birthProfiles: IBirthProfile[];  // Saved birth profiles for chat intake
     fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
     fcmTokenUpdatedAt?: Date;  // When the FCM token was last updated
+    zodiacSign?: string;
     createdAt: Date;
 }
 
@@ -62,6 +63,7 @@ const UserSchema: Schema = new Schema({
     birthProfiles: { type: [BirthProfileSchema], default: [] },
     fcmToken: { type: String },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
+    zodiacSign: { type: String }, // User's preferred Zodiac Sign (e.g., Aries)
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);
