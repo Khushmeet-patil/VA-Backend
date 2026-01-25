@@ -21,6 +21,7 @@ api.interceptors.request.use((config) => {
 
 export const getBirthDetails = async (input: any) => {
     try {
+        console.log('[KundliService] Astrology API /birth_details input:', JSON.stringify(input));
         const response = await api.post('/birth_details', input);
         return response.data;
     } catch (error: any) {
@@ -42,6 +43,7 @@ export const getBirthDetails = async (input: any) => {
 
 export const getManglik = async (input: any) => {
     try {
+        console.log('[KundliService] Astrology API /manglik input:', JSON.stringify(input));
         const response = await api.post('/manglik', input);
         return response.data;
     } catch (error: any) {
@@ -52,6 +54,7 @@ export const getManglik = async (input: any) => {
 
 export const getBasicPanchang = async (input: any) => {
     try {
+        console.log('[KundliService] Astrology API /basic_panchang/sunrise input:', JSON.stringify(input));
         const response = await api.post('/basic_panchang/sunrise', input);
         return response.data;
     } catch (error: any) {
@@ -62,6 +65,7 @@ export const getBasicPanchang = async (input: any) => {
 
 export const getAstroDetails = async (input: any) => {
     try {
+        console.log('[KundliService] Astrology API /astro_details input:', JSON.stringify(input));
         const response = await api.post('/astro_details', input);
         return response.data;
     } catch (error: any) {

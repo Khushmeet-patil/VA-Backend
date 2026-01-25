@@ -7,6 +7,7 @@ interface AuthRequest extends Request {
 
 export const getBirthDetails = async (req: AuthRequest, res: Response) => {
     try {
+        console.log('[KundliController] Received BirthDetails request:', JSON.stringify(req.body));
         const data = await kundliService.getBirthDetails(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -17,6 +18,7 @@ export const getBirthDetails = async (req: AuthRequest, res: Response) => {
 
 export const getManglik = async (req: AuthRequest, res: Response) => {
     try {
+        console.log('[KundliController] Received Manglik request:', JSON.stringify(req.body));
         const data = await kundliService.getManglik(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -27,6 +29,7 @@ export const getManglik = async (req: AuthRequest, res: Response) => {
 
 export const getBasicPanchang = async (req: AuthRequest, res: Response) => {
     try {
+        console.log('[KundliController] Received BasicPanchang request:', JSON.stringify(req.body));
         const data = await kundliService.getBasicPanchang(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -37,6 +40,7 @@ export const getBasicPanchang = async (req: AuthRequest, res: Response) => {
 
 export const getAstroDetails = async (req: AuthRequest, res: Response) => {
     try {
+        console.log('[KundliController] Received AstroDetails request:', JSON.stringify(req.body));
         const data = await kundliService.getAstroDetails(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
