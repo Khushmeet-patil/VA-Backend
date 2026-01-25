@@ -1,5 +1,5 @@
 import express from 'express';
-import { getProfiles, createProfile, deleteProfile, updateProfile } from '../controllers/profileController';
+import { getProfiles, createProfile, deleteProfile, updateProfile, getProfileById } from '../controllers/profileController';
 import { authMiddleware } from '../middleware/auth';
 
 const router = express.Router();
@@ -9,6 +9,9 @@ router.use(authMiddleware);
 
 // GET /profiles - Get all saved birth profiles
 router.get('/', getProfiles);
+
+// GET /profiles/:id - Get a single birth profile by ID
+router.get('/:id', getProfileById);
 
 // POST /profiles - Create a new birth profile
 router.post('/', createProfile);

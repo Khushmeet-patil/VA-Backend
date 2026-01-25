@@ -1,7 +1,8 @@
-import { Request, Response } from 'express';
+import express, { Request, Response } from 'express';
 import User from '../models/User';
 import geoService from '../services/geoService';
 import astrologyService from '../services/astrologyService';
+import mongoose from 'mongoose';
 
 /**
  * Profile Controller
@@ -52,6 +53,61 @@ export const getProfiles = async (req: AuthRequest, res: Response) => {
     } catch (error: any) {
         console.error('Get profiles error:', error);
         res.status(500).json({ message: 'Failed to get profiles' });
+    }
+};
+
+/**
+ * GET /profiles/:id
+ * Get a single birth profile by ID for the authenticated user
+ */
+export const getProfileById = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.userId;
+        const { id } = req.params;
+
+        if (!userId) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Handle default profile
+        if (id === 'default') {
+            const defaultProfile = {
+                _id: 'default',
+                name: user.name || '',
+                gender: user.gender || '',
+                dateOfBirth: user.dob || '',
+                timeOfBirth: user.tob || '',
+                placeOfBirth: user.pob || '',
+                lat: user.lat,
+                lon: user.lon,
+                timezone: user.timezone,
+                isDefault: true,
+            };
+            return res.json({ profile: defaultProfile });
+        }
+
+        // Validate ID format
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid profile ID' });
+        }
+
+        // Find the specific profile
+        const profile = user.birthProfiles.find(p => (p as any)._id?.toString() === id);
+
+        if (!profile) {
+            return res.status(404).json({ message: 'Profile not found' });
+        }
+
+        res.json({ profile });
+
+    } catch (error: any) {
+        console.error('Get profile by ID error:', error);
+        res.status(500).json({ message: 'Failed to get profile' });
     }
 };
 
