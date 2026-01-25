@@ -21,6 +21,7 @@ import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
 import astrologyRoutes from './routes/astrologyProxyRoutes';
+import matchingRoutes from './routes/matchingRoutes';
 
 console.log('All modules loaded successfully');
 
@@ -71,6 +72,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/profiles', profileRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/astrology', astrologyRoutes);
+app.use('/api/matching', matchingRoutes);
 
 // Root route
 app.get('/', (req, res) => {
