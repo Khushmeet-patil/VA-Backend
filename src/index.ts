@@ -22,6 +22,7 @@ import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
 import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
+import kundliRoutes from './routes/kundliRoutes';
 
 console.log('All modules loaded successfully');
 
@@ -73,6 +74,7 @@ app.use('/api/profiles', profileRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/astrology', astrologyRoutes);
 app.use('/api/matching', matchingRoutes);
+app.use('/api/kundli', kundliRoutes);
 
 // Root route
 app.get('/', (req, res) => {

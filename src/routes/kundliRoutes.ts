@@ -1,0 +1,13 @@
+import express from 'express';
+import { authMiddleware } from '../middleware/auth';
+import kundliController from '../controllers/kundliController';
+
+const router = express.Router();
+
+// Protected routes for Kundli-related data
+router.post('/birth-details', authMiddleware, kundliController.getBirthDetails);
+router.post('/manglik', authMiddleware, kundliController.getManglik);
+router.post('/panchang', authMiddleware, kundliController.getBasicPanchang);
+router.post('/astro-details', authMiddleware, kundliController.getAstroDetails);
+
+export default router;
