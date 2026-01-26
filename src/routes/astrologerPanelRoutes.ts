@@ -11,7 +11,8 @@ import {
     updateChatRate,
     requestWithdrawal,
     getWithdrawalHistory,
-    getSessionHistory
+    getSessionHistory,
+    getPanelReviews
 } from '../controllers/astrologerPanelController';
 import { authMiddleware } from '../middleware/auth';
 
@@ -29,6 +30,7 @@ router.put('/status', authMiddleware, toggleStatus);
 router.put('/rate', authMiddleware, updateChatRate);
 router.get('/stats', authMiddleware, getStats);
 router.get('/chats', authMiddleware, getChats);
+router.get('/reviews', authMiddleware, getPanelReviews);
 
 // Withdrawal routes
 router.post('/withdraw', authMiddleware, requestWithdrawal);

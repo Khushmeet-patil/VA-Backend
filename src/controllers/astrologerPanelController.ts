@@ -5,6 +5,7 @@ import Otp from '../models/Otp';
 import ChatSession from '../models/ChatSession';
 import ChatMessage from '../models/ChatMessage';
 import Withdrawal from '../models/Withdrawal';
+import ChatReview from '../models/ChatReview';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 
 // Check if astrologer exists by mobile
@@ -319,19 +320,25 @@ export const getStats = async (req: Request, res: Response) => {
             ? Math.round(stats.totalDuration / stats.totalChats)
             : 0;
 
-        // Calculate Today's Stats
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
+        // Calculate Today's Stats (IST Timezone: UTC + 5:30)
+        const nowUTC = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(nowUTC.getTime() + istOffset);
 
-        const endOfToday = new Date();
-        endOfToday.setHours(23, 59, 59, 999);
+        const startOfTodayIST = new Date(istNow);
+        startOfTodayIST.setUTCHours(0, 0, 0, 0);
+        const startOfTodayUTC = new Date(startOfTodayIST.getTime() - istOffset);
+
+        const endOfTodayIST = new Date(istNow);
+        endOfTodayIST.setUTCHours(23, 59, 59, 999);
+        const endOfTodayUTC = new Date(endOfTodayIST.getTime() - istOffset);
 
         const todayStats = await ChatSession.aggregate([
             {
                 $match: {
                     astrologerId: astrologer._id,
                     status: 'ENDED',
-                    updatedAt: { $gte: startOfToday, $lte: endOfToday },
+                    updatedAt: { $gte: startOfTodayUTC, $lte: endOfTodayUTC },
                     astrologerEarnings: { $gt: 0 }
                 }
             },
@@ -346,6 +353,20 @@ export const getStats = async (req: Request, res: Response) => {
 
         const todayData = todayStats[0] || { todayEarnings: 0, todayChats: 0 };
 
+        // Get Rating Distribution
+        const ratingDistribution = await ChatReview.aggregate([
+            { $match: { astrologerId: astrologer._id } },
+            { $group: { _id: '$rating', count: { $sum: 1 } } },
+            { $sort: { _id: -1 } }
+        ]);
+
+        const ratingCounts: { [key: number]: number } = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+        ratingDistribution.forEach((r: any) => {
+            if (r._id >= 1 && r._id <= 5) {
+                ratingCounts[r._id] = r.count;
+            }
+        });
+
         res.json({
             success: true,
             data: {
@@ -356,6 +377,10 @@ export const getStats = async (req: Request, res: Response) => {
                 todayChats: todayData.todayChats,
                 todayEarnings: todayData.todayEarnings,
                 averageChatTime: avgChatTime,
+                followersCount: astrologer.followersCount || 0,
+                rating: astrologer.rating || 0,
+                reviewsCount: astrologer.reviewsCount || 0,
+                ratingDistribution: ratingCounts
             }
         });
 
@@ -641,6 +666,46 @@ export const getSessionHistory = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('getSessionHistory error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+// Get Astrologer Reviews for the Panel
+export const getPanelReviews = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const skip = (page - 1) * limit;
+
+        const reviews = await ChatReview.find({ astrologerId })
+            .populate('userId', 'name')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        const totalReviews = await ChatReview.countDocuments({ astrologerId });
+
+        res.json({
+            success: true,
+            data: {
+                reviews: reviews.map((r: any) => ({
+                    id: r._id,
+                    user: r.userId?.name || 'User',
+                    rating: r.rating,
+                    comment: r.reviewText || '',
+                    time: r.createdAt
+                })),
+                pagination: {
+                    page,
+                    limit,
+                    total: totalReviews,
+                    hasMore: skip + reviews.length < totalReviews
+                }
+            }
+        });
+    } catch (error: any) {
+        console.error('getPanelReviews error:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

@@ -72,11 +72,37 @@ export const getAstroDetails = async (input: any) => {
         console.error('Astrology API AstroDetails Error:', error.response?.data || error.message);
         throw error;
     }
+
 };
+
+export const getPlanets = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /planets input:', JSON.stringify(input));
+        const response = await api.post('/planets', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API Planets Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getChartImage = async (input: any, chartId: string) => {
+    try {
+        console.log(`[KundliService] Astrology API /horo_chart_image/${chartId} input:`, JSON.stringify(input));
+        const response = await api.post(`/horo_chart_image/${chartId}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API Chart Image (${chartId}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
 
 export default {
     getBirthDetails,
     getManglik,
     getBasicPanchang,
-    getAstroDetails
+    getAstroDetails,
+    getPlanets,
+    getChartImage
 };

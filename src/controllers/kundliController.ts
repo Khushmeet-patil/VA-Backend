@@ -47,11 +47,38 @@ export const getAstroDetails = async (req: AuthRequest, res: Response) => {
         console.error('[KundliController] AstroDetails Error:', error);
         return res.status(500).json({ success: false, message: error.message || 'Failed to fetch astro details' });
     }
+
 };
+
+export const getPlanets = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received Planets request:', JSON.stringify(req.body));
+        const data = await kundliService.getPlanets(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] Planets Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch planetary details' });
+    }
+};
+
+export const getChartImage = async (req: AuthRequest, res: Response) => {
+    try {
+        const { chartId } = req.params;
+        console.log(`[KundliController] Received ChartImage request for ${chartId}:`, JSON.stringify(req.body));
+        const data = await kundliService.getChartImage(req.body, chartId);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] ChartImage Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch chart image' });
+    }
+};
+
 
 export default {
     getBirthDetails,
     getManglik,
     getBasicPanchang,
-    getAstroDetails
+    getAstroDetails,
+    getPlanets,
+    getChartImage
 };

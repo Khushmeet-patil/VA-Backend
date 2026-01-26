@@ -9,5 +9,7 @@ router.post('/birth-details', authMiddleware, kundliController.getBirthDetails);
 router.post('/manglik', authMiddleware, kundliController.getManglik);
 router.post('/panchang', authMiddleware, kundliController.getBasicPanchang);
 router.post('/astro-details', authMiddleware, kundliController.getAstroDetails);
+router.post('/planets', authMiddleware, kundliController.getPlanets);
+router.post('/horo-chart/:chartId', authMiddleware, kundliController.getChartImage);
 
 export default router;
