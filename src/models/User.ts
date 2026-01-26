@@ -6,12 +6,18 @@ export interface IBirthProfile {
     name: string;
     gender: string;
     dateOfBirth: string;  // ISO date string YYYY-MM-DD
-    timeOfBirth: string;  // HH:mm format
+    timeOfBirth: string;  // "10:30 PM" format
     placeOfBirth: string;
+    // API Numeric Fields
+    day?: number;
+    month?: number;
+    year?: number;
+    hour?: number;
+    min?: number;
     lat?: number;
     lon?: number;
-    timezone?: string;
     tzone?: number;
+    timezone?: string;
     sign?: string;
     createdAt: Date;
 }
@@ -24,10 +30,16 @@ export interface IUser extends Document {
     dob?: string;
     tob?: string;
     pob?: string;
+    // API Numeric Fields
+    day?: number;
+    month?: number;
+    year?: number;
+    hour?: number;
+    min?: number;
     lat?: number;
     lon?: number;
-    timezone?: string;
     tzone?: number;
+    timezone?: string;
     profilePhoto?: string;  // R2 URL or base64 (legacy) profile picture
     otp?: string;
     otpExpires?: Date;
@@ -49,6 +61,11 @@ const BirthProfileSchema: Schema = new Schema({
     dateOfBirth: { type: String, required: true },
     timeOfBirth: { type: String, required: true },
     placeOfBirth: { type: String, required: true },
+    day: { type: Number },
+    month: { type: Number },
+    year: { type: Number },
+    hour: { type: Number },
+    min: { type: Number },
     lat: { type: Number },
     lon: { type: Number },
     timezone: { type: String },
@@ -65,6 +82,11 @@ const UserSchema: Schema = new Schema({
     dob: { type: String },
     tob: { type: String },
     pob: { type: String },
+    day: { type: Number },
+    month: { type: Number },
+    year: { type: Number },
+    hour: { type: Number },
+    min: { type: Number },
     lat: { type: Number },
     lon: { type: Number },
     timezone: { type: String },

@@ -118,7 +118,11 @@ export const getProfileById = async (req: AuthRequest, res: Response) => {
 export const createProfile = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
-        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth, lat, lon, timezone } = req.body;
+        const {
+            name, gender, dateOfBirth, timeOfBirth, placeOfBirth,
+            lat, lon, timezone, tzone: reqTzone,
+            day, month, year, hour: reqHour, min: reqMin
+        } = req.body;
 
         if (!userId) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -141,14 +145,20 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
             dateOfBirth,
             timeOfBirth,
             placeOfBirth,
+            day,
+            month,
+            year,
+            hour: reqHour,
+            min: reqMin,
             lat,
             lon,
             timezone,
+            tzone: reqTzone,
             createdAt: new Date(),
         };
 
-        // Geocode Place of Birth
-        if (placeOfBirth) {
+        // Geocode Place of Birth only if lat/lon not provided
+        if (placeOfBirth && (newProfile.lat === undefined || newProfile.lon === undefined)) {
             try {
                 const geo = await geoService.getGeoDetails(placeOfBirth);
                 if (geo.status && geo.data && geo.data.length > 0) {
@@ -156,49 +166,27 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
                     newProfile.lat = parseFloat(firstMatch.latitude);
                     newProfile.lon = parseFloat(firstMatch.longitude);
                     const parsedTzone = parseFloat(firstMatch.timezone);
-                    newProfile.tzone = isNaN(parsedTzone) ? 5.5 : parsedTzone;
-
+                    if (newProfile.tzone === undefined) {
+                        newProfile.tzone = isNaN(parsedTzone) ? 5.5 : parsedTzone;
+                    }
                 }
             } catch (error) {
                 console.warn('[ProfileController] Geocoding failed:', error);
             }
         }
 
-        // Fetch Astro Sign if lat/lon/tzone available
-        if (newProfile.lat && newProfile.lon && newProfile.dateOfBirth && newProfile.timeOfBirth) {
+        // Fetch Astro Sign if lat/lon/day/month/year/hour/min available
+        if (newProfile.lat && newProfile.lon && newProfile.day && newProfile.month && newProfile.year) {
             try {
-                const date = new Date(newProfile.dateOfBirth);
-                // Parse time string which could be "14:30" or "02:30 PM"
-                let hours = 0;
-                let minutes = 0;
-                const timeStr = newProfile.timeOfBirth.trim();
-
-                if (timeStr.match(/PM|AM/i)) {
-                    const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-                    if (match) {
-                        hours = parseInt(match[1]);
-                        minutes = parseInt(match[2]);
-                        const period = match[3].toUpperCase();
-                        if (period === 'PM' && hours !== 12) hours += 12;
-                        if (period === 'AM' && hours === 12) hours = 0;
-                    }
-                } else {
-                    const parts = timeStr.split(':');
-                    if (parts.length >= 2) {
-                        hours = parseInt(parts[0]);
-                        minutes = parseInt(parts[1]);
-                    }
-                }
-
                 const astroData = await astrologyService.getAstroDetails({
-                    day: date.getDate(),
-                    month: date.getMonth() + 1,
-                    year: date.getFullYear(),
-                    hour: hours,
-                    min: minutes,
+                    day: newProfile.day,
+                    month: newProfile.month,
+                    year: newProfile.year,
+                    hour: newProfile.hour || 0,
+                    min: newProfile.min || 0,
                     lat: newProfile.lat,
                     lon: newProfile.lon,
-                    tzone: newProfile.tzone || 5.5, // Default to India if missing
+                    tzone: newProfile.tzone || 5.5,
                 });
 
                 if (astroData && astroData.sign) {
@@ -279,7 +267,11 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
         const { id } = req.params;
-        const { name, gender, dateOfBirth, timeOfBirth, placeOfBirth, lat: reqLat, lon: reqLon, timezone } = req.body;
+        const {
+            name, gender, dateOfBirth, timeOfBirth, placeOfBirth,
+            lat: reqLat, lon: reqLon, timezone, tzone: reqTzone,
+            day, month, year, hour: reqHour, min: reqMin
+        } = req.body;
 
         if (!userId) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -293,7 +285,12 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         // Prepare values
         let lat = reqLat;
         let lon = reqLon;
-        let tzone: number | undefined;
+        let tzone = reqTzone;
+        let dayVal = day;
+        let monthVal = month;
+        let yearVal = year;
+        let hourVal = reqHour;
+        let minVal = reqMin;
 
         // Fallback geocoding if place changed and no coords provided
         // If updating default profile, update user's main fields
@@ -303,6 +300,11 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
             if (dateOfBirth) user.dob = dateOfBirth;
             if (timeOfBirth) user.tob = timeOfBirth;
             if (placeOfBirth) user.pob = placeOfBirth;
+            if (dayVal !== undefined) user.day = dayVal;
+            if (monthVal !== undefined) user.month = monthVal;
+            if (yearVal !== undefined) user.year = yearVal;
+            if (hourVal !== undefined) user.hour = hourVal;
+            if (minVal !== undefined) user.min = minVal;
             if (lat !== undefined) user.lat = lat;
             if (lon !== undefined) user.lon = lon;
             if (timezone !== undefined) user.timezone = timezone;
@@ -341,55 +343,30 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         if (dateOfBirth) profile.dateOfBirth = dateOfBirth;
         if (timeOfBirth) profile.timeOfBirth = timeOfBirth;
         if (placeOfBirth) profile.placeOfBirth = placeOfBirth;
+        if (dayVal !== undefined) profile.day = dayVal;
+        if (monthVal !== undefined) profile.month = monthVal;
+        if (yearVal !== undefined) profile.year = yearVal;
+        if (hourVal !== undefined) profile.hour = hourVal;
+        if (minVal !== undefined) profile.min = minVal;
         if (lat !== undefined) profile.lat = lat;
         if (lon !== undefined) profile.lon = lon;
         if (timezone !== undefined) profile.timezone = timezone;
         if (tzone !== undefined) profile.tzone = tzone;
 
-        if (tzone !== undefined) profile.tzone = tzone;
-
         // If birth details changed, re-fetch sign
         if (dateOfBirth || timeOfBirth || placeOfBirth || lat !== undefined || lon !== undefined) {
             try {
-                // Use updated or existing values
-                const pDate = profile.dateOfBirth ? new Date(profile.dateOfBirth) : new Date();
-                const pTime = profile.timeOfBirth || "12:00";
-                const pLat = profile.lat;
-                const pLon = profile.lon;
-                const pTzone = profile.tzone || 5.5;
-
-                if (pLat && pLon) {
-                    // Parse time string which could be "14:30" or "02:30 PM"
-                    let hours = 0;
-                    let minutes = 0;
-                    const timeStr = pTime.trim();
-
-                    if (timeStr.match(/PM|AM/i)) {
-                        const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-                        if (match) {
-                            hours = parseInt(match[1]);
-                            minutes = parseInt(match[2]);
-                            const period = match[3].toUpperCase();
-                            if (period === 'PM' && hours !== 12) hours += 12;
-                            if (period === 'AM' && hours === 12) hours = 0;
-                        }
-                    } else {
-                        const parts = timeStr.split(':');
-                        if (parts.length >= 2) {
-                            hours = parseInt(parts[0]);
-                            minutes = parseInt(parts[1]);
-                        }
-                    }
-
+                // Use updated values from the profile object we just modified
+                if (profile.lat && profile.lon && profile.day && profile.month && profile.year) {
                     const astroData = await astrologyService.getAstroDetails({
-                        day: pDate.getDate(),
-                        month: pDate.getMonth() + 1,
-                        year: pDate.getFullYear(),
-                        hour: hours,
-                        min: minutes,
-                        lat: pLat,
-                        lon: pLon,
-                        tzone: pTzone,
+                        day: profile.day,
+                        month: profile.month,
+                        year: profile.year,
+                        hour: profile.hour || 0,
+                        min: profile.min || 0,
+                        lat: profile.lat,
+                        lon: profile.lon,
+                        tzone: profile.tzone || 5.5,
                     });
 
                     if (astroData && astroData.sign) {

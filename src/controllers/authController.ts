@@ -105,6 +105,12 @@ export const updateProfile = async (req: Request, res: Response) => {
             lat: reqLat,
             lon: reqLon,
             timezone,
+            tzone: reqTzone,
+            day,
+            month,
+            year,
+            hour: reqHour,
+            min: reqMin,
             profilePhoto,
             zodiacSign
         } = req.body;
@@ -155,6 +161,11 @@ export const updateProfile = async (req: Request, res: Response) => {
         if (lon !== undefined) updateData.lon = lon;
         if (timezone !== undefined) updateData.timezone = timezone;
         if (tzone !== undefined) updateData.tzone = tzone;
+        if (day !== undefined) updateData.day = day;
+        if (month !== undefined) updateData.month = month;
+        if (year !== undefined) updateData.year = year;
+        if (reqHour !== undefined) updateData.hour = reqHour;
+        if (reqMin !== undefined) updateData.min = reqMin;
 
         // Fetch Zodiac Sign if lat/lon/dob/tob available
         // Use either new values or fallback to existing user values (we'd need to fetch user for fallback if not provided)
@@ -164,42 +175,21 @@ export const updateProfile = async (req: Request, res: Response) => {
         if (existingUser) {
             const finalLat = updateData.lat ?? existingUser.lat;
             const finalLon = updateData.lon ?? existingUser.lon;
-            const finalDob = updateData.dob ?? existingUser.dob;
-            const finalTob = updateData.tob ?? existingUser.tob;
+            const finalDay = updateData.day ?? existingUser.day;
+            const finalMonth = updateData.month ?? existingUser.month;
+            const finalYear = updateData.year ?? existingUser.year;
+            const finalHour = updateData.hour ?? existingUser.hour ?? 0;
+            const finalMin = updateData.min ?? existingUser.min ?? 0;
             const finalTzone = updateData.tzone ?? existingUser.tzone ?? 5.5;
 
-            if (finalLat && finalLon && finalDob && finalTob) {
+            if (finalLat && finalLon && finalDay && finalMonth && finalYear) {
                 try {
-                    const date = new Date(finalDob);
-
-                    // Parse time string which could be "14:30" or "02:30 PM"
-                    let hours = 0;
-                    let minutes = 0;
-                    const timeStr = finalTob.trim();
-
-                    if (timeStr.match(/PM|AM/i)) {
-                        const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-                        if (match) {
-                            hours = parseInt(match[1]);
-                            minutes = parseInt(match[2]);
-                            const period = match[3].toUpperCase();
-                            if (period === 'PM' && hours !== 12) hours += 12;
-                            if (period === 'AM' && hours === 12) hours = 0;
-                        }
-                    } else {
-                        const parts = timeStr.split(':');
-                        if (parts.length >= 2) {
-                            hours = parseInt(parts[0]);
-                            minutes = parseInt(parts[1]);
-                        }
-                    }
-
                     const astroData = await astrologyService.getAstroDetails({
-                        day: date.getDate(),
-                        month: date.getMonth() + 1,
-                        year: date.getFullYear(),
-                        hour: hours,
-                        min: minutes,
+                        day: finalDay,
+                        month: finalMonth,
+                        year: finalYear,
+                        hour: finalHour,
+                        min: finalMin,
                         lat: finalLat,
                         lon: finalLon,
                         tzone: finalTzone,
