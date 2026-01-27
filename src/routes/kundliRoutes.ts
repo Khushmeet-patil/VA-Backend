@@ -11,5 +11,6 @@ router.post('/panchang', authMiddleware, kundliController.getBasicPanchang);
 router.post('/astro-details', authMiddleware, kundliController.getAstroDetails);
 router.post('/planets', authMiddleware, kundliController.getPlanets);
 router.post('/horo-chart/:chartId', authMiddleware, kundliController.getChartImage);
+router.post('/horo-chart-data/:chartId', authMiddleware, kundliController.getHoroChartData);
 
 export default router;

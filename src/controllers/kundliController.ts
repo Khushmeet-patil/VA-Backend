@@ -73,6 +73,18 @@ export const getChartImage = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const getHoroChartData = async (req: AuthRequest, res: Response) => {
+    try {
+        const { chartId } = req.params;
+        console.log(`[KundliController] Received HoroChartData request for ${chartId}:`, JSON.stringify(req.body));
+        const data = await kundliService.getHoroChartData(req.body, chartId);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] HoroChartData Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch horo chart data' });
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -80,5 +92,6 @@ export default {
     getBasicPanchang,
     getAstroDetails,
     getPlanets,
-    getChartImage
+    getChartImage,
+    getHoroChartData
 };

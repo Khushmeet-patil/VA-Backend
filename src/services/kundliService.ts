@@ -97,6 +97,17 @@ export const getChartImage = async (input: any, chartId: string) => {
     }
 };
 
+export const getHoroChartData = async (input: any, chartId: string) => {
+    try {
+        console.log(`[KundliService] Astrology API /horo_chart/${chartId} input:`, JSON.stringify(input));
+        const response = await api.post(`/horo_chart/${chartId}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API Horo Chart Data (${chartId}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -104,5 +115,6 @@ export default {
     getBasicPanchang,
     getAstroDetails,
     getPlanets,
-    getChartImage
+    getChartImage,
+    getHoroChartData
 };
