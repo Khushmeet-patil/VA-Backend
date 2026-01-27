@@ -26,7 +26,7 @@ export const getProfiles = async (req: AuthRequest, res: Response) => {
             return res.status(401).json({ message: 'Authentication required' });
         }
 
-        const user = await User.findById(userId).select('name gender dob tob pob birthProfiles');
+        const user = await User.findById(userId).select('name gender dob tob pob day month year hour min lat lon timezone tzone birthProfiles');
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -39,9 +39,15 @@ export const getProfiles = async (req: AuthRequest, res: Response) => {
             dateOfBirth: user.dob || '',
             timeOfBirth: user.tob || '',
             placeOfBirth: user.pob || '',
+            day: user.day,
+            month: user.month,
+            year: user.year,
+            hour: user.hour,
+            min: user.min,
             lat: user.lat,
             lon: user.lon,
             timezone: user.timezone,
+            tzone: user.tzone,
             isDefault: true,
         };
 
@@ -83,9 +89,15 @@ export const getProfileById = async (req: AuthRequest, res: Response) => {
                 dateOfBirth: user.dob || '',
                 timeOfBirth: user.tob || '',
                 placeOfBirth: user.pob || '',
+                day: user.day,
+                month: user.month,
+                year: user.year,
+                hour: user.hour,
+                min: user.min,
                 lat: user.lat,
                 lon: user.lon,
                 timezone: user.timezone,
+                tzone: user.tzone,
                 isDefault: true,
             };
             return res.json({ profile: defaultProfile });
@@ -320,6 +332,11 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
                     dateOfBirth: user.dob,
                     timeOfBirth: user.tob,
                     placeOfBirth: user.pob,
+                    day: user.day,
+                    month: user.month,
+                    year: user.year,
+                    hour: user.hour,
+                    min: user.min,
                     lat: user.lat,
                     lon: user.lon,
                     timezone: user.timezone,
