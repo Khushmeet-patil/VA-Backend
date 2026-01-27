@@ -12,5 +12,8 @@ router.post('/astro-details', authMiddleware, kundliController.getAstroDetails);
 router.post('/planets', authMiddleware, kundliController.getPlanets);
 router.post('/horo-chart/:chartId', authMiddleware, kundliController.getChartImage);
 router.post('/horo-chart-data/:chartId', authMiddleware, kundliController.getHoroChartData);
+router.post('/kp-planets', authMiddleware, kundliController.getKpPlanets);
+router.post('/kp-house-cusps', authMiddleware, kundliController.getKpHouseCusps);
+router.post('/cusp-chart', authMiddleware, kundliController.getCuspChart);
 
 export default router;

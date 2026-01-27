@@ -85,6 +85,39 @@ export const getHoroChartData = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const getKpPlanets = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received KpPlanets request:', JSON.stringify(req.body));
+        const data = await kundliService.getKpPlanets(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] KpPlanets Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch KP planets' });
+    }
+};
+
+export const getKpHouseCusps = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received KpHouseCusps request:', JSON.stringify(req.body));
+        const data = await kundliService.getKpHouseCusps(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] KpHouseCusps Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch KP house cusps' });
+    }
+};
+
+export const getCuspChart = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received CuspChart request:', JSON.stringify(req.body));
+        const data = await kundliService.getCuspChart(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] CuspChart Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch cusp chart' });
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -93,5 +126,8 @@ export default {
     getAstroDetails,
     getPlanets,
     getChartImage,
-    getHoroChartData
+    getHoroChartData,
+    getKpPlanets,
+    getKpHouseCusps,
+    getCuspChart
 };

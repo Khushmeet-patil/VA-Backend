@@ -108,6 +108,39 @@ export const getHoroChartData = async (input: any, chartId: string) => {
     }
 };
 
+export const getKpPlanets = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /kp_planets input:', JSON.stringify(input));
+        const response = await api.post('/kp_planets', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API KpPlanets Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getKpHouseCusps = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /kp_house_cusps input:', JSON.stringify(input));
+        const response = await api.post('/kp_house_cusps', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API KpHouseCusps Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getCuspChart = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /cusp_chart input:', JSON.stringify(input));
+        const response = await api.post('/cusp_chart', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API CuspChart Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -116,5 +149,8 @@ export default {
     getAstroDetails,
     getPlanets,
     getChartImage,
-    getHoroChartData
+    getHoroChartData,
+    getKpPlanets,
+    getKpHouseCusps,
+    getCuspChart
 };
