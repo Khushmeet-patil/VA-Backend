@@ -235,6 +235,24 @@ export const getGeneralHouseReport = async (req: AuthRequest, res: Response) => 
 };
 
 
+export const getRudrakshaSuggestion = async (req: AuthRequest, res: Response) => {
+    try {
+        const data = await kundliService.getRudrakshaSuggestion(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getGemstoneSuggestion = async (req: AuthRequest, res: Response) => {
+    try {
+        const data = await kundliService.getGemstoneSuggestion(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -256,5 +274,7 @@ export default {
     getMajorYoginiDasha,
     getSubYoginiDasha,
     getGeneralAscendantReport,
-    getGeneralHouseReport
+    getGeneralHouseReport,
+    getRudrakshaSuggestion,
+    getGemstoneSuggestion
 };
