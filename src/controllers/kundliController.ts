@@ -259,6 +259,18 @@ export const getGemSuggestion = async (req: AuthRequest, res: Response) => {
 };
 
 
+export const getKalsarpaDetails = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received KalsarpaDetails request:', JSON.stringify(req.body));
+        const data = await kundliService.getKalsarpaDetails(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] KalsarpaDetails Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch kalsarpa details' });
+    }
+};
+
+
 export default {
     getBirthDetails,
     getManglik,
@@ -282,5 +294,6 @@ export default {
     getGeneralAscendantReport,
     getGeneralHouseReport,
     getRudrakshaSuggestion,
-    getGemSuggestion
+    getGemSuggestion,
+    getKalsarpaDetails
 };

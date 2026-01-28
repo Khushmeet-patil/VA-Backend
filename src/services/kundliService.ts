@@ -285,6 +285,17 @@ export const getGemSuggestion = async (input: any) => {
     }
 };
 
+export const getKalsarpaDetails = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /kalsarpa_details input:', JSON.stringify(input));
+        const response = await api.post('/kalsarpa_details', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API KalsarpaDetails Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -308,5 +319,6 @@ export default {
     getGeneralAscendantReport,
     getGeneralHouseReport,
     getRudrakshaSuggestion,
-    getGemSuggestion
+    getGemSuggestion,
+    getKalsarpaDetails
 };
