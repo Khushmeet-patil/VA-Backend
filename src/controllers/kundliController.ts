@@ -118,6 +118,29 @@ export const getCuspChart = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const getSarvashtak = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received Sarvashtak request:', JSON.stringify(req.body));
+        const data = await kundliService.getSarvashtak(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] Sarvashtak Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch sarvashtak data' });
+    }
+};
+
+export const getPlanetAshtak = async (req: AuthRequest, res: Response) => {
+    try {
+        const { planetName } = req.params;
+        console.log(`[KundliController] Received PlanetAshtak request for ${planetName}:`, JSON.stringify(req.body));
+        const data = await kundliService.getPlanetAshtak(req.body, planetName);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] PlanetAshtak Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch planet ashtak data' });
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -129,5 +152,7 @@ export default {
     getHoroChartData,
     getKpPlanets,
     getKpHouseCusps,
-    getCuspChart
+    getCuspChart,
+    getSarvashtak,
+    getPlanetAshtak
 };

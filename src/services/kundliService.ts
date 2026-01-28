@@ -141,6 +141,31 @@ export const getCuspChart = async (input: any) => {
     }
 };
 
+export const getSarvashtak = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /sarvashtak input:', JSON.stringify(input));
+        const response = await api.post('/sarvashtak', input);
+        // Transform the response to simpler format if needed, but for now passing raw
+        // The API returns { sarvashtak: { aries: 28, ... } } usually
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API Sarvashtak Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getPlanetAshtak = async (input: any, planetName: string) => {
+    try {
+        const pName = planetName.toLowerCase();
+        console.log(`[KundliService] Astrology API /planet_ashtak/${pName} input:`, JSON.stringify(input));
+        const response = await api.post(`/planet_ashtak/${pName}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API PlanetAshtak (${planetName}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -152,5 +177,7 @@ export default {
     getHoroChartData,
     getKpPlanets,
     getKpHouseCusps,
-    getCuspChart
+    getCuspChart,
+    getSarvashtak,
+    getPlanetAshtak
 };
