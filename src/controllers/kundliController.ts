@@ -211,6 +211,30 @@ export const getSubYoginiDasha = async (req: AuthRequest, res: Response) => {
 };
 
 
+export const getGeneralAscendantReport = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received GeneralAscendantReport request:', JSON.stringify(req.body));
+        const data = await kundliService.getGeneralAscendantReport(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] GeneralAscendantReport Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch general ascendant report' });
+    }
+};
+
+export const getGeneralHouseReport = async (req: AuthRequest, res: Response) => {
+    try {
+        const { planetName } = req.params;
+        console.log(`[KundliController] Received GeneralHouseReport request for ${planetName}:`, JSON.stringify(req.body));
+        const data = await kundliService.getGeneralHouseReport(req.body, planetName);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] GeneralHouseReport Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch general house report' });
+    }
+};
+
+
 export default {
     getBirthDetails,
     getManglik,
@@ -230,5 +254,7 @@ export default {
     getSubSubSubVdasha,
     getSubSubSubSubVdasha,
     getMajorYoginiDasha,
-    getSubYoginiDasha
+    getSubYoginiDasha,
+    getGeneralAscendantReport,
+    getGeneralHouseReport
 };

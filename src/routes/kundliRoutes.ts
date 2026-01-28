@@ -29,4 +29,8 @@ router.post('/sub-sub-sub-sub-vdasha/:md/:ad/:pd/:sd', authMiddleware, kundliCon
 router.post('/major-yogini-dasha', authMiddleware, kundliController.getMajorYoginiDasha);
 router.post('/sub-yogini-dasha', authMiddleware, kundliController.getSubYoginiDasha);
 
+// Reports
+router.post('/general-ascendant-report', authMiddleware, kundliController.getGeneralAscendantReport);
+router.post('/general-house-report/:planetName', authMiddleware, kundliController.getGeneralHouseReport);
+
 export default router;

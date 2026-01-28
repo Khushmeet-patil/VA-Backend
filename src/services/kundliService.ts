@@ -239,6 +239,30 @@ export const getSubYoginiDasha = async (input: any) => {
 };
 
 
+// Report APIs
+export const getGeneralAscendantReport = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /general_ascendant_report input:', JSON.stringify(input));
+        const response = await api.post('/general_ascendant_report', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API GeneralAscendantReport Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getGeneralHouseReport = async (input: any, planetName: string) => {
+    try {
+        const pName = planetName.toLowerCase();
+        console.log(`[KundliService] Astrology API /general_house_report/${pName} input:`, JSON.stringify(input));
+        const response = await api.post(`/general_house_report/${pName}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API GeneralHouseReport (${planetName}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -258,5 +282,7 @@ export default {
     getSubSubSubVdasha,
     getSubSubSubSubVdasha,
     getMajorYoginiDasha,
-    getSubYoginiDasha
+    getSubYoginiDasha,
+    getGeneralAscendantReport,
+    getGeneralHouseReport
 };
