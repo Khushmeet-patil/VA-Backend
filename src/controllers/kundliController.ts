@@ -237,21 +237,15 @@ export const getGeneralHouseReport = async (req: AuthRequest, res: Response) => 
 
 export const getRudrakshaSuggestion = async (req: AuthRequest, res: Response) => {
     try {
+        console.log('[KundliController] Received RudrakshaSuggestion request:', JSON.stringify(req.body));
         const data = await kundliService.getRudrakshaSuggestion(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
-        return res.status(500).json({ success: false, message: error.message });
+        console.error('[KundliController] RudrakshaSuggestion Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch rudraksha suggestion' });
     }
 };
 
-export const getGemstoneSuggestion = async (req: AuthRequest, res: Response) => {
-    try {
-        const data = await kundliService.getGemstoneSuggestion(req.body);
-        return res.json({ success: true, data });
-    } catch (error: any) {
-        return res.status(500).json({ success: false, message: error.message });
-    }
-};
 
 export default {
     getBirthDetails,
@@ -275,6 +269,5 @@ export default {
     getSubYoginiDasha,
     getGeneralAscendantReport,
     getGeneralHouseReport,
-    getRudrakshaSuggestion,
-    getGemstoneSuggestion
+    getRudrakshaSuggestion
 };

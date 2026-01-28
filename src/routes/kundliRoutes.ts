@@ -32,9 +32,6 @@ router.post('/sub-yogini-dasha', authMiddleware, kundliController.getSubYoginiDa
 // Reports
 router.post('/general-ascendant-report', authMiddleware, kundliController.getGeneralAscendantReport);
 router.post('/general-house-report/:planetName', authMiddleware, kundliController.getGeneralHouseReport);
-
-// Remedies
 router.post('/rudraksha-suggestion', authMiddleware, kundliController.getRudrakshaSuggestion);
-router.post('/gem-suggestion', authMiddleware, kundliController.getGemstoneSuggestion);
 
 export default router;
