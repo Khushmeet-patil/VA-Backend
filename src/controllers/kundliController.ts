@@ -247,6 +247,18 @@ export const getRudrakshaSuggestion = async (req: AuthRequest, res: Response) =>
 };
 
 
+export const getGemSuggestion = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received GemSuggestion request:', JSON.stringify(req.body));
+        const data = await kundliService.getGemSuggestion(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] GemSuggestion Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch gemstone suggestion' });
+    }
+};
+
+
 export default {
     getBirthDetails,
     getManglik,
@@ -269,5 +281,6 @@ export default {
     getSubYoginiDasha,
     getGeneralAscendantReport,
     getGeneralHouseReport,
-    getRudrakshaSuggestion
+    getRudrakshaSuggestion,
+    getGemSuggestion
 };

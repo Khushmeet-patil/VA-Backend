@@ -274,6 +274,17 @@ export const getRudrakshaSuggestion = async (input: any) => {
     }
 };
 
+export const getGemSuggestion = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /basic_gem_suggestion input:', JSON.stringify(input));
+        const response = await api.post('/basic_gem_suggestion', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API GemSuggestion Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -296,5 +307,6 @@ export default {
     getSubYoginiDasha,
     getGeneralAscendantReport,
     getGeneralHouseReport,
-    getRudrakshaSuggestion
+    getRudrakshaSuggestion,
+    getGemSuggestion
 };
