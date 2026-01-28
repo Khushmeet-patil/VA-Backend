@@ -267,6 +267,7 @@ export const getRudrakshaSuggestion = async (input: any) => {
     try {
         console.log('[KundliService] Astrology API /rudraksha_suggestion input:', JSON.stringify(input));
         const response = await api.post('/rudraksha_suggestion', input);
+        console.log('[KundliService] Astrology API /rudraksha_suggestion response:', JSON.stringify(response.data).substring(0, 200) + '...');
         return response.data;
     } catch (error: any) {
         console.error('Astrology API RudrakshaSuggestion Error:', error.response?.data || error.message);
@@ -278,6 +279,7 @@ export const getGemstoneSuggestion = async (input: any) => {
     try {
         console.log('[KundliService] Astrology API /basic_gem_suggestion input:', JSON.stringify(input));
         const response = await api.post('/basic_gem_suggestion', input);
+        console.log('[KundliService] Astrology API /basic_gem_suggestion response:', JSON.stringify(response.data).substring(0, 200) + '...');
         return response.data;
     } catch (error: any) {
         console.error('Astrology API GemstoneSuggestion Error:', error.response?.data || error.message);
