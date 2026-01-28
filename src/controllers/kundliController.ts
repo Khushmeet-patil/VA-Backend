@@ -141,6 +141,75 @@ export const getPlanetAshtak = async (req: AuthRequest, res: Response) => {
     }
 };
 
+// Vimshottari Dasha handlers
+export const getMajorVdasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const data = await kundliService.getMajorVdasha(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getSubVdasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const { md } = req.params;
+        const data = await kundliService.getSubVdasha(req.body, md);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getSubSubVdasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const { md, ad } = req.params;
+        const data = await kundliService.getSubSubVdasha(req.body, md, ad);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getSubSubSubVdasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const { md, ad, pd } = req.params;
+        const data = await kundliService.getSubSubSubVdasha(req.body, md, ad, pd);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getSubSubSubSubVdasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const { md, ad, pd, sd } = req.params;
+        const data = await kundliService.getSubSubSubSubVdasha(req.body, md, ad, pd, sd);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Yogini Dasha handlers
+export const getMajorYoginiDasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const data = await kundliService.getMajorYoginiDasha(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getSubYoginiDasha = async (req: AuthRequest, res: Response) => {
+    try {
+        const data = await kundliService.getSubYoginiDasha(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -154,5 +223,12 @@ export default {
     getKpHouseCusps,
     getCuspChart,
     getSarvashtak,
-    getPlanetAshtak
+    getPlanetAshtak,
+    getMajorVdasha,
+    getSubVdasha,
+    getSubSubVdasha,
+    getSubSubSubVdasha,
+    getSubSubSubSubVdasha,
+    getMajorYoginiDasha,
+    getSubYoginiDasha
 };

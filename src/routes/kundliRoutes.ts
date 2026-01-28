@@ -18,4 +18,15 @@ router.post('/cusp-chart', authMiddleware, kundliController.getCuspChart);
 router.post('/sarvashtak', authMiddleware, kundliController.getSarvashtak);
 router.post('/planet-ashtak/:planetName', authMiddleware, kundliController.getPlanetAshtak);
 
+// Vimshottari Dasha
+router.post('/major-vdasha', authMiddleware, kundliController.getMajorVdasha);
+router.post('/sub-vdasha/:md', authMiddleware, kundliController.getSubVdasha);
+router.post('/sub-sub-vdasha/:md/:ad', authMiddleware, kundliController.getSubSubVdasha);
+router.post('/sub-sub-sub-vdasha/:md/:ad/:pd', authMiddleware, kundliController.getSubSubSubVdasha);
+router.post('/sub-sub-sub-sub-vdasha/:md/:ad/:pd/:sd', authMiddleware, kundliController.getSubSubSubSubVdasha);
+
+// Yogini Dasha
+router.post('/major-yogini-dasha', authMiddleware, kundliController.getMajorYoginiDasha);
+router.post('/sub-yogini-dasha', authMiddleware, kundliController.getSubYoginiDasha);
+
 export default router;

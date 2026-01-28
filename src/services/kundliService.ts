@@ -166,6 +166,78 @@ export const getPlanetAshtak = async (input: any, planetName: string) => {
     }
 };
 
+// Vimshottari Dasha proxy methods
+export const getMajorVdasha = async (input: any) => {
+    try {
+        const response = await api.post('/major_vdasha', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API Major Vdasha Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getSubVdasha = async (input: any, md: string) => {
+    try {
+        const response = await api.post(`/sub_vdasha/${md.toLowerCase()}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API Sub Vdasha (${md}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getSubSubVdasha = async (input: any, md: string, ad: string) => {
+    try {
+        const response = await api.post(`/sub_sub_vdasha/${md.toLowerCase()}/${ad.toLowerCase()}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API Sub Sub Vdasha (${md}/${ad}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getSubSubSubVdasha = async (input: any, md: string, ad: string, pd: string) => {
+    try {
+        const response = await api.post(`/sub_sub_sub_vdasha/${md.toLowerCase()}/${ad.toLowerCase()}/${pd.toLowerCase()}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API Sub Sub Sub Vdasha (${md}/${ad}/${pd}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getSubSubSubSubVdasha = async (input: any, md: string, ad: string, pd: string, sd: string) => {
+    try {
+        const response = await api.post(`/sub_sub_sub_sub_vdasha/${md.toLowerCase()}/${ad.toLowerCase()}/${pd.toLowerCase()}/${sd.toLowerCase()}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API Sub Sub Sub Sub Vdasha (${md}/${ad}/${pd}/${sd}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
+// Yogini Dasha proxy methods
+export const getMajorYoginiDasha = async (input: any) => {
+    try {
+        const response = await api.post('/major_yogini_dasha', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API Major Yogini Dasha Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getSubYoginiDasha = async (input: any) => {
+    try {
+        const response = await api.post('/sub_yogini_dasha', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API Sub Yogini Dasha Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -179,5 +251,12 @@ export default {
     getKpHouseCusps,
     getCuspChart,
     getSarvashtak,
-    getPlanetAshtak
+    getPlanetAshtak,
+    getMajorVdasha,
+    getSubVdasha,
+    getSubSubVdasha,
+    getSubSubSubVdasha,
+    getSubSubSubSubVdasha,
+    getMajorYoginiDasha,
+    getSubYoginiDasha
 };
