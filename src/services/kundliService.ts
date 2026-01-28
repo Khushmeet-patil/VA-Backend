@@ -285,6 +285,28 @@ export const getGemSuggestion = async (input: any) => {
     }
 };
 
+export const getSadhesatiLifeDetails = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /sadhesati_life_details input:', JSON.stringify(input));
+        const response = await api.post('/sadhesati_life_details', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API SadhesatiLifeDetails Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getSadhesatiCurrentStatus = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /sadhesati_current_status input:', JSON.stringify(input));
+        const response = await api.post('/sadhesati_current_status', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API SadhesatiCurrentStatus Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 export const getKalsarpaDetails = async (input: any) => {
     try {
         console.log('[KundliService] Astrology API /kalsarpa_details input:', JSON.stringify(input));
@@ -320,5 +342,7 @@ export default {
     getGeneralHouseReport,
     getRudrakshaSuggestion,
     getGemSuggestion,
-    getKalsarpaDetails
+    getKalsarpaDetails,
+    getSadhesatiLifeDetails,
+    getSadhesatiCurrentStatus
 };

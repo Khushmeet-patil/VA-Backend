@@ -270,6 +270,28 @@ export const getKalsarpaDetails = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const getSadhesatiLifeDetails = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received SadhesatiLifeDetails request:', JSON.stringify(req.body));
+        const data = await kundliService.getSadhesatiLifeDetails(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] SadhesatiLifeDetails Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch Sadhesati life details' });
+    }
+};
+
+export const getSadhesatiCurrentStatus = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received SadhesatiCurrentStatus request:', JSON.stringify(req.body));
+        const data = await kundliService.getSadhesatiCurrentStatus(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] SadhesatiCurrentStatus Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch Sadhesati current status' });
+    }
+};
+
 
 export default {
     getBirthDetails,
@@ -295,5 +317,7 @@ export default {
     getGeneralHouseReport,
     getRudrakshaSuggestion,
     getGemSuggestion,
-    getKalsarpaDetails
+    getKalsarpaDetails,
+    getSadhesatiLifeDetails,
+    getSadhesatiCurrentStatus
 };

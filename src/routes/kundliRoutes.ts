@@ -35,5 +35,7 @@ router.post('/general-house-report/:planetName', authMiddleware, kundliControlle
 router.post('/rudraksha-suggestion', authMiddleware, kundliController.getRudrakshaSuggestion);
 router.post('/gem-suggestion', authMiddleware, kundliController.getGemSuggestion);
 router.post('/kalsarpa-details', authMiddleware, kundliController.getKalsarpaDetails);
+router.post('/sadhesati-life-details', authMiddleware, kundliController.getSadhesatiLifeDetails);
+router.post('/sadhesati-current-status', authMiddleware, kundliController.getSadhesatiCurrentStatus);
 
 export default router;
