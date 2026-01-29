@@ -327,6 +327,12 @@ export const getSunSignPrediction = async (zodiacName: string, type: 'daily' | '
 
         console.log(`[KundliService] Astrology API ${endpoint} input:`, JSON.stringify(input));
         const response = await api.post(endpoint, input || {});
+        console.log(`[KundliService] Astrology API ${endpoint} response:`, JSON.stringify(response.data).substring(0, 500));
+
+        if (response.data && (response.data.error || response.data.msg === 'Error')) {
+            throw new Error(response.data.error || response.data.msg || 'API Error');
+        }
+
         return response.data;
     } catch (error: any) {
         console.error(`Astrology API SunSignPrediction Error (${type}):`, error.response?.data || error.message);
@@ -338,6 +344,12 @@ export const getNumeroPrediction = async (input: any) => {
     try {
         console.log('[KundliService] Astrology API /numero_prediction/daily input:', JSON.stringify(input));
         const response = await api.post('/numero_prediction/daily', input);
+        console.log('[KundliService] Astrology API /numero_prediction/daily response:', JSON.stringify(response.data).substring(0, 500));
+
+        if (response.data && (response.data.error || response.data.msg === 'Error')) {
+            throw new Error(response.data.error || response.data.msg || 'API Error');
+        }
+
         return response.data;
     } catch (error: any) {
         console.error('Astrology API NumeroPrediction Error:', error.response?.data || error.message);
