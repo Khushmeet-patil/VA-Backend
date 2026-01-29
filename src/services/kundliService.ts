@@ -318,6 +318,33 @@ export const getKalsarpaDetails = async (input: any) => {
     }
 };
 
+// Horoscope Predictions
+export const getSunSignPrediction = async (zodiacName: string, type: 'daily' | 'previous' | 'next') => {
+    try {
+        let endpoint = `/sun_sign_prediction/daily/${zodiacName.toLowerCase()}`;
+        if (type === 'previous') endpoint = `/sun_sign_prediction/daily/previous/${zodiacName.toLowerCase()}`;
+        if (type === 'next') endpoint = `/sun_sign_prediction/daily/next/${zodiacName.toLowerCase()}`;
+
+        console.log(`[KundliService] Astrology API ${endpoint}`);
+        const response = await api.post(endpoint, {}); // Sun sign usually takes empty object but expects sign in URL
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API SunSignPrediction Error (${type}):`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getNumeroPrediction = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /numero_prediction/daily input:', JSON.stringify(input));
+        const response = await api.post('/numero_prediction/daily', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API NumeroPrediction Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -344,5 +371,7 @@ export default {
     getGemSuggestion,
     getKalsarpaDetails,
     getSadhesatiLifeDetails,
-    getSadhesatiCurrentStatus
+    getSadhesatiCurrentStatus,
+    getSunSignPrediction,
+    getNumeroPrediction
 };

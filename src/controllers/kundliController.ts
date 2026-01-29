@@ -292,6 +292,25 @@ export const getSadhesatiCurrentStatus = async (req: AuthRequest, res: Response)
     }
 };
 
+export const getSunSignPrediction = async (req: AuthRequest, res: Response) => {
+    try {
+        const { zodiacName, type } = req.params;
+        console.log(`[KundliController] SunSignPrediction: ${zodiacName}, ${type}`);
+        const data = await kundliService.getSunSignPrediction(zodiacName, type as any);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getNumeroPrediction = async (req: AuthRequest, res: Response) => {
+    try {
+        const data = await kundliService.getNumeroPrediction(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
 
 export default {
     getBirthDetails,
@@ -319,5 +338,7 @@ export default {
     getGemSuggestion,
     getKalsarpaDetails,
     getSadhesatiLifeDetails,
-    getSadhesatiCurrentStatus
+    getSadhesatiCurrentStatus,
+    getSunSignPrediction,
+    getNumeroPrediction
 };

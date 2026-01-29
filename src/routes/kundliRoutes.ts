@@ -38,4 +38,8 @@ router.post('/kalsarpa-details', authMiddleware, kundliController.getKalsarpaDet
 router.post('/sadhesati-life-details', authMiddleware, kundliController.getSadhesatiLifeDetails);
 router.post('/sadhesati-current-status', authMiddleware, kundliController.getSadhesatiCurrentStatus);
 
+// Horoscope Predictions
+router.post('/sun-sign-prediction/:type/:zodiacName', authMiddleware, kundliController.getSunSignPrediction);
+router.post('/numero-prediction', authMiddleware, kundliController.getNumeroPrediction);
+
 export default router;
