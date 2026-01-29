@@ -319,14 +319,14 @@ export const getKalsarpaDetails = async (input: any) => {
 };
 
 // Horoscope Predictions
-export const getSunSignPrediction = async (zodiacName: string, type: 'daily' | 'previous' | 'next') => {
+export const getSunSignPrediction = async (zodiacName: string, type: 'daily' | 'previous' | 'next', input: any) => {
     try {
         let endpoint = `/sun_sign_prediction/daily/${zodiacName.toLowerCase()}`;
         if (type === 'previous') endpoint = `/sun_sign_prediction/daily/previous/${zodiacName.toLowerCase()}`;
         if (type === 'next') endpoint = `/sun_sign_prediction/daily/next/${zodiacName.toLowerCase()}`;
 
-        console.log(`[KundliService] Astrology API ${endpoint}`);
-        const response = await api.post(endpoint, {}); // Sun sign usually takes empty object but expects sign in URL
+        console.log(`[KundliService] Astrology API ${endpoint} input:`, JSON.stringify(input));
+        const response = await api.post(endpoint, input || {});
         return response.data;
     } catch (error: any) {
         console.error(`Astrology API SunSignPrediction Error (${type}):`, error.response?.data || error.message);

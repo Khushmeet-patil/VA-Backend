@@ -295,8 +295,8 @@ export const getSadhesatiCurrentStatus = async (req: AuthRequest, res: Response)
 export const getSunSignPrediction = async (req: AuthRequest, res: Response) => {
     try {
         const { zodiacName, type } = req.params;
-        console.log(`[KundliController] SunSignPrediction: ${zodiacName}, ${type}`);
-        const data = await kundliService.getSunSignPrediction(zodiacName, type as any);
+        console.log(`[KundliController] SunSignPrediction: ${zodiacName}, ${type}`, JSON.stringify(req.body));
+        const data = await kundliService.getSunSignPrediction(zodiacName, type as any, req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
