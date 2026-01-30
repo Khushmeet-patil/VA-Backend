@@ -1174,6 +1174,23 @@ class ChatService {
             });
         }
 
+        // Send high-priority FCM notification to astrologer
+        // This ensures the astrologer receives the request even if app is killed/background
+        try {
+            await notificationService.sendHighPriorityChatRequest(astrologerId, {
+                sessionId: session.sessionId,
+                userId: userId,
+                userName: user.name || 'User',
+                userMobile: user.mobile,
+                ratePerMinute,
+                intakeDetails: previousSession.intakeDetails,
+            });
+            console.log(`[ChatService] High-priority FCM sent for continue chat to astrologer ${astrologerId}`);
+        } catch (fcmError) {
+            // Don't fail the request if FCM fails - socket might still work
+            console.error(`[ChatService] FCM notification error for continue chat:`, fcmError);
+        }
+
         return session;
     }
 }
