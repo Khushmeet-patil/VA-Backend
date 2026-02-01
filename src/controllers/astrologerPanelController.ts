@@ -726,11 +726,33 @@ export const getUserProfileForAstrologer = async (req: Request, res: Response) =
 
         let targetProfile: any = null;
 
-        // 1. Try to find specific profile if ID provided and valid
-        if (profileId && profileId !== 'default' && (mongoose as any).default ? (mongoose as any).default.Types.ObjectId.isValid(profileId) : mongoose.Types.ObjectId.isValid(profileId)) {
-            // Handle potential import nuance for mongoose if needed
-            const pid = profileId.toString();
-            targetProfile = user.birthProfiles.find((p: any) => p._id.toString() === pid);
+        // 1. Try to find specific profile if ID or index provided
+        if (profileId && profileId !== 'default' && profileId !== 'primary') {
+            const pid = profileId.toString().trim();
+
+            // Check if pid is a numeric index (0, 1, 2...)
+            if (/^\d+$/.test(pid)) {
+                const index = parseInt(pid);
+                if (index >= 0 && index < user.birthProfiles.length) {
+                    console.log(`[getUserProfileForAstrologer] Found profile by index: ${index}`);
+                    targetProfile = user.birthProfiles[index];
+                }
+            }
+
+            // Check if pid is a valid MongoId
+            if (!targetProfile && mongoose.Types.ObjectId.isValid(pid)) {
+                targetProfile = user.birthProfiles.find((p: any) => p._id?.toString() === pid);
+                if (targetProfile) console.log(`[getUserProfileForAstrologer] Found profile by ID: ${pid}`);
+            }
+
+            // Fallback: search by name matching
+            if (!targetProfile) {
+                // If profileId was actually a name or we want to try matching
+                targetProfile = user.birthProfiles.find((p: any) =>
+                    p.name.toLowerCase().trim() === pid.toLowerCase().trim()
+                );
+                if (targetProfile) console.log(`[getUserProfileForAstrologer] Found profile by Name match with ID param: ${pid}`);
+            }
         }
 
         // 2. Fallback to default/main user profile

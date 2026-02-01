@@ -347,8 +347,77 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const { sessionId, profile } = data;
                 if (!sessionId || !profile) return;
 
+                // ENRICH: Try to find real profile in database to get lat/lon
+                let enrichedProfile = { ...profile };
+                try {
+                    const session = await chatService.getSession(sessionId);
+                    if (session) {
+                        const user = await User.findById(session.userId);
+                        if (user) {
+                            const targetId = profile._id || profile.id || profile.profileId;
+                            console.log('[Socket] Searching DB for profile enrichment ID:', targetId);
+
+                            // 1. Try matching by ID in birthProfiles
+                            let match = user.birthProfiles.find(bp =>
+                                bp._id?.toString() === targetId?.toString()
+                            );
+
+                            // 2. Try matching by Index if targetId is numeric
+                            if (!match && targetId !== undefined && /^\d+$/.test(targetId.toString())) {
+                                const index = parseInt(targetId.toString());
+                                if (index >= 0 && index < user.birthProfiles.length) {
+                                    console.log('[Socket] Enriched by Index match:', index);
+                                    match = user.birthProfiles[index];
+                                }
+                            }
+
+                            // 3. Try matching by Name if ID/Index fails
+                            if (!match) {
+                                match = user.birthProfiles.find(bp =>
+                                    bp.name.toLowerCase().trim() === profile.name?.toLowerCase().trim()
+                                );
+                            }
+
+                            if (match) {
+                                console.log('[Socket] Enriched shared profile with DB data (by ID/Name)');
+                                enrichedProfile = {
+                                    ...enrichedProfile,
+                                    lat: match.lat || enrichedProfile.lat,
+                                    lon: match.lon || enrichedProfile.lon,
+                                    hour: match.hour !== undefined ? match.hour : enrichedProfile.hour,
+                                    min: match.min !== undefined ? match.min : enrichedProfile.min,
+                                    day: match.day || enrichedProfile.day,
+                                    month: match.month || enrichedProfile.month,
+                                    year: match.year || enrichedProfile.year,
+                                    tzone: match.tzone || enrichedProfile.tzone,
+                                    _id: match._id,
+                                    profileId: match._id?.toString()
+                                };
+                            } else if (user._id.toString() === targetId?.toString() || user.name?.toLowerCase().trim() === profile.name?.toLowerCase().trim()) {
+                                // Match with primary user details
+                                console.log('[Socket] Enriched shared profile with PRIMARY user data');
+                                enrichedProfile = {
+                                    ...enrichedProfile,
+                                    lat: user.lat || enrichedProfile.lat,
+                                    lon: user.lon || enrichedProfile.lon,
+                                    hour: user.hour !== undefined ? user.hour : enrichedProfile.hour,
+                                    min: user.min !== undefined ? user.min : enrichedProfile.min,
+                                    day: user.day || enrichedProfile.day,
+                                    month: user.month || enrichedProfile.month,
+                                    year: user.year || enrichedProfile.year,
+                                    tzone: user.tzone || enrichedProfile.tzone,
+                                    _id: 'primary',
+                                    profileId: 'primary'
+                                };
+                            }
+                        }
+                    }
+                } catch (enrichError) {
+                    console.error('[Socket] Share profile enrichment error:', enrichError);
+                }
+
                 // Save to DB and broadcast SHARE_PROFILE
-                await chatService.shareProfile(sessionId, profile);
+                await chatService.shareProfile(sessionId, enrichedProfile);
             } catch (error) {
                 console.error('[Socket] Share profile error:', error);
             }
@@ -360,8 +429,9 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const { sessionId, profile } = data;
                 if (!sessionId || !profile) return;
 
-                // Save to DB and broadcast SHARE_PROFILE
-                await chatService.shareProfile(sessionId, profile);
+                // Re-use the same logic by triggering the lowercase event or duplicating
+                // Best to duplicate/refactor but for speed let's just make sure it enriches too
+                socket.emit('share_profile', data);
             } catch (error) {
                 console.error('[Socket] SHARE_PROFILE error:', error);
             }
