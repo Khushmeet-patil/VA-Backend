@@ -145,6 +145,7 @@ class ChatService {
             ratePerMinute,
             status: 'PENDING',
             intakeDetails,
+            profileId: (intakeDetails as any)?.profileId || 'default', // Save profileId
             // Free trial for new users
             isFreeTrialSession: isEligibleForFreeTrial,
             freeTrialDurationSeconds: isEligibleForFreeTrial ? 120 : undefined,

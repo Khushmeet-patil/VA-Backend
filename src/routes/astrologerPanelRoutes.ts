@@ -12,7 +12,8 @@ import {
     requestWithdrawal,
     getWithdrawalHistory,
     getSessionHistory,
-    getPanelReviews
+    getPanelReviews,
+    getUserProfileForAstrologer
 } from '../controllers/astrologerPanelController';
 import { authMiddleware } from '../middleware/auth';
 
@@ -37,6 +38,10 @@ router.post('/withdraw', authMiddleware, requestWithdrawal);
 router.get('/withdrawals', authMiddleware, getWithdrawalHistory);
 
 // Session history route
+// Session history route
 router.get('/sessions', authMiddleware, getSessionHistory);
+
+// Get User Profile for Chat
+router.get('/user-profile/:userId/:profileId?', authMiddleware, getUserProfileForAstrologer);
 
 export default router;

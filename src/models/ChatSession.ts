@@ -36,6 +36,7 @@ export interface IChatSession extends Document {
     createdAt: Date;
     updatedAt: Date;
     sharedProfiles?: any[];             // List of profiles shared in this session
+    profileId?: string;                 // ID of the profile used for this chat
 }
 
 const ChatSessionSchema: Schema = new Schema({
@@ -92,7 +93,9 @@ const ChatSessionSchema: Schema = new Schema({
     isFreeTrialSession: { type: Boolean, default: false },
     freeTrialDurationSeconds: { type: Number, default: 120 },
     // Shared Profiles
-    sharedProfiles: { type: [Object], default: [] }
+    sharedProfiles: { type: [Object], default: [] },
+    // Profile Reference
+    profileId: { type: String } // 'default' or specific profile ID
 }, { timestamps: true });
 
 // Compound index for finding active sessions

@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import Astrologer from '../models/Astrologer';
+import User from '../models/User';
 import Otp from '../models/Otp';
 import ChatSession from '../models/ChatSession';
 import ChatMessage from '../models/ChatMessage';
 import Withdrawal from '../models/Withdrawal';
 import ChatReview from '../models/ChatReview';
+import mongoose from 'mongoose';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 
 // Check if astrologer exists by mobile
@@ -706,6 +708,59 @@ export const getPanelReviews = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('getPanelReviews error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Get User Profile for Astrologer (during chat)
+export const getUserProfileForAstrologer = async (req: Request, res: Response) => {
+    try {
+        const { userId, profileId } = req.params;
+
+        console.log(`[getUserProfileForAstrologer] Fetching for userId: ${userId}, profileId: ${profileId}`);
+
+        const user = await ((User as any).default || User).findById(userId); // Handle potentially different import style if needed, but standard should work
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        let targetProfile: any = null;
+
+        // 1. Try to find specific profile if ID provided and valid
+        if (profileId && profileId !== 'default' && (mongoose as any).default ? (mongoose as any).default.Types.ObjectId.isValid(profileId) : mongoose.Types.ObjectId.isValid(profileId)) {
+            // Handle potential import nuance for mongoose if needed
+            const pid = profileId.toString();
+            targetProfile = user.birthProfiles.find((p: any) => p._id.toString() === pid);
+        }
+
+        // 2. Fallback to default/main user profile
+        if (!targetProfile) {
+            console.log(`[getUserProfileForAstrologer] Defaulting to main user profile`);
+            // Map user fields to profile structure
+            targetProfile = {
+                name: user.name,
+                gender: user.gender,
+                dob: user.dob, // keep original string format
+                tob: user.tob,
+                pob: user.pob,
+                lat: user.lat,
+                lon: user.lon,
+                tzone: user.tzone,
+                day: user.day,
+                month: user.month,
+                year: user.year,
+                hour: user.hour,
+                min: user.min
+            };
+        }
+
+        res.json({
+            success: true,
+            data: targetProfile
+        });
+
+    } catch (error: any) {
+        console.error('getUserProfileForAstrologer error:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
