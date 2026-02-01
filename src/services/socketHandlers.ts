@@ -164,6 +164,65 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     ...message
                 });
 
+                // FALLBACK: Check if this message is actually a Shared Profile sent as text
+                // Format: 👤 Name: ... ⚧️ Gender: ... 📅 DOB: ...
+                if (type === 'text' && text.includes('Name:') && text.includes('DOB:') && text.includes('TOB:') && text.includes('POB:')) {
+                    console.log('[Socket] Detected Shared Profile in text message, triggering auto-share...');
+                    try {
+                        const profile: any = {};
+
+                        // Parse multiline text
+                        const lines = text.split('\n');
+                        lines.forEach(line => {
+                            if (line.includes('Name:')) profile.name = line.split('Name:')[1].trim();
+                            if (line.includes('Gender:')) profile.gender = line.split('Gender:')[1].trim();
+                            if (line.includes('DOB:')) {
+                                const dob = line.split('DOB:')[1].trim(); // e.g. "26 Dec 2004"
+                                profile.dob = dob;
+                                // Simple parsing for DD Mon YYYY or DD-MM-YYYY
+                                const date = new Date(dob);
+                                if (!isNaN(date.getTime())) {
+                                    profile.day = date.getDate();
+                                    profile.month = date.getMonth() + 1;
+                                    profile.year = date.getFullYear();
+                                }
+                            }
+                            if (line.includes('TOB:')) {
+                                const tob = line.split('TOB:')[1].trim(); // e.g. "12:00 AM"
+                                profile.tob = tob;
+                                // Parse 12hr time
+                                const match = tob.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                                if (match) {
+                                    let h = parseInt(match[1]);
+                                    let m = parseInt(match[2]);
+                                    if (match[3].toUpperCase() === 'PM' && h < 12) h += 12;
+                                    if (match[3].toUpperCase() === 'AM' && h === 12) h = 0;
+                                    profile.hour = h;
+                                    profile.min = m;
+                                }
+                            }
+                            if (line.includes('POB:')) {
+                                profile.pob = line.split('POB:')[1].trim().replace('"', ''); // Remove quote if present
+                                // Note: Lat/Lon won't be in text usually, but better than nothing
+                                // If coordinates are needed, User App MUST send proper event or text must include them
+                            }
+                        });
+
+                        // Only share if we extracted enough data
+                        if (profile.name && profile.dob) {
+                            // Assign a random ID if none
+                            profile._id = new Date().getTime().toString();
+                            // Or handle lat/lon finding via geocoding if needed? 
+                            // For now, assume user app sends minimal info, we might need to rely on POB string
+
+                            console.log('[Socket] Auto-sharing extracted profile:', profile);
+                            await chatService.shareProfile(sessionId, profile);
+                        }
+                    } catch (parseError) {
+                        console.error('[Socket] Failed to parse profile text:', parseError);
+                    }
+                }
+
                 // Send FCM push notification to the OTHER participant if they're not connected
                 // This handles cases when recipient is offline, app in background, or on different screen
                 try {
@@ -253,6 +312,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
         // Handle share profile logic
         socket.on('share_profile', async (data: { sessionId: string, profile: any }) => {
+            console.log('[Socket] share_profile event received:', data);
             try {
                 const { sessionId, profile } = data;
                 if (!sessionId || !profile) return;
