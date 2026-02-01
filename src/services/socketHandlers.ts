@@ -210,10 +210,40 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
                         // Only share if we extracted enough data
                         if (profile.name && profile.dob) {
-                            // Assign a random ID if none
-                            profile._id = new Date().getTime().toString();
-                            // Or handle lat/lon finding via geocoding if needed? 
-                            // For now, assume user app sends minimal info, we might need to rely on POB string
+                            // ENRICH: Try to find real profile in database to get lat/lon
+                            try {
+                                const user = await User.findById(session.userId);
+                                if (user) {
+                                    console.log('[Socket] Searching DB for profile match:', profile.name);
+                                    // Search in birthProfiles
+                                    const match = user.birthProfiles.find(bp =>
+                                        bp.name.toLowerCase().trim() === profile.name.toLowerCase().trim()
+                                    );
+
+                                    if (match) {
+                                        console.log('[Socket] Enriched text-profile with DB data (lat/lon)');
+                                        profile.lat = match.lat;
+                                        profile.lon = match.lon;
+                                        profile.hour = match.hour;
+                                        profile.min = match.min;
+                                        profile._id = match._id;
+                                        profile.tzone = match.tzone;
+                                    } else if (user.name?.toLowerCase().trim() === profile.name.toLowerCase().trim()) {
+                                        // Match with primary user details
+                                        profile.lat = user.lat;
+                                        profile.lon = user.lon;
+                                        profile.hour = user.hour;
+                                        profile.min = user.min;
+                                        profile._id = 'primary';
+                                        profile.tzone = user.tzone;
+                                    }
+                                }
+                            } catch (enrichError) {
+                                console.error('[Socket] Enrichment error:', enrichError);
+                            }
+
+                            // Assign a random ID if still none
+                            if (!profile._id) profile._id = new Date().getTime().toString();
 
                             console.log('[Socket] Auto-sharing extracted profile:', profile);
                             await chatService.shareProfile(sessionId, profile);
