@@ -35,6 +35,7 @@ export interface IChatSession extends Document {
     freeTrialDurationSeconds?: number;  // Duration of free trial (default 120 = 2 minutes)
     createdAt: Date;
     updatedAt: Date;
+    sharedProfiles?: any[];             // List of profiles shared in this session
 }
 
 const ChatSessionSchema: Schema = new Schema({
@@ -89,7 +90,9 @@ const ChatSessionSchema: Schema = new Schema({
     previousSessionId: { type: String },
     // Free Trial fields
     isFreeTrialSession: { type: Boolean, default: false },
-    freeTrialDurationSeconds: { type: Number, default: 120 }
+    freeTrialDurationSeconds: { type: Number, default: 120 },
+    // Shared Profiles
+    sharedProfiles: { type: [Object], default: [] }
 }, { timestamps: true });
 
 // Compound index for finding active sessions

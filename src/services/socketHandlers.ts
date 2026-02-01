@@ -251,6 +251,32 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
+        // Handle share profile logic
+        socket.on('share_profile', async (data: { sessionId: string, profile: any }) => {
+            try {
+                const { sessionId, profile } = data;
+                if (!sessionId || !profile) return;
+
+                // Save to DB and broadcast SHARE_PROFILE
+                await chatService.shareProfile(sessionId, profile);
+            } catch (error) {
+                console.error('[Socket] Share profile error:', error);
+            }
+        });
+
+        // Handle SHARE_PROFILE (uppercase alias)
+        socket.on('SHARE_PROFILE', async (data: { sessionId: string, profile: any }) => {
+            try {
+                const { sessionId, profile } = data;
+                if (!sessionId || !profile) return;
+
+                // Save to DB and broadcast SHARE_PROFILE
+                await chatService.shareProfile(sessionId, profile);
+            } catch (error) {
+                console.error('[Socket] SHARE_PROFILE error:', error);
+            }
+        });
+
         // Handle join chat (handshake)
         socket.on('join_chat', async (data: { sessionId: string }) => {
             try {

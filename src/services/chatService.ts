@@ -308,6 +308,7 @@ class ChatService {
                 astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
                 status: 'ACTIVE',
                 intakeDetails: session.intakeDetails, // Pass for auto-message
+                sharedProfiles: session.sharedProfiles, // Pass shared profiles to frontend
                 // Free trial info
                 isFreeTrialSession: session.isFreeTrialSession || false,
                 freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
@@ -1065,7 +1066,8 @@ class ChatService {
      */
     async getActiveSessionForAstrologer(astrologerId: string): Promise<IChatSession | null> {
         return ChatSession.findOne({ astrologerId, status: 'ACTIVE' })
-            .populate('userId', 'name');
+            .populate('userId', 'name')
+            .select('+sharedProfiles'); // Ensure sharedProfiles is selected if it was excluded by default (though it's not)
     }
 
     /**
@@ -1192,6 +1194,30 @@ class ChatService {
         }
 
         return session;
+    }
+
+
+
+    /**
+     * Share a profile in the chat session
+     */
+    async shareProfile(sessionId: string, profile: any): Promise<void> {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) return;
+
+        // Add to sharedProfiles list
+        await ChatSession.updateOne(
+            { sessionId },
+            { $push: { sharedProfiles: profile } }
+        );
+        console.log(`[ChatService] Profile shared in session ${sessionId}`);
+
+        // Broadcast to both parties so they receive it in real-time
+        // Emitting 'SHARE_PROFILE' as expected by frontend
+        if (this.io) {
+            this.io.to(`user:${session.userId}`).emit('SHARE_PROFILE', profile);
+            this.io.to(`astrologer:${session.astrologerId}`).emit('SHARE_PROFILE', profile);
+        }
     }
 }
 
