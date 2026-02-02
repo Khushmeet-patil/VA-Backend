@@ -44,4 +44,8 @@ router.get('/sessions', authMiddleware, getSessionHistory);
 // Get User Profile for Chat
 router.get('/user-profile/:userId/:profileId?', authMiddleware, getUserProfileForAstrologer);
 
+// Settings
+import { getSettingByKey } from '../controllers/systemSettingController';
+router.get('/settings/:key', getSettingByKey);
+
 export default router;

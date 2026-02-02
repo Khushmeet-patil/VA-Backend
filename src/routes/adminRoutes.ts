@@ -59,6 +59,11 @@ router.get('/banners/active', getActiveBanners);
 router.put('/banners/:bannerId', updateBanner);
 router.delete('/banners/:bannerId', deleteBanner);
 
+// Settings
+import { getAllSettings, updateSetting } from '../controllers/systemSettingController';
+router.get('/settings', getAllSettings);
+router.put('/settings', updateSetting);
+
 export default router;
 
 

@@ -9,6 +9,7 @@ import Withdrawal from '../models/Withdrawal';
 import ChatReview from '../models/ChatReview';
 import mongoose from 'mongoose';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
+import { getSettingValue } from './systemSettingController';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -542,35 +543,44 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
 
         const withdrawableAmount = astrologer.earnings || 0;
 
-        if (withdrawableAmount <= 0) {
-            return res.status(400).json({ success: false, message: 'No balance available for withdrawal' });
+        // Get minimum balance to maintain from settings
+        const minBalance = await getSettingValue('minWithdrawalBalance', 200);
+
+        if (withdrawableAmount <= minBalance) {
+            return res.status(400).json({
+                success: false,
+                message: `Minimum balance of ₹${minBalance} must be maintained in your wallet. Your current balance is ₹${withdrawableAmount}.`
+            });
         }
+
+        const actualWithdrawAmount = withdrawableAmount - minBalance;
 
         // Create withdrawal request
         const withdrawal = new Withdrawal({
             astrologerId: astrologer._id,
-            amount: withdrawableAmount,
+            amount: actualWithdrawAmount,
             status: 'PENDING',
             requestedAt: new Date()
         });
         await withdrawal.save();
 
-        // Update astrologer balances: move earnings to pending
-        astrologer.pendingWithdrawal = (astrologer.pendingWithdrawal || 0) + withdrawableAmount;
-        astrologer.earnings = 0;
+        // Update astrologer balances: move earnings to pending, keeping minBalance in earnings
+        astrologer.pendingWithdrawal = (astrologer.pendingWithdrawal || 0) + actualWithdrawAmount;
+        astrologer.earnings = minBalance;
         await astrologer.save();
 
-        console.log(`[Withdrawal] Request created: ${withdrawal._id}, amount: ${withdrawableAmount}`);
+        console.log(`[Withdrawal] Request created: ${withdrawal._id}, amount: ${actualWithdrawAmount}, maintained: ${minBalance}`);
 
         res.json({
             success: true,
             message: 'Withdrawal request submitted successfully',
             data: {
                 withdrawalId: withdrawal._id,
-                amount: withdrawableAmount,
+                amount: actualWithdrawAmount,
                 status: 'PENDING',
-                newWithdrawableBalance: 0,
-                newPendingAmount: astrologer.pendingWithdrawal
+                newWithdrawableBalance: minBalance,
+                newPendingAmount: astrologer.pendingWithdrawal,
+                maintainedBalance: minBalance
             }
         });
     } catch (error: any) {
