@@ -56,23 +56,26 @@ class NotificationService {
                 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
                 if (privateKey) {
-                    // 1. Strip surrounding quotes (handle potentially multiple layers or single/double quotes)
+                    // 1. Strip surrounding quotes (recursive)
                     privateKey = privateKey.trim();
                     while (privateKey.startsWith('"') || privateKey.startsWith("'")) {
                         privateKey = privateKey.substring(1, privateKey.length - 1).trim();
                     }
 
-                    // 2. Handle escaped newlines (\\n) which are common in platform UI dashboards
-                    // We do this multiple times in case of triple-escaping (\\\\n)
-                    privateKey = privateKey.replace(/\\n/g, '\n').replace(/\\r/g, '');
+                    // 2. Aggressive newline handling: 
+                    // Matches one or more backslashes followed by 'n' (e.g. \n, \\n, \\\n)
+                    // and replaces them with a single real newline character.
+                    privateKey = privateKey.replace(/\\+n/g, '\n').replace(/\\r/g, '');
 
                     // 3. Final safety trim
                     privateKey = privateKey.trim();
 
-                    // Diagnostic: Log the start and end of the key to verify separators (SAFE LOGGING)
-                    const keyStart = privateKey.substring(0, 30).replace(/\n/g, '\\n');
-                    const keyEnd = privateKey.substring(privateKey.length - 30).replace(/\n/g, '\\n');
-                    console.log(`[NotificationService] Key structure check: [${keyStart} ... ${keyEnd}]`);
+                    // Diagnostic: Log detailed status
+                    const keyStart = privateKey.substring(0, 30).replace(/\n/g, '(NL)');
+                    console.log(`[NotificationService] Key Sanitization Result:`);
+                    console.log(`[NotificationService] - Contains real newlines: ${privateKey.includes('\n')}`);
+                    console.log(`[NotificationService] - Contains literal \\n: ${privateKey.includes('\\n')}`);
+                    console.log(`[NotificationService] - Start preview: [${keyStart}...]`);
                 }
 
                 console.log(`[NotificationService] Individual env vars check: 
