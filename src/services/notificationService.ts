@@ -56,11 +56,23 @@ class NotificationService {
                 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
                 if (privateKey) {
-                    // Robust private key cleaning:
-                    // 1. Strip surrounding quotes if they exist
-                    privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
-                    // 2. Handle both literal \n and escaped \\n
-                    privateKey = privateKey.replace(/\\n/g, '\n');
+                    // 1. Strip surrounding quotes (handle potentially multiple layers or single/double quotes)
+                    privateKey = privateKey.trim();
+                    while (privateKey.startsWith('"') || privateKey.startsWith("'")) {
+                        privateKey = privateKey.substring(1, privateKey.length - 1).trim();
+                    }
+
+                    // 2. Handle escaped newlines (\\n) which are common in platform UI dashboards
+                    // We do this multiple times in case of triple-escaping (\\\\n)
+                    privateKey = privateKey.replace(/\\n/g, '\n').replace(/\\r/g, '');
+
+                    // 3. Final safety trim
+                    privateKey = privateKey.trim();
+
+                    // Diagnostic: Log the start and end of the key to verify separators (SAFE LOGGING)
+                    const keyStart = privateKey.substring(0, 30).replace(/\n/g, '\\n');
+                    const keyEnd = privateKey.substring(privateKey.length - 30).replace(/\n/g, '\\n');
+                    console.log(`[NotificationService] Key structure check: [${keyStart} ... ${keyEnd}]`);
                 }
 
                 console.log(`[NotificationService] Individual env vars check: 
