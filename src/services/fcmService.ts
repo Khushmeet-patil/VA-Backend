@@ -137,6 +137,7 @@ export const sendChatRequestNotification = async (
                 userPhoto: userPhoto || '',
                 timestamp: Date.now().toString(),
             },
+            
             android: {
                 priority: 'high',
                 ttl: 30000, // 30 seconds - matches request timeout
