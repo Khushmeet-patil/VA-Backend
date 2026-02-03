@@ -20,6 +20,7 @@ class NotificationService {
      * OR individual vars (PROJECT_ID, CLIENT_EMAIL, PRIVATE_KEY).
      */
     initialize(): void {
+        console.log('[NotificationService] initialize() called');
         if (this.initialized) {
             console.log('[NotificationService] Already initialized');
             return;
@@ -30,16 +31,19 @@ class NotificationService {
 
             // 1. Try single JSON/Base64 service account string
             const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+            console.log(`[NotificationService] FIREBASE_SERVICE_ACCOUNT env key present: ${!!saJson}`);
+
             if (saJson) {
                 try {
                     let decodedSa = saJson.trim();
                     // Handle Base64 if needed
                     if (!decodedSa.startsWith('{')) {
+                        console.log('[NotificationService] Attempting to decode Base64 service account');
                         const buffer = Buffer.from(decodedSa, 'base64').toString('utf8');
                         if (buffer.startsWith('{')) decodedSa = buffer;
                     }
                     serviceAccount = JSON.parse(decodedSa);
-                    console.log('[NotificationService] Using FIREBASE_SERVICE_ACCOUNT from env');
+                    console.log('[NotificationService] Successfully parsed FIREBASE_SERVICE_ACCOUNT JSON');
                 } catch (e) {
                     console.warn('[NotificationService] Failed to parse FIREBASE_SERVICE_ACCOUNT JSON');
                 }
@@ -50,6 +54,12 @@ class NotificationService {
                 const projectId = process.env.FIREBASE_PROJECT_ID;
                 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
                 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+                console.log(`[NotificationService] Individual env vars check: 
+                    PROJECT_ID: ${!!projectId}, 
+                    CLIENT_EMAIL: ${!!clientEmail}, 
+                    PRIVATE_KEY: ${privateKey ? `Present (${privateKey.length} chars)` : 'Missing'}`);
+
                 if (privateKey) privateKey = privateKey.replace(/\\n/g, '\n');
 
                 if (projectId && clientEmail && privateKey) {
@@ -59,7 +69,8 @@ class NotificationService {
             }
 
             if (!serviceAccount) {
-                console.warn('[NotificationService] Firebase credentials not configured. Push notifications disabled.');
+                console.error('[NotificationService] CRITICAL: No Firebase credentials found in environment variables!');
+                console.warn('[NotificationService] Expected FIREBASE_SERVICE_ACCOUNT (JSON) OR (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY)');
                 return;
             }
 

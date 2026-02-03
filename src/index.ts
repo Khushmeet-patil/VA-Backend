@@ -1,8 +1,10 @@
 console.log('Starting VedicAstro Backend...');
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 
@@ -26,14 +28,13 @@ import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
 import panchangRoutes from './routes/panchangRoutes';
 
-dotenv.config();
-
 console.log('All modules loaded successfully');
 
 // Check R2 Configuration
 checkR2Connection();
 
 // Initialize Firebase Cloud Messaging
+console.log('[Main] Initializing Notification Service...');
 notificationService.initialize();
 
 const app = express();
