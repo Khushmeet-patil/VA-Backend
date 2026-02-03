@@ -69,19 +69,12 @@ class NotificationService {
 
                     // 3. Final safety trim
                     privateKey = privateKey.trim();
-
-                    // Diagnostic: Log detailed status
-                    const keyStart = privateKey.substring(0, 30).replace(/\n/g, '(NL)');
-                    console.log(`[NotificationService] Key Sanitization Result:`);
-                    console.log(`[NotificationService] - Contains real newlines: ${privateKey.includes('\n')}`);
-                    console.log(`[NotificationService] - Contains literal \\n: ${privateKey.includes('\\n')}`);
-                    console.log(`[NotificationService] - Start preview: [${keyStart}...]`);
                 }
 
                 console.log(`[NotificationService] Individual env vars check: 
                     PROJECT_ID: ${!!projectId}, 
                     CLIENT_EMAIL: ${!!clientEmail}, 
-                    PRIVATE_KEY: ${privateKey ? `Present (${privateKey.length} chars)` : 'Missing'}`);
+                    PRIVATE_KEY: ${privateKey ? 'Present' : 'Missing'}`);
 
                 if (projectId && clientEmail && privateKey) {
                     serviceAccount = { projectId, clientEmail, privateKey };
