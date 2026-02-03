@@ -283,12 +283,12 @@ class NotificationService {
     /**
      * Clear invalid FCM token for astrologer
      */
-    async clearAstrologerToken(astrologerId: string): Promise<void> {
+    async clearAstrologerToken(userId: string): Promise<void> {
         try {
-            await Astrologer.findByIdAndUpdate(astrologerId, {
+            await Astrologer.findOneAndUpdate({ userId }, {
                 $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 }
             });
-            console.log(`[NotificationService] Cleared FCM token for astrologer ${astrologerId}`);
+            console.log(`[NotificationService] Cleared FCM token for astrologer user ${userId}`);
         } catch (error) {
             console.error('[NotificationService] Error clearing astrologer token:', error);
         }
@@ -314,17 +314,105 @@ class NotificationService {
     /**
      * Register/update FCM token for an astrologer
      */
-    async registerAstrologerToken(astrologerId: string, fcmToken: string): Promise<boolean> {
+    async registerAstrologerToken(userId: string, fcmToken: string): Promise<boolean> {
         try {
-            await Astrologer.findByIdAndUpdate(astrologerId, {
+            await Astrologer.findOneAndUpdate({ userId }, {
                 fcmToken,
                 fcmTokenUpdatedAt: new Date(),
             });
-            console.log(`[NotificationService] Registered FCM token for astrologer ${astrologerId}`);
+            console.log(`[NotificationService] Registered FCM token for astrologer user ${userId}`);
             return true;
         } catch (error) {
             console.error('[NotificationService] Error registering astrologer token:', error);
             return false;
+        }
+    }
+
+    /**
+     * Broadcast a notification to a specific audience
+     * Targets users, astrologers, or both based on the audience parameter.
+     * Uses batching (500 tokens/request) for production scalability.
+     */
+    async broadcast(
+        audience: 'all' | 'users' | 'astrologers',
+        notification: { title: string; body: string },
+        data?: Record<string, string>
+    ): Promise<{ success: number; failure: number }> {
+        if (!this.initialized) {
+            console.warn('[NotificationService] Not initialized, cannot broadcast');
+            return { success: 0, failure: 0 };
+        }
+
+        const tokens: string[] = [];
+
+        try {
+            // 1. Collect tokens based on audience
+            if (audience === 'users' || audience === 'all') {
+                const users = await User.find({
+                    fcmToken: { $exists: true, $ne: '' },
+                    role: 'user'
+                }).select('fcmToken');
+                tokens.push(...users.map(u => u.fcmToken!).filter(t => !!t));
+            }
+
+            if (audience === 'astrologers' || audience === 'all') {
+                const astrologers = await Astrologer.find({
+                    fcmToken: { $exists: true, $ne: '' }
+                }).select('fcmToken');
+                tokens.push(...astrologers.map(a => a.fcmToken!).filter(t => !!t));
+            }
+
+            if (tokens.length === 0) {
+                console.log(`[NotificationService] No tokens found for audience: ${audience}`);
+                return { success: 0, failure: 0 };
+            }
+
+            // 2. Clear duplicates
+            const uniqueTokens = Array.from(new Set(tokens));
+            console.log(`[NotificationService] Broadcasting to ${uniqueTokens.length} unique devices (Audience: ${audience})`);
+
+            // 3. Process in batches of 500 (FCM limit)
+            const batchSize = 500;
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (let i = 0; i < uniqueTokens.length; i += batchSize) {
+                const batch = uniqueTokens.slice(i, i + batchSize);
+                const message: admin.messaging.MulticastMessage = {
+                    tokens: batch,
+                    notification: {
+                        title: notification.title,
+                        body: notification.body,
+                    },
+                    data: data || { type: 'broadcast' },
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            channelId: 'general',
+                            priority: 'high',
+                            defaultSound: true,
+                        },
+                    },
+                };
+
+                const response = await admin.messaging().sendEachForMulticast(message);
+                successCount += response.successCount;
+                failureCount += response.failureCount;
+
+                console.log(`[NotificationService] Batch ${Math.floor(i / batchSize) + 1} sent: ${response.successCount} success, ${response.failureCount} failure`);
+
+                // Optional: Handle invalid tokens from results to keep DB clean
+                // response.responses.forEach((resp, idx) => {
+                //     if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
+                //         // Could mark token as invalid here
+                //     }
+                // });
+            }
+
+            return { success: successCount, failure: failureCount };
+        } catch (error) {
+            console.error('[NotificationService] Broadcast error:', error);
+            return { success: 0, failure: 0 };
         }
     }
 }

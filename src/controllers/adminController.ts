@@ -8,6 +8,7 @@ import ChatReview from '../models/ChatReview';
 import AstrologerFollower from '../models/AstrologerFollower';
 import Banner from '../models/Banner';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
+import notificationService from '../services/notificationService';
 
 
 // 1. Dashboard Stats
@@ -526,7 +527,21 @@ export const createNotification = async (req: Request, res: Response) => {
             userId: audience === 'user' ? userId : undefined
         });
 
-        res.status(201).json({ success: true, message: 'Notification sent', data: notification });
+        // Trigger Push Notification (Broadcast)
+        // Supported audiences: 'all', 'users', 'astrologers'
+        if (audience === 'all' || audience === 'users' || audience === 'astrologers') {
+            // We fire and forget the broadcast so the admin doesn't wait for thousands of tokens
+            notificationService.broadcast(
+                audience as any,
+                { title, body: message }
+            ).then(result => {
+                console.log(`[Admin] Broadcast finished: ${result.success} success, ${result.failure} failure`);
+            }).catch(err => {
+                console.error('[Admin] Broadcast failed:', err);
+            });
+        }
+
+        res.status(201).json({ success: true, message: 'Notification sent and broadcast triggered', data: notification });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
