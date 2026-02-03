@@ -168,7 +168,12 @@ class NotificationService {
         }
 
         try {
-            const astrologer = await Astrologer.findById(astrologerId);
+            // Flexible ID resolution: try findById first, then findOne by userId
+            let astrologer = await Astrologer.findById(astrologerId);
+            if (!astrologer) {
+                astrologer = await Astrologer.findOne({ userId: astrologerId });
+            }
+
             if (!astrologer?.fcmToken) {
                 console.log(`[NotificationService] Astrologer ${astrologerId} has no FCM token`);
                 return false;
@@ -238,7 +243,12 @@ class NotificationService {
         }
 
         try {
-            const astrologer = await Astrologer.findById(astrologerId);
+            // Flexible ID resolution: try findById first, then findOne by userId
+            let astrologer = await Astrologer.findById(astrologerId);
+            if (!astrologer) {
+                astrologer = await Astrologer.findOne({ userId: astrologerId });
+            }
+
             if (!astrologer?.fcmToken) {
                 console.log(`[NotificationService] Astrologer ${astrologerId} has no FCM token for high-priority request`);
                 return false;
@@ -247,37 +257,47 @@ class NotificationService {
             // IMPORTANT: Data-only message (no notification field)
             // This ensures the background handler ALWAYS runs, even when app is killed
             // The notifee library on client will display the full-screen notification
-            const message: admin.messaging.Message = {
-                token: astrologer.fcmToken,
-                // NO notification field - data-only message
-                data: {
-                    type: 'chat_request',
-                    sessionId: request.sessionId,
-                    userId: request.userId,
-                    userName: request.userName,
-                    userMobile: request.userMobile || '',
-                    ratePerMinute: String(request.ratePerMinute),
-                    intakeDetails: request.intakeDetails ? JSON.stringify(request.intakeDetails) : '',
-                },
-                android: {
-                    priority: 'high',
-                    // TTL of 30 seconds (matches incoming call timeout)
-                    ttl: 30 * 1000,
-                },
-            };
+            let message: admin.messaging.Message;
+            try {
+                message = {
+                    token: astrologer.fcmToken,
+                    // NO notification field - data-only message
+                    data: {
+                        type: 'chat_request',
+                        sessionId: request.sessionId,
+                        userId: request.userId,
+                        userName: request.userName,
+                        userMobile: request.userMobile || '',
+                        ratePerMinute: String(request.ratePerMinute),
+                        intakeDetails: request.intakeDetails ? JSON.stringify(request.intakeDetails) : '',
+                    },
+                    android: {
+                        priority: 'high',
+                        // TTL of 30 seconds (matches incoming call timeout)
+                        ttl: 30 * 1000,
+                    },
+                };
 
-            const response = await admin.messaging().send(message);
-            console.log(`[NotificationService] High-priority request sent: ${response}`);
-            return true;
-        } catch (error: any) {
-            console.error('[NotificationService] Error sending high-priority request:', error);
+                const response = await admin.messaging().send(message);
+                console.log(`[NotificationService] High-priority request sent: ${response}`);
+                return true;
+            } catch (error: any) {
+                console.error('[NotificationService] Error sending high-priority request:', error);
 
-            // Handle invalid token
-            if (error.code === 'messaging/invalid-registration-token' ||
-                error.code === 'messaging/registration-token-not-registered') {
-                await this.clearAstrologerTokenById(astrologerId);
+                // Handle invalid token
+                if (error.code === 'messaging/invalid-registration-token' ||
+                    error.code === 'messaging/registration-token-not-registered') {
+                    // Try to extract the failed token to clean it up
+                    const failedToken = astrologer.fcmToken;
+                    if (failedToken) {
+                        await this.cleanupToken(failedToken);
+                    }
+                }
+
+                return false;
             }
-
+        } catch (error: any) {
+            console.error('[NotificationService] Unexpected error in sendHighPriorityChatRequest:', error);
             return false;
         }
     }
@@ -317,10 +337,36 @@ class NotificationService {
             // Handle invalid/expired tokens
             if (error.code === 'messaging/invalid-registration-token' ||
                 error.code === 'messaging/registration-token-not-registered') {
-                console.log('[NotificationService] Invalid token, should be cleaned up');
+                console.log('[NotificationService] Invalid token detected, cleaning up...');
+                if (token) {
+                    await this.cleanupToken(token);
+                }
             }
 
             return false;
+        }
+    }
+
+    /**
+     * Globally clear an invalid FCM token from database
+     * Targets both User and Astrologer collections to stay clean
+     */
+    async cleanupToken(token: string): Promise<void> {
+        if (!token) return;
+        try {
+            const userUpdate = User.updateMany(
+                { fcmToken: token },
+                { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
+            );
+            const astrologerUpdate = Astrologer.updateMany(
+                { fcmToken: token },
+                { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
+            );
+
+            await Promise.all([userUpdate, astrologerUpdate]);
+            console.log(`[NotificationService] Globally cleared invalid FCM token: ${token.substring(0, 15)}...`);
+        } catch (error) {
+            console.error('[NotificationService] Error in global token cleanup:', error);
         }
     }
 
@@ -473,12 +519,22 @@ class NotificationService {
 
                 console.log(`[NotificationService] Batch ${Math.floor(i / batchSize) + 1} sent: ${response.successCount} success, ${response.failureCount} failure`);
 
-                // Optional: Handle invalid tokens from results to keep DB clean
-                // response.responses.forEach((resp, idx) => {
-                //     if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
-                //         // Could mark token as invalid here
-                //     }
-                // });
+                // CLEANUP: Process results to remove dead tokens
+                const deadTokens = response.responses
+                    .map((resp, idx) => {
+                        if (!resp.success &&
+                            (resp.error?.code === 'messaging/registration-token-not-registered' ||
+                                resp.error?.code === 'messaging/invalid-registration-token')) {
+                            return batch[idx];
+                        }
+                        return null;
+                    })
+                    .filter((t): t is string => !!t);
+
+                if (deadTokens.length > 0) {
+                    console.log(`[NotificationService] Purging ${deadTokens.length} stale tokens found in broadcast...`);
+                    await Promise.all(deadTokens.map(token => this.cleanupToken(token)));
+                }
             }
 
             return { success: successCount, failure: failureCount };
