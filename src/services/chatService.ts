@@ -188,7 +188,7 @@ class ChatService {
         // Send high-priority FCM notification to astrologer
         // This ensures the astrologer receives the request even if app is killed/background
         try {
-            await notificationService.sendHighPriorityChatRequest(astrologerId, {
+            const fcmSuccess = await notificationService.sendHighPriorityChatRequest(astrologerId, {
                 sessionId: session.sessionId,
                 userId: userId,
                 userName: user.name || 'User',
@@ -196,7 +196,12 @@ class ChatService {
                 ratePerMinute,
                 intakeDetails,
             });
-            console.log(`[ChatService] High-priority FCM sent to astrologer ${astrologerId}`);
+
+            if (fcmSuccess) {
+                console.log(`[ChatService] High-priority FCM sent to astrologer ${astrologerId}`);
+            } else {
+                console.warn(`[ChatService] Failed to send high-priority FCM to astrologer ${astrologerId}`);
+            }
         } catch (fcmError) {
             // Don't fail the request if FCM fails - socket might still work
             console.error(`[ChatService] FCM notification error:`, fcmError);

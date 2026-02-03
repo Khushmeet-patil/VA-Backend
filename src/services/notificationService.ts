@@ -78,7 +78,7 @@ class NotificationService {
 
                 if (projectId && clientEmail && privateKey) {
                     serviceAccount = { projectId, clientEmail, privateKey };
-                    console.log('[NotificationService] Using individual Firebase credentials from env');
+                    console.log(`[NotificationService] Using individual Firebase credentials from env. Project: ${projectId}`);
                 }
             }
 
@@ -256,7 +256,7 @@ class NotificationService {
             // Handle invalid token
             if (error.code === 'messaging/invalid-registration-token' ||
                 error.code === 'messaging/registration-token-not-registered') {
-                await this.clearAstrologerToken(astrologerId);
+                await this.clearAstrologerTokenById(astrologerId);
             }
 
             return false;
@@ -330,6 +330,20 @@ class NotificationService {
             console.log(`[NotificationService] Cleared FCM token for astrologer user ${userId}`);
         } catch (error) {
             console.error('[NotificationService] Error clearing astrologer token:', error);
+        }
+    }
+
+    /**
+     * Clear invalid FCM token for astrologer by Astrologer ID (used by send failures)
+     */
+    async clearAstrologerTokenById(astrologerId: string): Promise<void> {
+        try {
+            await Astrologer.findByIdAndUpdate(astrologerId, {
+                $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 }
+            });
+            console.log(`[NotificationService] Cleared FCM token for astrologer ${astrologerId}`);
+        } catch (error) {
+            console.error('[NotificationService] Error clearing astrologer token by ID:', error);
         }
     }
 
