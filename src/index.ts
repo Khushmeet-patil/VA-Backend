@@ -26,6 +26,8 @@ import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
 import panchangRoutes from './routes/panchangRoutes';
 
+dotenv.config();
+
 console.log('All modules loaded successfully');
 
 // Check R2 Configuration
@@ -33,8 +35,6 @@ checkR2Connection();
 
 // Initialize Firebase Cloud Messaging
 notificationService.initialize();
-
-dotenv.config();
 
 const app = express();
 

@@ -16,7 +16,8 @@ class NotificationService {
 
     /**
      * Initialize Firebase Admin SDK using environment variables
-     * This approach is compatible with Railway deployment where file uploads aren't supported
+     * Supports both a single FIREBASE_SERVICE_ACCOUNT JSON string/Base64
+     * OR individual vars (PROJECT_ID, CLIENT_EMAIL, PRIVATE_KEY).
      */
     initialize(): void {
         if (this.initialized) {
@@ -24,34 +25,47 @@ class NotificationService {
             return;
         }
 
-        const projectId = process.env.FIREBASE_PROJECT_ID;
-        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        // Handle both escaped \\n and actual newlines in private key
-        let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-        if (privateKey) {
-            privateKey = privateKey.replace(/\\n/g, '\n');
-        }
-
-        // Debug logging to help identify issues
-        console.log('[NotificationService] Checking Firebase credentials...');
-        console.log(`[NotificationService] FIREBASE_PROJECT_ID: ${projectId ? 'SET' : 'MISSING'}`);
-        console.log(`[NotificationService] FIREBASE_CLIENT_EMAIL: ${clientEmail ? 'SET' : 'MISSING'}`);
-        console.log(`[NotificationService] FIREBASE_PRIVATE_KEY: ${privateKey ? `SET (${privateKey.length} chars)` : 'MISSING'}`);
-
-        if (!projectId || !clientEmail || !privateKey) {
-            console.warn('[NotificationService] Firebase credentials not configured. Push notifications disabled.');
-            console.warn('[NotificationService] Required env vars: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
-            return;
-        }
-
         try {
+            let serviceAccount: any = null;
+
+            // 1. Try single JSON/Base64 service account string
+            const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+            if (saJson) {
+                try {
+                    let decodedSa = saJson.trim();
+                    // Handle Base64 if needed
+                    if (!decodedSa.startsWith('{')) {
+                        const buffer = Buffer.from(decodedSa, 'base64').toString('utf8');
+                        if (buffer.startsWith('{')) decodedSa = buffer;
+                    }
+                    serviceAccount = JSON.parse(decodedSa);
+                    console.log('[NotificationService] Using FIREBASE_SERVICE_ACCOUNT from env');
+                } catch (e) {
+                    console.warn('[NotificationService] Failed to parse FIREBASE_SERVICE_ACCOUNT JSON');
+                }
+            }
+
+            // 2. Fallback to individual variables
+            if (!serviceAccount) {
+                const projectId = process.env.FIREBASE_PROJECT_ID;
+                const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+                let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+                if (privateKey) privateKey = privateKey.replace(/\\n/g, '\n');
+
+                if (projectId && clientEmail && privateKey) {
+                    serviceAccount = { projectId, clientEmail, privateKey };
+                    console.log('[NotificationService] Using individual Firebase credentials from env');
+                }
+            }
+
+            if (!serviceAccount) {
+                console.warn('[NotificationService] Firebase credentials not configured. Push notifications disabled.');
+                return;
+            }
+
             if (!admin.apps.length) {
                 admin.initializeApp({
-                    credential: admin.credential.cert({
-                        projectId,
-                        clientEmail,
-                        privateKey,
-                    } as admin.ServiceAccount),
+                    credential: admin.credential.cert(serviceAccount),
                 });
             }
 
