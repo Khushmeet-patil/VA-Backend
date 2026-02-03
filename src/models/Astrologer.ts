@@ -69,7 +69,7 @@ const AstrologerSchema: Schema = new Schema({
     earnings: { type: Number, default: 0 },
     pendingWithdrawal: { type: Number, default: 0 },
     tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' },
-    fcmToken: { type: String },  // Firebase Cloud Messaging token
+    fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
 }, { timestamps: true });
 

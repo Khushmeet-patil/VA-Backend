@@ -100,7 +100,7 @@ const UserSchema: Schema = new Schema({
     isBlocked: { type: Boolean, default: false },
     hasUsedFreeTrial: { type: Boolean, default: false },
     birthProfiles: { type: [BirthProfileSchema], default: [] },
-    fcmToken: { type: String },  // Firebase Cloud Messaging token
+    fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
     zodiacSign: { type: String }, // User's preferred Zodiac Sign
 }, { timestamps: true });
