@@ -1,4 +1,6 @@
 import * as admin from 'firebase-admin';
+import * as fs from 'fs';
+import * as path from 'path';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 
@@ -28,6 +30,20 @@ class NotificationService {
 
         try {
             let serviceAccount: any = null;
+
+            // 0. Priority: Attempt to load from local file (often contains correct local dev credentials)
+            try {
+                // Check relative to built file (dist/services/notificationService.js -> dist/services -> dist -> root)
+                const serviceAccountPath = path.join(__dirname, '../../firebase-service-account.json');
+                if (fs.existsSync(serviceAccountPath)) {
+                    console.log(`[NotificationService] Found local credential file at: ${serviceAccountPath}`);
+                    const fileContent = fs.readFileSync(serviceAccountPath, 'utf8');
+                    serviceAccount = JSON.parse(fileContent);
+                    console.log(`[NotificationService] Loaded credentials from local JSON file. Project: ${serviceAccount.project_id || serviceAccount.projectId}`);
+                }
+            } catch (fileError) {
+                console.warn('[NotificationService] Failed to load local service account file:', fileError);
+            }
 
             // 1. Try single JSON/Base64 service account string
             const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
