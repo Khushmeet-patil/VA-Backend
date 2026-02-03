@@ -104,6 +104,9 @@ class NotificationService {
                 return;
             }
 
+            const activeProjectId = serviceAccount.project_id || serviceAccount.projectId;
+            console.log(`[NotificationService] Finalizing initialization. Project ID: ${activeProjectId}`);
+
             if (!admin.apps.length) {
                 admin.initializeApp({
                     credential: admin.credential.cert(serviceAccount),
@@ -111,7 +114,7 @@ class NotificationService {
             }
 
             this.initialized = true;
-            console.log('[NotificationService] Firebase Admin initialized successfully');
+            console.log(`[NotificationService] Firebase Admin initialized successfully for project: ${activeProjectId}`);
         } catch (error) {
             console.error('[NotificationService] Failed to initialize Firebase Admin:', error);
         }

@@ -108,4 +108,55 @@ router.delete('/unregister-token', authenticateToken, async (req: Request, res: 
     }
 });
 
+/**
+ * POST /api/notifications/test-call/:id
+ * Admin test route to trigger a high-priority ring on a specific astrologer's device
+ */
+router.post('/test-call/:id', authenticateToken, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userRole = (req as any).userRole;
+
+        // Security: In production, you might want to restrict this more
+        // if (userRole !== 'admin') return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+        const success = await notificationService.sendHighPriorityChatRequest(id, {
+            sessionId: 'test-session-' + Date.now(),
+            userId: 'test-user-id',
+            userName: 'TEST USER',
+            ratePerMinute: 0,
+            intakeDetails: { note: 'This is a system test' }
+        });
+
+        if (success) {
+            res.json({ success: true, message: 'Test call sent successfully' });
+        } else {
+            res.status(500).json({ success: false, message: 'Failed to send test call. Check if astrologer has valid FCM token.' });
+        }
+    } catch (error) {
+        console.error('[NotificationRoutes] Test call error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/notifications/test-broadcast
+ * Admin test route to send a notification to ALL users
+ */
+router.post('/test-broadcast', authenticateToken, async (req: Request, res: Response) => {
+    try {
+        const { title, body } = req.body;
+
+        const result = await notificationService.broadcast('all', {
+            title: title || 'Test Broadcast',
+            body: body || 'This is a test notification from the admin system'
+        });
+
+        res.json({ success: true, message: 'Broadcast completed', result });
+    } catch (error) {
+        console.error('[NotificationRoutes] Test broadcast error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
 export default router;
