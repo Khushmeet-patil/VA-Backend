@@ -55,12 +55,18 @@ class NotificationService {
                 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
                 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
+                if (privateKey) {
+                    // Robust private key cleaning:
+                    // 1. Strip surrounding quotes if they exist
+                    privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
+                    // 2. Handle both literal \n and escaped \\n
+                    privateKey = privateKey.replace(/\\n/g, '\n');
+                }
+
                 console.log(`[NotificationService] Individual env vars check: 
                     PROJECT_ID: ${!!projectId}, 
                     CLIENT_EMAIL: ${!!clientEmail}, 
                     PRIVATE_KEY: ${privateKey ? `Present (${privateKey.length} chars)` : 'Missing'}`);
-
-                if (privateKey) privateKey = privateKey.replace(/\\n/g, '\n');
 
                 if (projectId && clientEmail && privateKey) {
                     serviceAccount = { projectId, clientEmail, privateKey };
