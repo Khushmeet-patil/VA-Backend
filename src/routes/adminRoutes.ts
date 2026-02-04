@@ -24,7 +24,11 @@ import {
     getBanners,
     getActiveBanners,
     updateBanner,
-    deleteBanner
+    deleteBanner,
+    getSkills,
+    addSkill,
+    updateSkill,
+    deleteSkill
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -64,6 +68,12 @@ router.get('/banners', getBanners);
 router.get('/banners/active', getActiveBanners);
 router.put('/banners/:bannerId', updateBanner);
 router.delete('/banners/:bannerId', deleteBanner);
+
+// Skills
+router.get('/skills', getSkills);
+router.post('/skills', addSkill);
+router.put('/skills/:skillId', updateSkill);
+router.delete('/skills/:skillId', deleteSkill);
 
 // Settings
 import { getAllSettings, updateSetting } from '../controllers/systemSettingController';

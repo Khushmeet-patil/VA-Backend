@@ -3,6 +3,7 @@ import Astrologer from '../models/Astrologer';
 import User from '../models/User';
 import AstrologerFollower from '../models/AstrologerFollower';
 import ChatReview from '../models/ChatReview';
+import Skill from '../models/Skill';
 
 // Apply for Astrologer (User)
 export const applyForAstrologer = async (req: Request, res: Response) => {
@@ -412,6 +413,17 @@ export const rateAstrologer = async (req: Request, res: Response) => {
         }
     } catch (error: any) {
         console.error('Rate astrologer error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Get all skills (Public)
+export const getAllSkills = async (req: Request, res: Response) => {
+    try {
+        const skills = await Skill.find().sort({ name: 1 });
+        res.json({ success: true, data: skills });
+    } catch (error: any) {
+        console.error('Get skills error:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

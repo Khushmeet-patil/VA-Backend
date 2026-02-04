@@ -7,7 +7,8 @@ import {
     followAstrologer,
     unfollowAstrologer,
     checkFollowStatus,
-    rateAstrologer
+    rateAstrologer,
+    getAllSkills
 } from '../controllers/astrologerController';
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth';
 
@@ -17,6 +18,7 @@ const router = express.Router();
 router.get('/list', getApprovedAstrologers);
 router.get('/profile/:id', optionalAuthMiddleware, getAstrologerProfile);
 router.get('/reviews/:id', getAstrologerReviews);
+router.get('/skills', getAllSkills);
 
 // Protected routes
 router.post('/apply', authMiddleware, applyForAstrologer);

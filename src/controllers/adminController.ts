@@ -7,6 +7,7 @@ import Notification from '../models/Notification';
 import ChatReview from '../models/ChatReview';
 import AstrologerFollower from '../models/AstrologerFollower';
 import Banner from '../models/Banner';
+import Skill from '../models/Skill';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
@@ -799,3 +800,75 @@ export const deleteBanner = async (req: Request, res: Response) => {
     }
 };
 
+// 6. Skill Management
+
+// Get all skills
+export const getSkills = async (req: Request, res: Response) => {
+    try {
+        const skills = await Skill.find().sort({ name: 1 });
+        res.status(200).json({ success: true, data: skills });
+    } catch (error) {
+        console.error('Get skills error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Add a new skill
+export const addSkill = async (req: Request, res: Response) => {
+    try {
+        const { name } = req.body;
+        if (!name) {
+            return res.status(400).json({ success: false, message: 'Skill name is required' });
+        }
+
+        const existingSkill = await Skill.findOne({ name });
+        if (existingSkill) {
+            return res.status(400).json({ success: false, message: 'Skill already exists' });
+        }
+
+        const skill = await Skill.create({ name });
+        res.status(201).json({ success: true, message: 'Skill added successfully', data: skill });
+    } catch (error) {
+        console.error('Add skill error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Update a skill
+export const updateSkill = async (req: Request, res: Response) => {
+    try {
+        const { skillId } = req.params;
+        const { name } = req.body;
+
+        if (!name) {
+            return res.status(400).json({ success: false, message: 'Skill name is required' });
+        }
+
+        const skill = await Skill.findByIdAndUpdate(skillId, { name }, { new: true });
+        if (!skill) {
+            return res.status(404).json({ success: false, message: 'Skill not found' });
+        }
+
+        res.status(200).json({ success: true, message: 'Skill updated successfully', data: skill });
+    } catch (error) {
+        console.error('Update skill error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Delete a skill
+export const deleteSkill = async (req: Request, res: Response) => {
+    try {
+        const { skillId } = req.params;
+
+        const skill = await Skill.findByIdAndDelete(skillId);
+        if (!skill) {
+            return res.status(404).json({ success: false, message: 'Skill not found' });
+        }
+
+        res.status(200).json({ success: true, message: 'Skill deleted successfully' });
+    } catch (error) {
+        console.error('Delete skill error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
