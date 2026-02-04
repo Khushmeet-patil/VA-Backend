@@ -9,7 +9,7 @@ class ScheduledNotificationService {
      * Initialize all active scheduled notifications on server start
      */
     async initialize() {
-        console.log('[ScheduledNotificationService] Initializing scheduled jobs...');
+        console.log(`[ScheduledNotificationService] Initializing scheduled jobs. Server local time: ${new Date().toString()}`);
         try {
             const activeSchedules = await Notification.find({
                 isScheduled: true,
@@ -61,6 +61,8 @@ class ScheduledNotificationService {
                 } catch (err) {
                     console.error(`[ScheduledNotificationService] Execution failed for ${notification._id}:`, err);
                 }
+            }, {
+                timezone: "Asia/Kolkata"
             });
 
             this.activeJobs.set(notification._id.toString(), job);
