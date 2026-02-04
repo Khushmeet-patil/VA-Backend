@@ -16,6 +16,7 @@ import {
     deleteNotification,
     deleteUser,
     addUser,
+    adminAddAstrologer,
     getUserReviews,
     deleteReview,
     getUserFollows,
@@ -43,6 +44,7 @@ router.post('/users', addUser);
 router.delete('/users/:userId', deleteUser);
 
 // Astrologers
+router.post('/astrologers', adminAddAstrologer);
 router.get('/astrologers', getAstrologers);
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);

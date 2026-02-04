@@ -429,6 +429,71 @@ export const deleteUser = async (req: Request, res: Response) => {
 };
 
 // 3. Astrologer Management
+
+export const adminAddAstrologer = async (req: Request, res: Response) => {
+    try {
+        const {
+            firstName, lastName, gender, mobileNumber, email,
+            experience, city, country, systemKnown, language, bio,
+            pricePerMin, priceRangeMin, priceRangeMax, tag, specialties
+        } = req.body;
+
+        if (!mobileNumber || !firstName || !lastName) {
+            return res.status(400).json({ success: false, message: 'FirstName, LastName and Mobile are required' });
+        }
+
+        // 1. Check if user already exists
+        const existingUser = await User.findOne({ mobile: mobileNumber });
+        if (existingUser) {
+            return res.status(400).json({ success: false, message: 'User with this mobile number already exists' });
+        }
+
+        // 2. Create User first
+        const newUser = new User({
+            name: `${firstName} ${lastName}`.trim(),
+            mobile: mobileNumber,
+            role: 'astrologer',
+            isVerified: true,
+            isBlocked: false
+        });
+
+        const savedUser = await newUser.save();
+
+        // 3. Create Astrologer Profile
+        const newAstrologer = new Astrologer({
+            userId: savedUser._id,
+            firstName,
+            lastName,
+            gender,
+            mobileNumber,
+            email,
+            experience: experience || 0,
+            city,
+            country,
+            systemKnown: systemKnown || [],
+            language: language || [],
+            bio: bio || '',
+            status: 'approved', // Admin created are approved by default
+            pricePerMin: pricePerMin || 20,
+            priceRangeMin: priceRangeMin || 10,
+            priceRangeMax: priceRangeMax || 100,
+            tag: tag || 'None',
+            specialties: specialties || []
+        });
+
+        await newAstrologer.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'Astrologer created successfully',
+            data: newAstrologer
+        });
+    } catch (error: any) {
+        console.error('Admin add astrologer error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
 export const getAstrologers = async (req: Request, res: Response) => {
     try {
         const { status } = req.query;
@@ -464,7 +529,10 @@ export const updateAstrologerStatus = async (req: Request, res: Response) => {
 export const updateAstrologer = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
-        const { isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag } = req.body;
+        const {
+            isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
+            firstName, lastName, email, mobileNumber, experience, city, country, bio, specialties
+        } = req.body;
 
         const updateData: any = {};
         if (typeof isBlocked === 'boolean') updateData.isBlocked = isBlocked;
@@ -472,6 +540,17 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
         if (typeof pricePerMin === 'number') updateData.pricePerMin = pricePerMin;
         if (tag) updateData.tag = tag;
+
+        // Basic Info
+        if (firstName) updateData.firstName = firstName;
+        if (lastName) updateData.lastName = lastName;
+        if (email) updateData.email = email;
+        if (mobileNumber) updateData.mobileNumber = mobileNumber;
+        if (typeof experience === 'number') updateData.experience = experience;
+        if (city) updateData.city = city;
+        if (country) updateData.country = country;
+        if (bio) updateData.bio = bio;
+        if (Array.isArray(specialties)) updateData.specialties = specialties;
 
         const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
