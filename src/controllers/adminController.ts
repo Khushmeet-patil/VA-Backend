@@ -527,9 +527,9 @@ export const createNotification = async (req: Request, res: Response) => {
             userId: audience === 'user' ? userId : undefined
         });
 
-        // Trigger Push Notification (Broadcast)
+        // Trigger Push Notification (Broadcast/Targeted)
         // Supported audiences: 'all', 'users', 'astrologers'
-        if (audience === 'all' || audience === 'users' || audience === 'astrologers') {
+        if (['all', 'users', 'astrologers'].includes(audience)) {
             // We fire and forget the broadcast so the admin doesn't wait for thousands of tokens
             notificationService.broadcast(
                 audience as any,
