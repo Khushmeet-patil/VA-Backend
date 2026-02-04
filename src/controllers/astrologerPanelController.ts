@@ -10,6 +10,7 @@ import ChatReview from '../models/ChatReview';
 import mongoose from 'mongoose';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import { getSettingValue } from './systemSettingController';
+import { notificationService } from '../services/notificationService';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -284,6 +285,17 @@ export const toggleStatus = async (req: Request, res: Response) => {
 
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Send notification to all users if astrologer becomes online
+        if (isOnline) {
+            notificationService.broadcast('users', {
+                title: 'Astrologer Online!',
+                body: `${astrologer.firstName} ${astrologer.lastName} is now available for consultation.`
+            }, {
+                type: 'astrologer_online',
+                astrologerId: astrologer._id.toString()
+            }).catch(err => console.error('[toggleStatus] Broadcast error:', err));
         }
 
         res.json({ success: true, message: `Status updated to ${isOnline ? 'online' : 'offline'}` });
