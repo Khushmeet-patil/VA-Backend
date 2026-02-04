@@ -10,6 +10,8 @@ export interface INotification extends Document {
     isScheduled: boolean;
     scheduledTime?: string; // HH:mm format for daily
     isActive: boolean;
+    navigateType?: 'screen' | 'url' | 'none';
+    navigateTarget?: string;
     createdAt: Date;
 }
 
@@ -22,7 +24,9 @@ const NotificationSchema: Schema = new Schema({
     isRead: { type: Boolean, default: false },
     isScheduled: { type: Boolean, default: false },
     scheduledTime: { type: String },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    navigateType: { type: String, enum: ['screen', 'url', 'none'], default: 'none' },
+    navigateTarget: { type: String }
 }, { timestamps: true });
 
 export default mongoose.model<INotification>('Notification', NotificationSchema);

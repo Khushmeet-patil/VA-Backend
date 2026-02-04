@@ -527,7 +527,9 @@ export const createNotification = async (req: Request, res: Response) => {
             audience,
             userId: audience === 'user' ? userId : undefined,
             isScheduled: req.body.isScheduled || false,
-            scheduledTime: req.body.scheduledTime
+            scheduledTime: req.body.scheduledTime,
+            navigateType: req.body.navigateType || 'none',
+            navigateTarget: req.body.navigateTarget
         });
 
         // Case 1: Instant Push Notification (Broadcast/Targeted)
@@ -535,7 +537,11 @@ export const createNotification = async (req: Request, res: Response) => {
             // We fire and forget the broadcast so the admin doesn't wait for thousands of tokens
             notificationService.broadcast(
                 audience as any,
-                { title, body: message }
+                { title, body: message },
+                {
+                    navigateType: notification.navigateType || 'none',
+                    navigateTarget: notification.navigateTarget || ''
+                }
             ).then(result => {
                 console.log(`[Admin] Broadcast finished: ${result.success} success, ${result.failure} failure`);
             }).catch(err => {
@@ -549,6 +555,42 @@ export const createNotification = async (req: Request, res: Response) => {
         }
 
         res.status(201).json({ success: true, message: 'Notification sent and broadcast triggered', data: notification });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Get all active scheduled notifications
+export const getScheduledNotifications = async (req: Request, res: Response) => {
+    try {
+        const notifications = await Notification.find({
+            isScheduled: true,
+            isActive: true
+        }).sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: notifications });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Terminate a scheduled notification
+export const deleteNotification = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const notification = await Notification.findById(id);
+
+        if (!notification) {
+            return res.status(404).json({ success: false, message: 'Notification not found' });
+        }
+
+        // 1. Deactivate in DB (stops it from being initialized on restart)
+        notification.isActive = false;
+        await notification.save();
+
+        // 2. Cancel active Cron Job if running
+        scheduledNotificationService.cancelJob(id);
+
+        res.status(200).json({ success: true, message: 'Notification terminated successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }

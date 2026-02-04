@@ -524,7 +524,10 @@ class NotificationService {
                         title: notification.title,
                         body: notification.body,
                     },
-                    data: data || { type: 'broadcast' },
+                    data: {
+                        type: 'broadcast',
+                        ...(data || {})
+                    },
                     android: {
                         priority: 'high',
                         notification: {

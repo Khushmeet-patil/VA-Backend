@@ -55,7 +55,11 @@ class ScheduledNotificationService {
 
                     await notificationService.broadcast(
                         latest.audience as any,
-                        { title: latest.title, body: latest.message }
+                        { title: latest.title, body: latest.message },
+                        {
+                            navigateType: latest.navigateType || 'none',
+                            navigateTarget: latest.navigateTarget || ''
+                        }
                     );
                     console.log(`[ScheduledNotificationService] Broadcast completed for ${latest._id}`);
                 } catch (err) {

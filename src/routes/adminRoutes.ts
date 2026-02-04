@@ -12,6 +12,8 @@ import {
     updateAstrologer,
     bulkUpdateAstrologers,
     createNotification,
+    getScheduledNotifications,
+    deleteNotification,
     deleteUser,
     addUser,
     getUserReviews,
@@ -51,6 +53,8 @@ router.delete('/reviews/:reviewId', deleteReview);
 
 // Notifications
 router.post('/notifications', createNotification);
+router.get('/notifications/scheduled', getScheduledNotifications);
+router.delete('/notifications/:id', deleteNotification);
 
 // Banners
 router.post('/banners', createBanner);
