@@ -9,6 +9,7 @@ import AstrologerFollower from '../models/AstrologerFollower';
 import Banner from '../models/Banner';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import notificationService from '../services/notificationService';
+import scheduledNotificationService from '../services/scheduledNotificationService';
 
 
 // 1. Dashboard Stats
@@ -524,12 +525,13 @@ export const createNotification = async (req: Request, res: Response) => {
             message,
             type,
             audience,
-            userId: audience === 'user' ? userId : undefined
+            userId: audience === 'user' ? userId : undefined,
+            isScheduled: req.body.isScheduled || false,
+            scheduledTime: req.body.scheduledTime
         });
 
-        // Trigger Push Notification (Broadcast/Targeted)
-        // Supported audiences: 'all', 'users', 'astrologers'
-        if (['all', 'users', 'astrologers'].includes(audience)) {
+        // Case 1: Instant Push Notification (Broadcast/Targeted)
+        if (!notification.isScheduled && ['all', 'users', 'astrologers'].includes(audience)) {
             // We fire and forget the broadcast so the admin doesn't wait for thousands of tokens
             notificationService.broadcast(
                 audience as any,
@@ -539,6 +541,11 @@ export const createNotification = async (req: Request, res: Response) => {
             }).catch(err => {
                 console.error('[Admin] Broadcast failed:', err);
             });
+        }
+
+        // Case 2: Scheduled Daily Notification
+        if (notification.isScheduled && notification.scheduledTime) {
+            scheduledNotificationService.scheduleJob(notification);
         }
 
         res.status(201).json({ success: true, message: 'Notification sent and broadcast triggered', data: notification });

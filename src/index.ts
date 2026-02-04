@@ -23,6 +23,7 @@ import initializeSocketHandlers from './services/socketHandlers';
 import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
+import scheduledNotificationService from './services/scheduledNotificationService';
 import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
@@ -106,6 +107,8 @@ httpServer.listen(Number(port), '0.0.0.0', () => {
     connectDB()
         .then(() => {
             console.log('Database connected successfully');
+            // Initialize scheduled notifications after DB is connected
+            scheduledNotificationService.initialize();
         })
         .catch((error) => {
             console.error('Database connection failed:', error.message);
