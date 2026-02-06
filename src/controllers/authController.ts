@@ -548,7 +548,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
         // 1. Verify Signature
         const body = razorpay_order_id + "|" + razorpay_payment_id;
         const expectedSignature = crypto
-            .createHmac('sha256', 'YOUR_KEY_SECRET') // REPLACE WITH YOUR ACTUAL KEY_SECRET
+            .createHmac('sha256', 'L64tdhhWB2RSpHq3rKaYj14H') // REPLACE WITH YOUR ACTUAL KEY_SECRET
             .update(body.toString())
             .digest('hex');
 
