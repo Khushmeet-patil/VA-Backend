@@ -149,6 +149,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
                 profilePhoto: astrologer.profilePhoto,
                 isOnline: astrologer.isOnline || false,
                 isBlocked: astrologer.isBlocked || false,
+                isVerified: astrologer.isVerified || false, // Return verification status
                 pricePerMin: astrologer.pricePerMin || 20,
                 priceRangeMin: astrologer.priceRangeMin || 10,
                 priceRangeMax: astrologer.priceRangeMax || 100,
@@ -562,6 +563,15 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
             return res.status(400).json({
                 success: false,
                 message: `Minimum balance of ₹${minBalance} must be maintained in your wallet. Your current balance is ₹${withdrawableAmount}.`
+            });
+        }
+
+        // Check if verified
+        if (!astrologer.isVerified) {
+            return res.status(403).json({
+                success: false,
+                message: 'Account Verification Required. Please email your KYC documents to support to enable withdrawals.',
+                errorCode: 'NOT_VERIFIED'
             });
         }
 

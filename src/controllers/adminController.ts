@@ -3,6 +3,8 @@ import { Request, Response } from 'express';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
+import ChatSession from '../models/ChatSession'; // Added import
+import Withdrawal from '../models/Withdrawal'; // Added import
 import Notification from '../models/Notification';
 import ChatReview from '../models/ChatReview';
 import AstrologerFollower from '../models/AstrologerFollower';
@@ -629,6 +631,123 @@ export const bulkUpdateAstrologers = async (req: Request, res: Response) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Get Single Astrologer Details (Admin)
+export const getAstrologerDetails = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const astrologer = await Astrologer.findById(astrologerId).populate('userId', 'name mobile');
+        if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        res.json({ success: true, data: astrologer });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Get Astrologer Earnings History (Admin)
+export const getAstrologerEarnings = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const sessions = await ChatSession.find({ astrologerId, status: 'ENDED' }).sort({ createdAt: -1 });
+        res.json({ success: true, data: sessions });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Get Astrologer Withdrawal History (Admin)
+export const getAstrologerWithdrawals = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const withdrawals = await Withdrawal.find({ astrologerId }).sort({ requestedAt: -1 });
+        res.json({ success: true, data: withdrawals });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Get Astrologer Chat History (Admin)
+export const getAstrologerChats = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        // Group by user or just list sessions? For admin audit, list sessions is fine.
+        const chats = await ChatSession.find({ astrologerId }).populate('userId', 'name mobile').sort({ createdAt: -1 }).limit(50);
+        res.json({ success: true, data: chats });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Verify Astrologer (Manual)
+export const verifyAstrologer = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { isVerified } = req.body; // true or false
+
+        const astrologer = await Astrologer.findByIdAndUpdate(
+            astrologerId,
+            { isVerified },
+            { new: true }
+        );
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Astrologer ${isVerified ? 'verified' : 'unverified'} successfully`,
+            data: astrologer
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Upload Verification Document (Admin uploads on behalf of astrologer)
+export const uploadVerificationDocument = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { docName, docBase64 } = req.body;
+
+        if (!docName || !docBase64) {
+            return res.status(400).json({ success: false, message: 'Document Name and File are required' });
+        }
+
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Upload to R2
+        const r2Url = await uploadBase64ToR2(docBase64, 'verification_docs', `${astrologerId}-${Date.now()}`);
+
+        if (!r2Url) {
+            return res.status(500).json({ success: false, message: 'Failed to upload document' });
+        }
+
+        // Add to documents array
+        astrologer.verificationDocuments.push({
+            name: docName,
+            url: r2Url,
+            uploadedAt: new Date()
+        });
+
+        // Auto-verify if needed (optional, keeping manual for now)
+        // astrologer.isVerified = true; 
+
+        await astrologer.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Document uploaded successfully',
+            data: astrologer
+        });
+    } catch (error: any) {
+        console.error('Upload verification doc error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };
 

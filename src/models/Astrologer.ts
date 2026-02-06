@@ -35,6 +35,12 @@ export interface IAstrologer extends Document {
     fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
     fcmTokenUpdatedAt?: Date;  // When the FCM token was last updated
     createdAt: Date;
+    isVerified: boolean;
+    verificationDocuments: {
+        name: string;
+        url: string;
+        uploadedAt: Date;
+    }[];
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -71,6 +77,14 @@ const AstrologerSchema: Schema = new Schema({
     tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' },
     fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
+
+    // Verification
+    isVerified: { type: Boolean, default: false },
+    verificationDocuments: [{
+        name: { type: String },
+        url: { type: String },
+        uploadedAt: { type: Date, default: Date.now }
+    }]
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

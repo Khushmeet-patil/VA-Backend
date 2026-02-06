@@ -28,7 +28,13 @@ import {
     getSkills,
     addSkill,
     updateSkill,
-    deleteSkill
+    deleteSkill,
+    verifyAstrologer,
+    uploadVerificationDocument,
+    getAstrologerDetails,
+    getAstrologerEarnings,
+    getAstrologerWithdrawals,
+    getAstrologerChats
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -53,6 +59,12 @@ router.get('/astrologers', getAstrologers);
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
+router.put('/astrologers/:astrologerId/verification', verifyAstrologer);
+router.post('/astrologers/:astrologerId/verification/upload', uploadVerificationDocument);
+router.get('/astrologers/:astrologerId', getAstrologerDetails);
+router.get('/astrologers/:astrologerId/earnings', getAstrologerEarnings);
+router.get('/astrologers/:astrologerId/withdrawals', getAstrologerWithdrawals);
+router.get('/astrologers/:astrologerId/chats', getAstrologerChats);
 
 // Reviews
 router.delete('/reviews/:reviewId', deleteReview);
