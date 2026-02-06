@@ -1,14 +1,12 @@
 import { Router, Request, Response } from 'express';
 import notificationService from '../services/notificationService';
+import * as notificationController from '../controllers/notificationController';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import jwt from 'jsonwebtoken';
 
 const router = Router();
 
-/**
- * Middleware to verify JWT token and extract user info
- */
 const authenticateToken = async (req: Request, res: Response, next: Function) => {
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(' ')[1];
@@ -30,6 +28,12 @@ const authenticateToken = async (req: Request, res: Response, next: Function) =>
         return res.status(403).json({ success: false, message: 'Invalid token' });
     }
 };
+
+/**
+ * GET /api/notifications
+ * Fetch notifications for the authenticated user
+ */
+router.get('/', authenticateToken, notificationController.getUserNotifications);
 
 /**
  * POST /api/notifications/register-token
