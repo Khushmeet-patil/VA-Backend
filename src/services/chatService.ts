@@ -731,17 +731,18 @@ class ChatService {
 
         const ratePerMinute = session.ratePerMinute;
 
-        // CRITICAL: Check if user can afford BEFORE deducting
-        if (user.walletBalance < ratePerMinute) {
-            console.log(`[ChatService] Insufficient balance, ending chat: ${sessionId}`);
+        // CRITICAL: Check if user can afford BEFORE deducting (combined wallets)
+        const combinedBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
+        if (combinedBalance < ratePerMinute) {
+            console.log(`[ChatService] Insufficient combined balance, ending chat: ${sessionId}`);
             await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
             return;
         }
 
         // Process payment atomically
-        const paymentSuccess = await this.processPayment(session, user, astrologer);
+        const paymentResult = await this.processPayment(session, user, astrologer);
 
-        if (!paymentSuccess) {
+        if (!paymentResult.success) {
             console.error(`[ChatService] Payment failed for: ${sessionId}`);
             await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
             return;
@@ -751,13 +752,16 @@ class ChatService {
         const updatedUser = await User.findById(session.userId);
         if (!updatedUser) return;
 
-        // Emit billing update to both parties
+        // Emit billing update to both parties with split wallet info
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('BILLING_UPDATE', {
                 sessionId,
                 minutesElapsed: session.totalMinutes,
                 amountDeducted: session.totalAmount,
-                userBalance: updatedUser.walletBalance
+                realDeducted: paymentResult.realDeducted || 0,
+                bonusDeducted: paymentResult.bonusDeducted || 0,
+                realBalance: updatedUser.walletBalance || 0,
+                bonusBalance: updatedUser.bonusBalance || 0
             });
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('BILLING_UPDATE', {
@@ -768,23 +772,21 @@ class ChatService {
             });
         }
 
-        // CRITICAL FIX: If balance is now 0 or cannot afford another minute, end chat IMMEDIATELY
-        // This prevents the "extra minute" issue where chat continues after balance depletes
-        if (updatedUser.walletBalance <= 0) {
-            console.log(`[ChatService] Balance depleted (${updatedUser.walletBalance}), ending chat immediately: ${sessionId}`);
+        // CRITICAL FIX: If combined balance depleted, end chat IMMEDIATELY
+        const newCombinedBalance = (updatedUser.walletBalance || 0) + (updatedUser.bonusBalance || 0);
+        if (newCombinedBalance <= 0) {
+            console.log(`[ChatService] Combined balance depleted (${newCombinedBalance}), ending chat: ${sessionId}`);
             await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
             return;
         }
 
         // Check for LAST MINUTE WARNING
-        // Trigger when user has less than 2 minutes worth of balance remaining
-        // This gives user time to see warning and potentially recharge
-        if (updatedUser.walletBalance < ratePerMinute * 2 && updatedUser.walletBalance > 0) {
-            console.log(`[ChatService] Sending last minute warning for: ${sessionId}, balance: ${updatedUser.walletBalance}`);
+        if (newCombinedBalance < ratePerMinute * 2 && newCombinedBalance > 0) {
+            console.log(`[ChatService] Sending last minute warning for: ${sessionId}, balance: ${newCombinedBalance}`);
             if (this.io) {
                 this.io.to(`user:${session.userId}`).emit('LAST_MINUTE_WARNING', {
                     sessionId,
-                    remainingBalance: updatedUser.walletBalance,
+                    remainingBalance: newCombinedBalance,
                     ratePerMinute
                 });
             }
@@ -793,7 +795,8 @@ class ChatService {
 
     /**
      * Process payment atomically
-     * Deduct from user wallet, add to astrologer earnings
+     * Deduct from user wallet (split between bonus and real), add to astrologer earnings
+     * Astrologer earns only from real money portion based on commission percentage
      */
     private async processPayment(
         session: IChatSession,
@@ -801,62 +804,80 @@ class ChatService {
         astrologer: any,
         amountOverride?: number,
         descriptionOverride?: string
-    ): Promise<boolean> {
+    ): Promise<{ success: boolean; realDeducted?: number; bonusDeducted?: number }> {
         const mongoSession = await mongoose.startSession();
         mongoSession.startTransaction();
 
         try {
-            const ratePerMinute = session.ratePerMinute;
-            // Force rounding to 2 decimal places for the amount to deduct
-            const rawAmount = amountOverride !== undefined ? amountOverride : ratePerMinute;
-            const amountToDeduct = Math.round(rawAmount * 100) / 100;
+            // Fetch settings for bonus usage and commission
+            const SystemSetting = mongoose.model('SystemSetting');
+            const bonusUsageSetting = await SystemSetting.findOne({ key: 'bonusUsagePercent' });
+            const commissionSetting = await SystemSetting.findOne({ key: 'astrologerCommission' });
 
-            // Double-check balance within transaction
-            // Round balance for comparison to avoid floating point weirdness
-            if (user.walletBalance < amountToDeduct) {
-                await mongoSession.abortTransaction();
-                return false;
+            const bonusUsagePercent = bonusUsageSetting?.value ?? 20; // Default 20%
+            const astrologerCommission = commissionSetting?.value ?? 40; // Default 40%
+
+            const ratePerMinute = session.ratePerMinute;
+            const rawAmount = amountOverride !== undefined ? amountOverride : ratePerMinute;
+            const totalToDeduct = Math.round(rawAmount * 100) / 100;
+
+            // Calculate split: X% from bonus, rest from real
+            let bonusDeduction = Math.round((totalToDeduct * bonusUsagePercent / 100) * 100) / 100;
+            let realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
+
+            // Adjust if bonus wallet doesn't have enough
+            const bonusBalance = user.bonusBalance || 0;
+            if (bonusDeduction > bonusBalance) {
+                bonusDeduction = Math.round(bonusBalance * 100) / 100;
+                realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
             }
 
-            // Deduct from user wallet & Round
-            user.walletBalance = Math.round((user.walletBalance - amountToDeduct) * 100) / 100;
+            // Check if user can afford the real portion
+            const realBalance = user.walletBalance || 0;
+            if (realDeduction > realBalance) {
+                // Not enough in real wallet
+                await mongoSession.abortTransaction();
+                return { success: false };
+            }
+
+            // Deduct from both wallets
+            user.bonusBalance = Math.round((bonusBalance - bonusDeduction) * 100) / 100;
+            user.walletBalance = Math.round((realBalance - realDeduction) * 100) / 100;
             await user.save({ session: mongoSession });
 
-            // Add to astrologer earnings (full amount for now, can add platform fee later)
-            const astrologerShare = amountToDeduct; // Could be amountToDeduct * 0.7 for 70%
-            // Round astrologer share and total earnings
-            const safeAstrologerShare = Math.round(astrologerShare * 100) / 100;
-            astrologer.earnings = Math.round((astrologer.earnings + safeAstrologerShare) * 100) / 100;
+            // Astrologer earns only from REAL money portion (commission %)
+            const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
+            astrologer.earnings = Math.round((astrologer.earnings + astrologerShare) * 100) / 100;
             await astrologer.save({ session: mongoSession });
 
-            // Update session totals & Round
+            // Update session totals
             if (amountOverride === undefined) {
-                session.totalMinutes += 1; // Only increment minutes if this is a full interval charge
+                session.totalMinutes += 1;
             }
-            session.totalAmount = Math.round((session.totalAmount + amountToDeduct) * 100) / 100;
-            session.astrologerEarnings = Math.round((session.astrologerEarnings + safeAstrologerShare) * 100) / 100;
+            session.totalAmount = Math.round((session.totalAmount + totalToDeduct) * 100) / 100;
+            session.astrologerEarnings = Math.round((session.astrologerEarnings + astrologerShare) * 100) / 100;
             await session.save({ session: mongoSession });
 
-            // Create immutable transaction record
+            // Create transaction record with split info
             const transaction = new Transaction({
                 fromUser: user._id,
                 toAstrologer: astrologer._id,
-                amount: amountToDeduct,
+                amount: totalToDeduct,
                 type: 'debit',
                 status: 'success',
-                description: descriptionOverride || `Chat session: ${session.sessionId} - Minute ${session.totalMinutes}`
+                description: descriptionOverride || `Chat: ${session.sessionId} - Min ${session.totalMinutes} (Real: ₹${realDeduction}, Bonus: ₹${bonusDeduction}, Astro: ₹${astrologerShare})`
             });
             await transaction.save({ session: mongoSession });
 
             await mongoSession.commitTransaction();
 
-            console.log(`[ChatService] Billing cycle ${session.totalMinutes} processed for: ${session.sessionId}`);
-            return true;
+            console.log(`[ChatService] Billing processed: Real=-${realDeduction}, Bonus=-${bonusDeduction}, AstroEarns=${astrologerShare}`);
+            return { success: true, realDeducted: realDeduction, bonusDeducted: bonusDeduction };
 
         } catch (error) {
             await mongoSession.abortTransaction();
             console.error('[ChatService] Payment transaction failed:', error);
-            return false;
+            return { success: false };
         } finally {
             mongoSession.endSession();
         }

@@ -63,6 +63,12 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'astrologerSupportEmail') {
                 return res.json({ success: true, data: { key, value: 'support@vedicastro.com' } });
             }
+            if (key === 'astrologerCommission') {
+                return res.json({ success: true, data: { key, value: 40 } }); // 40% to astrologer
+            }
+            if (key === 'bonusUsagePercent') {
+                return res.json({ success: true, data: { key, value: 20 } }); // 20% from bonus wallet
+            }
             return res.status(404).json({ success: false, message: 'Setting not found' });
         }
 
