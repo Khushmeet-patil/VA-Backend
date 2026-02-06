@@ -489,3 +489,110 @@ export const processRecharge = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// ==========================================
+// Razorpay Atomic Payment Flow
+// ==========================================
+
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+
+const razorpay = new Razorpay({
+    key_id: 'rzp_test_SCou5PsU5pqYaH', // REPLACE WITH YOUR ACTUAL KEY_ID
+    key_secret: 'L64tdhhWB2RSpHq3rKaYj14H' // REPLACE WITH YOUR ACTUAL KEY_SECRET
+});
+
+// 1. Create Order
+export const createOrder = async (req: Request, res: Response) => {
+    try {
+        const { amount } = req.body; // Amount in INR 
+        // Note: Razorpay expects amount in PAISE (1 INR = 100 Paise)
+
+        if (!amount || amount < 1) {
+            return res.status(400).json({ success: false, message: 'Invalid amount' });
+        }
+
+        const options = {
+            amount: Math.round(amount * 100), // Convert to paise
+            currency: 'INR',
+            receipt: `receipt_${Date.now()}`
+        };
+
+        const order = await razorpay.orders.create(options);
+
+        res.json({
+            success: true,
+            orderId: order.id,
+            amount: order.amount,
+            currency: order.currency
+        });
+
+    } catch (error: any) {
+        console.error('[Auth] Create Order Error:', error);
+        res.status(500).json({ success: false, message: 'Failed to create order', error: error.message });
+    }
+};
+
+// 2. Verify Payment & Update Wallet (Atomic)
+export const verifyPayment = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const {
+            razorpay_order_id,
+            razorpay_payment_id,
+            razorpay_signature,
+            amount,
+            bonusAmount
+        } = req.body;
+
+        // 1. Verify Signature
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac('sha256', 'YOUR_KEY_SECRET') // REPLACE WITH YOUR ACTUAL KEY_SECRET
+            .update(body.toString())
+            .digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+        }
+
+        // 2. Payment Verified - Perform Atomic Update
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Check if this payment ID was already processed (Idempotency)
+        const existingTxn = await Transaction.findOne({ description: { $regex: razorpay_payment_id } });
+        if (existingTxn) {
+            return res.status(200).json({ success: true, message: 'Payment already processed', walletBalance: user.walletBalance });
+        }
+
+        const previousBalance = user.walletBalance || 0;
+        const previousBonus = user.bonusBalance || 0;
+
+        user.walletBalance = previousBalance + Number(amount);
+        user.bonusBalance = previousBonus + (Number(bonusAmount) || 0);
+        await user.save();
+
+        // 3. Log Transaction
+        await Transaction.create({
+            fromUser: userId,
+            amount: Number(amount),
+            type: 'credit',
+            status: 'success',
+            description: `Wallet Recharge via Razorpay (Txn: ${razorpay_payment_id})`
+        });
+
+        res.json({
+            success: true,
+            message: 'Payment verified & Wallet updated',
+            walletBalance: user.walletBalance,
+            bonusBalance: user.bonusBalance
+        });
+
+    } catch (error: any) {
+        console.error('[Auth] Verify Payment Error:', error);
+        res.status(500).json({ success: false, message: 'Payment verification failed', error: error.message });
+    }
+};
