@@ -559,7 +559,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const { astrologerId } = req.params;
         const {
             isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
-            firstName, lastName, email, mobileNumber, experience, city, country, bio, specialties
+            firstName, lastName, email, mobileNumber, experience, city, country, bio, specialties, profileImage
         } = req.body;
 
         const updateData: any = {};
@@ -578,7 +578,17 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (city) updateData.city = city;
         if (country) updateData.country = country;
         if (bio) updateData.bio = bio;
+        if (bio) updateData.bio = bio;
         if (Array.isArray(specialties)) updateData.specialties = specialties;
+
+        // Image Upload
+        if (profileImage) {
+            const uploadedUrl = await uploadBase64ToR2(profileImage, 'astrologers', `admin-update-${astrologerId}-${Date.now()}`);
+            if (uploadedUrl) {
+                // Should delete old image? Maybe later for optimization
+                updateData.profilePhoto = uploadedUrl;
+            }
+        }
 
         const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
