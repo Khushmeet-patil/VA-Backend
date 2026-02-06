@@ -266,7 +266,7 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             return res.status(401).json({ success: false, message: 'Not authenticated' });
         }
 
-        const user = await User.findById(userId).select('walletBalance hasUsedFreeTrial createdAt profilePhoto');
+        const user = await User.findById(userId).select('walletBalance bonusBalance hasUsedFreeTrial createdAt profilePhoto');
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -303,6 +303,7 @@ export const getWalletBalance = async (req: Request, res: Response) => {
         return res.status(200).json({
             success: true,
             walletBalance: user.walletBalance || 0,
+            bonusBalance: user.bonusBalance || 0,
             hasUsedFreeTrial: hasUsedFreeTrial,
             profilePhoto: user.profilePhoto // Return latest profile photo (Cloudflare URL)
         });
@@ -444,5 +445,47 @@ export const registerFcmToken = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('[Auth] Error registering FCM token:', error);
         return res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Mock process recharge (for testing)
+export const processRecharge = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { amount, bonusAmount } = req.body;
+
+        if (!amount || amount < 10) {
+            return res.status(400).json({ success: false, message: 'Invalid amount' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const previousBalance = user.walletBalance || 0;
+        const previousBonus = user.bonusBalance || 0;
+
+        user.walletBalance = previousBalance + amount;
+        user.bonusBalance = previousBonus + (bonusAmount || 0);
+        await user.save();
+
+        // Log transaction
+        await Transaction.create({
+            fromUser: userId,
+            amount: amount,
+            type: 'credit',
+            status: 'success',
+            description: `Recharge of ₹${amount} with bonus ₹${bonusAmount || 0}`
+        });
+
+        res.json({
+            success: true,
+            message: 'Recharge successful',
+            walletBalance: user.walletBalance,
+            bonusBalance: user.bonusBalance
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

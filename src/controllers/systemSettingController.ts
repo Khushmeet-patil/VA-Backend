@@ -40,6 +40,20 @@ export const getSettingByKey = async (req: Request, res: Response) => {
 
         if (!setting) {
             // Provide default values if not found in DB
+            if (key === 'gstRate') {
+                return res.json({ success: true, data: { key, value: 18 } });
+            }
+            if (key === 'rechargePacks') {
+                const defaultPacks = [
+                    { amount: 50, bonus: 0 },
+                    { amount: 100, bonus: 5 },
+                    { amount: 199, bonus: 10 },
+                    { amount: 300, bonus: 15 },
+                    { amount: 500, bonus: 20 },
+                    { amount: 1000, bonus: 25 },
+                ];
+                return res.json({ success: true, data: { key, value: defaultPacks } });
+            }
             if (key === 'minWithdrawalBalance') {
                 return res.json({ success: true, data: { key, value: 200 } });
             }
