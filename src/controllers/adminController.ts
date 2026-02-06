@@ -453,7 +453,7 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
         const {
             firstName, lastName, gender, mobileNumber, email,
             experience, city, country, systemKnown, language, bio,
-            pricePerMin, priceRangeMin, priceRangeMax, tag, specialties
+            pricePerMin, priceRangeMin, priceRangeMax, tag, specialties, profileImage
         } = req.body;
 
         if (!mobileNumber || !firstName || !lastName) {
@@ -477,6 +477,15 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
 
         const savedUser = await newUser.save();
 
+        // 2.1 Upload Profile Image if provided
+        let profilePhotoUrl = '';
+        if (profileImage) {
+            const uploadedUrl = await uploadBase64ToR2(profileImage, 'astrologers', `admin-add-${savedUser._id}-${Date.now()}`);
+            if (uploadedUrl) {
+                profilePhotoUrl = uploadedUrl;
+            }
+        }
+
         // 3. Create Astrologer Profile
         const newAstrologer = new Astrologer({
             userId: savedUser._id,
@@ -496,7 +505,8 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
             priceRangeMin: priceRangeMin || 10,
             priceRangeMax: priceRangeMax || 100,
             tag: tag || 'None',
-            specialties: specialties || []
+            specialties: specialties || [],
+            profilePhoto: profilePhotoUrl
         });
 
         await newAstrologer.save();
