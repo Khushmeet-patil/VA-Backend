@@ -54,6 +54,9 @@ export const getSettingByKey = async (req: Request, res: Response) => {
                 ];
                 return res.json({ success: true, data: { key, value: defaultPacks } });
             }
+            if (key === 'globalDiscount') {
+                return res.json({ success: true, data: { key, value: 10 } });
+            }
             if (key === 'minWithdrawalBalance') {
                 return res.json({ success: true, data: { key, value: 200 } });
             }
