@@ -113,12 +113,33 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
         // Use lean() to get plain objects and avoid schema validation issues with old data
         // Return all approved astrologers (online and offline) for the list
-        const astrologers = await Astrologer.find({ status: 'approved', isBlocked: { $ne: true } })
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const skip = (page - 1) * limit;
+
+        const query = { status: 'approved', isBlocked: { $ne: true } };
+
+        // Use lean() to get plain objects and avoid schema validation issues with old data
+        // Return all approved astrologers (online and offline) for the list
+        const astrologers = await Astrologer.find(query)
             .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag')
             .sort({ isOnline: -1, rating: -1 }) // Sort online first, then by rating
+            .skip(skip)
+            .limit(limit)
             .lean();
 
-        res.json(astrologers);
+        const total = await Astrologer.countDocuments(query);
+
+        res.json({
+            success: true,
+            data: astrologers,
+            pagination: {
+                page,
+                limit,
+                total,
+                hasMore: (skip + astrologers.length) < total
+            }
+        });
     } catch (error: any) {
         console.error('Get astrologers error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
