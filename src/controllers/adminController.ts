@@ -257,7 +257,7 @@ export const deleteReview = async (req: Request, res: Response) => {
 export const addWalletBalance = async (req: Request, res: Response) => {
     try {
         const { userId } = req.params;
-        const { amount, reason } = req.body;
+        const { amount, reason, type = 'real' } = req.body; // type: 'real' | 'bonus'
 
         // Validate amount
         if (!amount || typeof amount !== 'number' || amount <= 0) {
@@ -270,13 +270,19 @@ export const addWalletBalance = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const previousBalance = user.walletBalance || 0;
+        const isBonus = type === 'bonus';
+        const previousBalance = isBonus ? (user.bonusBalance || 0) : (user.walletBalance || 0);
+
         // Enforce 2 decimal precision
         const safeAmount = Math.round(amount * 100) / 100;
         const newBalance = Math.round((previousBalance + safeAmount) * 100) / 100;
 
         // Update user's wallet balance
-        user.walletBalance = newBalance;
+        if (isBonus) {
+            user.bonusBalance = newBalance;
+        } else {
+            user.walletBalance = newBalance;
+        }
         await user.save();
 
         // Create a transaction record for audit trail
@@ -284,24 +290,27 @@ export const addWalletBalance = async (req: Request, res: Response) => {
             fromUser: userId,
             type: 'credit',
             amount: amount,
-            description: reason || 'Admin added balance',
+            description: reason || (isBonus ? 'Admin added bonus' : 'Admin added balance'),
             status: 'success',
             previousBalance,
-            newBalance
+            newBalance,
+            meta: { walletType: type }
         });
 
         res.status(200).json({
             success: true,
-            message: `₹${amount} added to wallet successfully`,
+            message: `₹${amount} added to ${isBonus ? 'bonus' : 'real'} wallet successfully`,
             data: {
                 previousBalance,
                 amountAdded: amount,
                 newBalance,
+                walletType: type,
                 user: {
                     _id: user._id,
                     name: user.name,
                     mobile: user.mobile,
-                    walletBalance: user.walletBalance
+                    walletBalance: user.walletBalance,
+                    bonusBalance: user.bonusBalance
                 }
             }
         });
@@ -315,7 +324,7 @@ export const addWalletBalance = async (req: Request, res: Response) => {
 export const deductWalletBalance = async (req: Request, res: Response) => {
     try {
         const { userId } = req.params;
-        const { amount, reason } = req.body;
+        const { amount, reason, type = 'real' } = req.body; // type: 'real' | 'bonus'
 
         // Validate amount
         if (!amount || typeof amount !== 'number' || amount <= 0) {
@@ -328,13 +337,14 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const previousBalance = user.walletBalance || 0;
+        const isBonus = type === 'bonus';
+        const previousBalance = isBonus ? (user.bonusBalance || 0) : (user.walletBalance || 0);
 
         // Check if user has sufficient balance
         if (previousBalance < amount) {
             return res.status(400).json({
                 success: false,
-                message: `Insufficient balance. Current balance: ₹${previousBalance}`
+                message: `Insufficient ${isBonus ? 'bonus' : 'real'} balance. Current: ₹${previousBalance}`
             });
         }
 
@@ -343,7 +353,11 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
         const newBalance = Math.round((previousBalance - safeAmount) * 100) / 100;
 
         // Update user's wallet balance
-        user.walletBalance = newBalance;
+        if (isBonus) {
+            user.bonusBalance = newBalance;
+        } else {
+            user.walletBalance = newBalance;
+        }
         await user.save();
 
         // Create a transaction record for audit trail
@@ -351,24 +365,27 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
             fromUser: userId,
             type: 'debit',
             amount: amount,
-            description: reason || 'Admin deducted balance',
+            description: reason || (isBonus ? 'Admin deducted bonus' : 'Admin deducted balance'),
             status: 'success',
             previousBalance,
-            newBalance
+            newBalance,
+            meta: { walletType: type }
         });
 
         res.status(200).json({
             success: true,
-            message: `₹${amount} deducted from wallet successfully`,
+            message: `₹${amount} deducted from ${isBonus ? 'bonus' : 'real'} wallet successfully`,
             data: {
                 previousBalance,
                 amountDeducted: amount,
                 newBalance,
+                walletType: type,
                 user: {
                     _id: user._id,
                     name: user.name,
                     mobile: user.mobile,
-                    walletBalance: user.walletBalance
+                    walletBalance: user.walletBalance,
+                    bonusBalance: user.bonusBalance
                 }
             }
         });
