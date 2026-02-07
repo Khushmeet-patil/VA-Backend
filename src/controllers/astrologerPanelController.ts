@@ -196,6 +196,15 @@ export const getProfile = async (req: Request, res: Response) => {
                 reviewsCount: astrologer.reviewsCount || 0,
                 followersCount: astrologer.followersCount || 0,
                 totalChats: astrologer.totalChats || 0,
+                bankDetails: astrologer.bankDetails || {
+                    bankName: '',
+                    accountNumber: '',
+                    ifscCode: '',
+                    accountHolderName: '',
+                    branchName: ''
+                },
+                isFreeChatAvailable: astrologer.isFreeChatAvailable || false,
+                freeChatLimit: astrologer.freeChatLimit || 0
             }
         });
     } catch (error: any) {
@@ -207,7 +216,11 @@ export const getProfile = async (req: Request, res: Response) => {
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
-        const { firstName, lastName, bio, aboutMe, experience, systemKnown, language, specialties, profilePhoto } = req.body;
+        const {
+            firstName, lastName, bio, aboutMe, experience,
+            systemKnown, language, specialties, profilePhoto,
+            bankDetails, isFreeChatAvailable, freeChatLimit
+        } = req.body;
 
         const updateData: any = { firstName, lastName, bio, experience, systemKnown, language };
         if (aboutMe !== undefined) {
@@ -215,6 +228,15 @@ export const updateProfile = async (req: Request, res: Response) => {
         }
         if (specialties !== undefined) {
             updateData.specialties = specialties;
+        }
+        if (bankDetails !== undefined) {
+            updateData.bankDetails = bankDetails;
+        }
+        if (isFreeChatAvailable !== undefined) {
+            updateData.isFreeChatAvailable = isFreeChatAvailable;
+        }
+        if (freeChatLimit !== undefined) {
+            updateData.freeChatLimit = freeChatLimit;
         }
 
         // Handle profile photo upload to R2

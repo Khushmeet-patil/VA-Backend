@@ -508,7 +508,16 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
             priceRangeMax: priceRangeMax || 100,
             tag: tag || 'None',
             specialties: specialties || [],
-            profilePhoto: profilePhotoUrl
+            profilePhoto: profilePhotoUrl,
+            bankDetails: req.body.bankDetails || {
+                bankName: '',
+                accountNumber: '',
+                ifscCode: '',
+                accountHolderName: '',
+                branchName: ''
+            },
+            isFreeChatAvailable: req.body.isFreeChatAvailable || false,
+            freeChatLimit: req.body.freeChatLimit || 0
         });
 
         await newAstrologer.save();
@@ -580,8 +589,20 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (city) updateData.city = city;
         if (country) updateData.country = country;
         if (bio) updateData.bio = bio;
-        if (bio) updateData.bio = bio;
         if (Array.isArray(specialties)) updateData.specialties = specialties;
+
+        // Bank Details
+        if (req.body.bankDetails) {
+            updateData.bankDetails = req.body.bankDetails;
+        }
+
+        // Free Chat Settings
+        if (typeof req.body.isFreeChatAvailable === 'boolean') {
+            updateData.isFreeChatAvailable = req.body.isFreeChatAvailable;
+        }
+        if (typeof req.body.freeChatLimit === 'number') {
+            updateData.freeChatLimit = req.body.freeChatLimit;
+        }
 
         // Image Upload
         if (profileImage) {

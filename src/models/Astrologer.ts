@@ -41,6 +41,15 @@ export interface IAstrologer extends Document {
         url: string;
         uploadedAt: Date;
     }[];
+    bankDetails?: {
+        bankName: string;
+        accountNumber: string;
+        ifscCode: string;
+        accountHolderName: string;
+        branchName: string;
+    };
+    isFreeChatAvailable: boolean;
+    freeChatLimit: number;
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -84,7 +93,20 @@ const AstrologerSchema: Schema = new Schema({
         name: { type: String },
         url: { type: String },
         uploadedAt: { type: Date, default: Date.now }
-    }]
+    }],
+
+    // Bank Details
+    bankDetails: {
+        bankName: { type: String, default: '' },
+        accountNumber: { type: String, default: '' },
+        ifscCode: { type: String, default: '' },
+        accountHolderName: { type: String, default: '' },
+        branchName: { type: String, default: '' }
+    },
+
+    // Free Chat Settings
+    isFreeChatAvailable: { type: Boolean, default: false },
+    freeChatLimit: { type: Number, default: 0 }
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);
