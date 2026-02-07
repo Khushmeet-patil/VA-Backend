@@ -204,7 +204,8 @@ export const getProfile = async (req: Request, res: Response) => {
                     branchName: ''
                 },
                 isFreeChatAvailable: astrologer.isFreeChatAvailable || false,
-                freeChatLimit: astrologer.freeChatLimit || 0
+                freeChatLimit: astrologer.freeChatLimit || 0,
+                isVerified: astrologer.isVerified || false
             }
         });
     } catch (error: any) {
