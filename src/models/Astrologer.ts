@@ -30,6 +30,9 @@ export interface IAstrologer extends Document {
     priceRangeMax: number;
     totalChats: number;
     earnings: number;
+    yearlyEarningsStartDate: Date;    // Start of current financial year tracking (April 1)
+    yearlyGrossEarnings: number;      // Total earnings this financial year (before TDS)
+    yearlyTdsDeducted: number;        // Total TDS deducted this financial year
     pendingWithdrawal: number;  // Amount pending payout
     tag: 'None' | 'Celebrity' | 'Top Choice' | 'Rising Star';
     fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
@@ -82,6 +85,9 @@ const AstrologerSchema: Schema = new Schema({
     priceRangeMax: { type: Number, default: 100 },
     totalChats: { type: Number, default: 0 },
     earnings: { type: Number, default: 0 },
+    yearlyEarningsStartDate: { type: Date, default: null },  // Start of current financial year tracking
+    yearlyGrossEarnings: { type: Number, default: 0 },       // Total earnings this financial year
+    yearlyTdsDeducted: { type: Number, default: 0 },         // Total TDS deducted this financial year
     pendingWithdrawal: { type: Number, default: 0 },
     tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' },
     fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token

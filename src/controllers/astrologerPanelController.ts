@@ -418,7 +418,11 @@ export const getStats = async (req: Request, res: Response) => {
                 followersCount: astrologer.followersCount || 0,
                 rating: astrologer.rating || 0,
                 reviewsCount: astrologer.reviewsCount || 0,
-                ratingDistribution: ratingCounts
+                ratingDistribution: ratingCounts,
+                // TDS Information
+                yearlyGrossEarnings: astrologer.yearlyGrossEarnings || 0,
+                yearlyTdsDeducted: astrologer.yearlyTdsDeducted || 0,
+                tdsApplicable: (astrologer.yearlyGrossEarnings || 0) > 50000
             }
         });
 

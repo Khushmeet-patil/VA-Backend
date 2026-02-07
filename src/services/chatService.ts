@@ -847,7 +847,56 @@ class ChatService {
 
             // Astrologer earns only from REAL money portion (commission %)
             const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
-            astrologer.earnings = Math.round((astrologer.earnings + astrologerShare) * 100) / 100;
+
+            // ============ TDS CALCULATION LOGIC ============
+            // Fetch TDS settings
+            const tdsThresholdSetting = await SystemSetting.findOne({ key: 'tdsThreshold' });
+            const tdsRateSetting = await SystemSetting.findOne({ key: 'tdsRate' });
+            const tdsThreshold = tdsThresholdSetting?.value ?? 50000; // Default ₹50,000
+            const tdsRate = tdsRateSetting?.value ?? 10; // Default 10%
+
+            // Check if financial year needs to be reset (April 1 is new FY)
+            const now = new Date();
+            const currentFYStart = new Date(now.getFullYear(), 3, 1); // April 1 of current year
+            if (now.getMonth() < 3) { // If before April, FY started last year
+                currentFYStart.setFullYear(now.getFullYear() - 1);
+            }
+
+            // Reset yearly tracking if new financial year
+            if (!astrologer.yearlyEarningsStartDate || new Date(astrologer.yearlyEarningsStartDate) < currentFYStart) {
+                astrologer.yearlyEarningsStartDate = currentFYStart;
+                astrologer.yearlyGrossEarnings = 0;
+                astrologer.yearlyTdsDeducted = 0;
+                console.log(`[ChatService] Reset FY tracking for astrologer ${astrologer._id}, new FY: ${currentFYStart.toISOString()}`);
+            }
+
+            // Track previous yearly earnings to determine if this transaction crosses threshold
+            const previousYearlyEarnings = astrologer.yearlyGrossEarnings || 0;
+            const newYearlyEarnings = previousYearlyEarnings + astrologerShare;
+
+            let tdsDeduction = 0;
+            let netAstrologerShare = astrologerShare;
+
+            if (newYearlyEarnings > tdsThreshold) {
+                // TDS is applicable
+                if (previousYearlyEarnings <= tdsThreshold) {
+                    // Just crossed the threshold - TDS on ENTIRE amount that crossed (including previous earnings)
+                    tdsDeduction = Math.round((newYearlyEarnings * tdsRate / 100) * 100) / 100;
+                    console.log(`[ChatService] Crossed TDS threshold! Yearly: ₹${newYearlyEarnings}, TDS on full amount: ₹${tdsDeduction}`);
+                } else {
+                    // Already above threshold - TDS only on this earning
+                    tdsDeduction = Math.round((astrologerShare * tdsRate / 100) * 100) / 100;
+                    console.log(`[ChatService] TDS on earning: ₹${astrologerShare}, TDS: ₹${tdsDeduction}`);
+                }
+                netAstrologerShare = Math.round((astrologerShare - tdsDeduction) * 100) / 100;
+            }
+
+            // Update astrologer yearly tracking
+            astrologer.yearlyGrossEarnings = Math.round(newYearlyEarnings * 100) / 100;
+            astrologer.yearlyTdsDeducted = Math.round(((astrologer.yearlyTdsDeducted || 0) + tdsDeduction) * 100) / 100;
+
+            // Add NET earnings (after TDS) to astrologer's withdrawable balance
+            astrologer.earnings = Math.round((astrologer.earnings + netAstrologerShare) * 100) / 100;
             await astrologer.save({ session: mongoSession });
 
             // Update session totals
