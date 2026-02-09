@@ -24,6 +24,7 @@ import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
 import scheduledNotificationService from './services/scheduledNotificationService';
+import scheduleAutoOnline from './services/scheduler'; // Auto-online scheduler
 import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
@@ -37,6 +38,9 @@ checkR2Connection();
 // Initialize Firebase Cloud Messaging
 console.log('[Main] Initializing Notification Service...');
 notificationService.initialize();
+
+// Initialize Auto-Online Scheduling
+scheduleAutoOnline();
 
 const app = express();
 

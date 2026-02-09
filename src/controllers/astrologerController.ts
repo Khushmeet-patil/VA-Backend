@@ -438,13 +438,61 @@ export const rateAstrologer = async (req: Request, res: Response) => {
     }
 };
 
-// Get all skills (Public)
-export const getAllSkills = async (req: Request, res: Response) => {
+// Get availability schedule (Astrologer)
+export const getSchedule = async (req: Request, res: Response) => {
     try {
-        const skills = await Skill.find().sort({ name: 1 });
-        res.json({ success: true, data: skills });
+        const userId = (req as any).userId;
+        const astrologer = await Astrologer.findOne({ userId }).select('availabilitySchedule isAutoOnlineEnabled');
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                availabilitySchedule: astrologer.availabilitySchedule,
+                isAutoOnlineEnabled: astrologer.isAutoOnlineEnabled
+            }
+        });
     } catch (error: any) {
-        console.error('Get skills error:', error);
+        console.error('Get schedule error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Update availability schedule (Astrologer)
+export const updateSchedule = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { availabilitySchedule, isAutoOnlineEnabled } = req.body;
+
+        const astrologer = await Astrologer.findOne({ userId });
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        if (availabilitySchedule) {
+            astrologer.availabilitySchedule = availabilitySchedule;
+        }
+
+        if (typeof isAutoOnlineEnabled === 'boolean') {
+            astrologer.isAutoOnlineEnabled = isAutoOnlineEnabled;
+        }
+
+        await astrologer.save();
+
+        res.json({
+            success: true,
+            message: 'Schedule updated successfully',
+            data: {
+                availabilitySchedule: astrologer.availabilitySchedule,
+                isAutoOnlineEnabled: astrologer.isAutoOnlineEnabled
+            }
+        });
+    } catch (error: any) {
+        console.error('Update schedule error:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

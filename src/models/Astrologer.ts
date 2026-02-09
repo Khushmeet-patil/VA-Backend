@@ -55,6 +55,13 @@ export interface IAstrologer extends Document {
     };
     isFreeChatAvailable: boolean;
     freeChatLimit: number;
+    isAutoOnlineEnabled: boolean;
+    availabilitySchedule: {
+        day: string;
+        enabled: boolean;
+        startTime: string;
+        endTime: string;
+    }[];
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -116,7 +123,16 @@ const AstrologerSchema: Schema = new Schema({
 
     // Free Chat Settings
     isFreeChatAvailable: { type: Boolean, default: false },
-    freeChatLimit: { type: Number, default: 0 }
+    freeChatLimit: { type: Number, default: 0 },
+
+    // Auto-Online Scheduling
+    isAutoOnlineEnabled: { type: Boolean, default: false },
+    availabilitySchedule: [{
+        day: { type: String, enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] },
+        enabled: { type: Boolean, default: false },
+        startTime: { type: String, default: '09:00' }, // "HH:mm"
+        endTime: { type: String, default: '17:00' }    // "HH:mm"
+    }]
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

@@ -15,6 +15,10 @@ import {
     getPanelReviews,
     getUserProfileForAstrologer
 } from '../controllers/astrologerPanelController';
+import {
+    getSchedule,
+    updateSchedule
+} from '../controllers/astrologerController';
 import { authMiddleware } from '../middleware/auth';
 
 const router = express.Router();
@@ -43,6 +47,10 @@ router.get('/sessions', authMiddleware, getSessionHistory);
 
 // Get User Profile for Chat
 router.get('/user-profile/:userId/:profileId?', authMiddleware, getUserProfileForAstrologer);
+
+// Schedule routes
+router.get('/schedule', authMiddleware, getSchedule);
+router.put('/schedule', authMiddleware, updateSchedule);
 
 // Settings
 import { getSettingByKey } from '../controllers/systemSettingController';
