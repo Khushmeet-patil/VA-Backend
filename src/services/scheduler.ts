@@ -83,3 +83,25 @@ const scheduleAutoOnline = () => {
 };
 
 export default scheduleAutoOnline;
+
+// Run every day at midnight (IST)
+// Server time might be UTC, so we should check timezone or use specific hour
+// Assuming server is UTC, IST midnight is 18:30 UTC previous day.
+// But simpler to run at 00:00 system time and assume system is configured or just use node-cron timezone if available.
+// Let's run at 00:00 and log it.
+export const scheduleDailyReset = () => {
+    cron.schedule('0 0 * * *', async () => {
+        console.log('[Scheduler] Running daily reset for free chat counts...');
+        try {
+            const result = await Astrologer.updateMany(
+                {},
+                { $set: { freeChatsToday: 0 } }
+            );
+            console.log(`[Scheduler] Reset freeChatsToday for ${result.modifiedCount} astrologers.`);
+        } catch (error) {
+            console.error('[Scheduler] Error in daily reset:', error);
+        }
+    }, {
+        timezone: "Asia/Kolkata"
+    });
+};

@@ -15,7 +15,7 @@ import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth';
 const router = express.Router();
 
 // Public routes
-router.get('/list', getApprovedAstrologers);
+router.get('/list', optionalAuthMiddleware, getApprovedAstrologers);
 router.get('/profile/:id', optionalAuthMiddleware, getAstrologerProfile);
 router.get('/reviews/:id', getAstrologerReviews);
 router.get('/skills', getAllSkills);

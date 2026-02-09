@@ -111,18 +111,45 @@ export const updateApplicationStatus = async (req: Request, res: Response) => {
 // Get approved astrologers (Public) - excludes blocked astrologers
 export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
+        const userId = (req as any).userId; // Optional, might be passed from optionalAuthMiddleware
+
+        // Check if user is eligible for free chat (first time user)
+        let isFreeChatUser = false;
+        if (userId) {
+            const user = await User.findById(userId);
+            if (user && !user.hasUsedFreeTrial) {
+                isFreeChatUser = true;
+            }
+        }
+
         // Use lean() to get plain objects and avoid schema validation issues with old data
         // Return all approved astrologers (online and offline) for the list
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
 
-        const query = { status: 'approved', isBlocked: { $ne: true } };
+        const query: any = { status: 'approved', isBlocked: { $ne: true } };
+
+        // IF user is eligible for free chat, HIDE astrologers who reached their daily limit
+        if (isFreeChatUser) {
+            console.log(`[getApprovedAstrologers] User ${userId} is eligible for free chat. Filtering astrologers...`);
+            // We want to find astrologers where:
+            // 1. isFreeChatAvailable is true (or check logic? prompt says "if i set 0 free chat... astrologer is not shown")
+            // 2. freeChatsToday < freeChatLimit
+
+            // $expr allows comparing two fields in the same document
+            query.$expr = {
+                $lt: ["$freeChatsToday", "$freeChatLimit"]
+            };
+
+            // Also ensure free chat is actually enabled for them
+            query.isFreeChatAvailable = true;
+        }
 
         // Use lean() to get plain objects and avoid schema validation issues with old data
         // Return all approved astrologers (online and offline) for the list
         const astrologers = await Astrologer.find(query)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
             .sort({ isOnline: -1, rating: -1 }) // Sort online first, then by rating
             .skip(skip)
             .limit(limit)

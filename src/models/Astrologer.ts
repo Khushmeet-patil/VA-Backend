@@ -55,6 +55,8 @@ export interface IAstrologer extends Document {
     };
     isFreeChatAvailable: boolean;
     freeChatLimit: number;
+    freeChatsToday: number;
+    lastFreeChatDate?: Date;
     isAutoOnlineEnabled: boolean;
     availabilitySchedule: {
         day: string;
@@ -124,6 +126,8 @@ const AstrologerSchema: Schema = new Schema({
     // Free Chat Settings
     isFreeChatAvailable: { type: Boolean, default: false },
     freeChatLimit: { type: Number, default: 0 },
+    freeChatsToday: { type: Number, default: 0 }, // Track daily usage
+    lastFreeChatDate: { type: Date }, // To track when the last free chat happened
 
     // Auto-Online Scheduling
     isAutoOnlineEnabled: { type: Boolean, default: false },

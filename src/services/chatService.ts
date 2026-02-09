@@ -297,7 +297,13 @@ class ChatService {
         if (session.isFreeTrialSession) {
             // Free trial - start countdown timer instead of billing
             this.startFreeTrialTimer(sessionId, session.freeTrialDurationSeconds || 120);
-            console.log(`[ChatService] Chat accepted - FREE TRIAL STARTED: ${sessionId}`);
+
+            // Increment daily free chat count for astrologer
+            astrologer.freeChatsToday = (astrologer.freeChatsToday || 0) + 1;
+            astrologer.lastFreeChatDate = new Date();
+            await astrologer.save();
+
+            console.log(`[ChatService] Chat accepted - FREE TRIAL STARTED: ${sessionId}. Astrologer free chats today: ${astrologer.freeChatsToday}`);
         } else {
             // Regular paid session - start billing timer immediately
             this.startBillingTimer(sessionId);
