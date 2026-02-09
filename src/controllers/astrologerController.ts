@@ -496,3 +496,14 @@ export const updateSchedule = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// Get all skills (Public)
+export const getAllSkills = async (req: Request, res: Response) => {
+    try {
+        const skills = await Skill.find().sort({ name: 1 });
+        res.json({ success: true, data: skills });
+    } catch (error: any) {
+        console.error('Get all skills error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
