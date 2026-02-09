@@ -34,7 +34,8 @@ import {
     getAstrologerDetails,
     getAstrologerEarnings,
     getAstrologerWithdrawals,
-    getAstrologerChats
+    getAstrologerChats,
+    warnAstrologer
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -61,6 +62,7 @@ router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
 router.put('/astrologers/:astrologerId/verification', verifyAstrologer);
 router.post('/astrologers/:astrologerId/verification/upload', uploadVerificationDocument);
+router.post('/astrologers/:astrologerId/warn', warnAstrologer); // Add warning route
 router.get('/astrologers/:astrologerId', getAstrologerDetails);
 router.get('/astrologers/:astrologerId/earnings', getAstrologerEarnings);
 router.get('/astrologers/:astrologerId/withdrawals', getAstrologerWithdrawals);

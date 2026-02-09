@@ -124,6 +124,10 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             return res.status(403).json({ success: false, message: 'Not approved' });
         }
 
+        if (astrologer.isBlocked) {
+            return res.status(403).json({ success: false, message: 'Your account has been blocked. Please contact admin.' });
+        }
+
         // Generate token
         const token = jwt.sign(
             { id: astrologer._id, role: 'astrologer' },

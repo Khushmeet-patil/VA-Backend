@@ -458,6 +458,9 @@ class ChatService {
                 reason: 'Request timed out'
             });
         }
+
+        // Increment missedChats for astrologer
+        await Astrologer.findByIdAndUpdate(session.astrologerId, { $inc: { missedChats: 1 } });
     }
 
     /**

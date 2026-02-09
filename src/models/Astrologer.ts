@@ -34,6 +34,8 @@ export interface IAstrologer extends Document {
     yearlyGrossEarnings: number;      // Total earnings this financial year (before TDS)
     yearlyTdsDeducted: number;        // Total TDS deducted this financial year
     pendingWithdrawal: number;  // Amount pending payout
+    missedChats: number;        // Count of missed/timed-out chat requests
+    warningCount: number;       // Number of times warned by admin (max 2 before block)
     tag: 'None' | 'Celebrity' | 'Top Choice' | 'Rising Star';
     fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
     fcmTokenUpdatedAt?: Date;  // When the FCM token was last updated
@@ -89,6 +91,8 @@ const AstrologerSchema: Schema = new Schema({
     yearlyGrossEarnings: { type: Number, default: 0 },       // Total earnings this financial year
     yearlyTdsDeducted: { type: Number, default: 0 },         // Total TDS deducted this financial year
     pendingWithdrawal: { type: Number, default: 0 },
+    missedChats: { type: Number, default: 0 },
+    warningCount: { type: Number, default: 0 },
     tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' },
     fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
