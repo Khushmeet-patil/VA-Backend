@@ -442,11 +442,27 @@ export const rateAstrologer = async (req: Request, res: Response) => {
 export const getSchedule = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        // Auth middleware sets userId to astrologer._id for astrologer tokens
-        const astrologer = await Astrologer.findById(userId).select('availabilitySchedule isAutoOnlineEnabled');
+
+        // Try finding by Astrologer ID first (Astrologer Token)
+        console.log(`[getSchedule] Looking up schedule for ID: ${userId}`);
+        let astrologer = await Astrologer.findById(userId).select('availabilitySchedule isAutoOnlineEnabled');
+
+        // If not found, try finding by User ID (User Token)
+        if (!astrologer) {
+            console.log(`[getSchedule] Not found by ID, trying by userId: ${userId}`);
+            astrologer = await Astrologer.findOne({ userId }).select('availabilitySchedule isAutoOnlineEnabled');
+        }
 
         if (!astrologer) {
+            console.log('[getSchedule] Astrologer not found for ID:', userId);
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        } else {
+            console.log(`[getSchedule] Found astrologer: ${astrologer._id}`);
+        }
+
+        // Ensure schedule exists in DB
+        if (!astrologer.availabilitySchedule) {
+            astrologer.availabilitySchedule = [];
         }
 
         res.json({
@@ -468,8 +484,13 @@ export const updateSchedule = async (req: Request, res: Response) => {
         const userId = (req as any).userId;
         const { availabilitySchedule, isAutoOnlineEnabled } = req.body;
 
-        // Auth middleware sets userId to astrologer._id for astrologer tokens
-        const astrologer = await Astrologer.findById(userId);
+        // Try finding by Astrologer ID first
+        let astrologer = await Astrologer.findById(userId);
+
+        // Fallback to User ID
+        if (!astrologer) {
+            astrologer = await Astrologer.findOne({ userId });
+        }
 
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
