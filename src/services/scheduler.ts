@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import Astrologer from '../models/Astrologer';
+import { notificationService } from './notificationService';
 
 // Run every minute
 const scheduleAutoOnline = () => {
@@ -30,7 +31,6 @@ const scheduleAutoOnline = () => {
                     const { startTime, endTime } = todaySchedule;
 
                     // Check if current time is within the range
-                    // Simple string comparison works for "HH:mm" format 24h
                     const shouldBeOnline = currentTime >= startTime && currentTime < endTime;
 
                     if (shouldBeOnline && !astro.isOnline) {
@@ -38,12 +38,27 @@ const scheduleAutoOnline = () => {
                         astro.isOnline = true;
                         await astro.save();
                         console.log(`[Scheduler] Set ${astro.firstName} ${astro.lastName} to ONLINE (Time: ${currentTime}, Schedule: ${startTime}-${endTime})`);
+
+                        // Send notification to all users
+                        try {
+                            // Ensure first letter of names is capitalized for notification
+                            const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
+                            const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
+
+                            await notificationService.broadcast('users', {
+                                title: 'Astrologer Online!',
+                                body: `${firstName} ${lastName} is now available for consultation.`
+                            }, {
+                                type: 'astrologer_online',
+                                astrologerId: astro._id.toString()
+                            });
+                            console.log(`[Scheduler] Notification sent for ${firstName}`);
+                        } catch (notifyError) {
+                            console.error(`[Scheduler] Failed to send notification for ${astro.firstName}:`, notifyError);
+                        }
+
                     } else if (!shouldBeOnline && astro.isOnline) {
                         // Should be offline but is currently online -> Turn OFF
-                        // OPTIONAL: Check if they are busy? If busy, maybe don't force offline immediately?
-                        // For now, let's simplisticly turn them offline. 
-                        // If they are in height of a chat, keeping them 'online' in DB might not affect active chat, 
-                        // but it prevents new chats.
                         if (!astro.isBusy) {
                             astro.isOnline = false;
                             await astro.save();
@@ -55,9 +70,6 @@ const scheduleAutoOnline = () => {
                 } else {
                     // No schedule for today or disabled for today
                     if (astro.isOnline && !astro.isBusy) {
-                        // Default to offline if auto-online is enabled but no schedule matches?
-                        // Or should we leave them alone?
-                        // "Auto-Online" implies strict adherence to schedule. So if no schedule enabled for today, go offline.
                         astro.isOnline = false;
                         await astro.save();
                         console.log(`[Scheduler] Set ${astro.firstName} ${astro.lastName} to OFFLINE (No schedule for ${currentDay})`);
