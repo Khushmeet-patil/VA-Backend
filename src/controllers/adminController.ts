@@ -538,9 +538,43 @@ export const getAstrologers = async (req: Request, res: Response) => {
         const { status } = req.query;
         const query = status ? { status } : {};
 
-        const astrologers = await Astrologer.find(query).populate('userId', 'name mobile');
-        res.status(200).json({ success: true, data: astrologers });
+        // Use lean() to get plain JS objects so we can append missedChats
+        const astrologers = await Astrologer.find(query).populate('userId', 'name mobile').lean();
+
+        // Aggregate missed chats (ENDED + TIMEOUT) for these astrologers
+        const astrologerIds = astrologers.map((a: any) => a._id);
+
+        const missedCounts = await ChatSession.aggregate([
+            {
+                $match: {
+                    astrologerId: { $in: astrologerIds },
+                    status: 'ENDED',
+                    endReason: 'TIMEOUT'
+                }
+            },
+            {
+                $group: {
+                    _id: '$astrologerId',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Create a map for O(1) lookup
+        const countMap: Record<string, number> = {};
+        missedCounts.forEach((c: any) => {
+            countMap[c._id.toString()] = c.count;
+        });
+
+        // Merge counts
+        const data = astrologers.map((a: any) => ({
+            ...a,
+            missedChats: countMap[a._id.toString()] || 0
+        }));
+
+        res.status(200).json({ success: true, data });
     } catch (error) {
+        console.error('Get astrologers error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };
