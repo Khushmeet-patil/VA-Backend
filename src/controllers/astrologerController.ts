@@ -442,7 +442,8 @@ export const rateAstrologer = async (req: Request, res: Response) => {
 export const getSchedule = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const astrologer = await Astrologer.findOne({ userId }).select('availabilitySchedule isAutoOnlineEnabled');
+        // Auth middleware sets userId to astrologer._id for astrologer tokens
+        const astrologer = await Astrologer.findById(userId).select('availabilitySchedule isAutoOnlineEnabled');
 
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
@@ -467,7 +468,8 @@ export const updateSchedule = async (req: Request, res: Response) => {
         const userId = (req as any).userId;
         const { availabilitySchedule, isAutoOnlineEnabled } = req.body;
 
-        const astrologer = await Astrologer.findOne({ userId });
+        // Auth middleware sets userId to astrologer._id for astrologer tokens
+        const astrologer = await Astrologer.findById(userId);
 
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
