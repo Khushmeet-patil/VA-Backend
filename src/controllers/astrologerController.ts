@@ -139,8 +139,12 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
 
             // $expr allows comparing two fields in the same document
             query.$expr = {
-                $lt: ["$freeChatsToday", "$freeChatLimit"]
+                // Treat missing freeChatsToday as 0 so it doesn't compare as null < 0 (true)
+                $lt: [{ $ifNull: ["$freeChatsToday", 0] }, "$freeChatLimit"]
             };
+
+            // Explicitly exclude astrologers with 0 limit form free users
+            query.freeChatLimit = { $gt: 0 };
 
             // Also ensure free chat is actually enabled for them
             query.isFreeChatAvailable = true;
