@@ -4,21 +4,32 @@ import Notification from '../models/Notification';
 export const getUserNotifications = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
+        const userRole = (req as any).userRole || 'user'; // Default to user if not set
 
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
 
-        // Fetch notifications:
-        // 1. Audience is 'all'
-        // 2. Audience is 'user' and userId matches
+        // Fetch notifications logic:
+        // 1. 'all': Broadcast to everyone
+        // 2. 'user': Specific to this user (matches userId)
+        // 3. 'users': Broadcast to all users (if requester is user)
+        // 4. 'astrologers': Broadcast to all astrologers (if requester is astrologer)
+
+        const audienceFilters = [
+            { audience: 'all' },
+            { audience: 'user', userId: userId }
+        ];
+
+        if (userRole === 'astrologer') {
+            audienceFilters.push({ audience: 'astrologers' } as any);
+        } else {
+            audienceFilters.push({ audience: 'users' } as any);
+        }
+
         const query = {
-            $or: [
-                { audience: 'all' },
-                { audience: 'user', userId: userId },
-                { audience: 'users', userId: userId } // Handling 'users' just in case, treating like 'user'
-            ],
-            isActive: true
+            isActive: true,
+            $or: audienceFilters
         };
 
         const notifications = await Notification.find(query)

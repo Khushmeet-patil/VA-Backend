@@ -1,39 +1,17 @@
 import { Router, Request, Response } from 'express';
 import notificationService from '../services/notificationService';
 import * as notificationController from '../controllers/notificationController';
+import { authMiddleware } from '../middleware/auth';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
-import jwt from 'jsonwebtoken';
 
 const router = Router();
-
-const authenticateToken = async (req: Request, res: Response, next: Function) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.split(' ')[1];
-
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'Access token required' });
-    }
-
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
-            id: string;
-            role?: string;
-        };
-
-        (req as any).userId = decoded.id;
-        (req as any).userRole = decoded.role || 'user';
-        next();
-    } catch (error) {
-        return res.status(403).json({ success: false, message: 'Invalid token' });
-    }
-};
 
 /**
  * GET /api/notifications
  * Fetch notifications for the authenticated user
  */
-router.get('/', authenticateToken, notificationController.getUserNotifications);
+router.get('/', authMiddleware, notificationController.getUserNotifications);
 
 /**
  * POST /api/notifications/register-token
@@ -41,7 +19,7 @@ router.get('/', authenticateToken, notificationController.getUserNotifications);
  * 
  * Body: { fcmToken: string }
  */
-router.post('/register-token', authenticateToken, async (req: Request, res: Response) => {
+router.post('/register-token', authMiddleware, async (req: Request, res: Response) => {
     try {
         const { fcmToken } = req.body;
         const userId = (req as any).userId;
@@ -88,7 +66,7 @@ router.post('/register-token', authenticateToken, async (req: Request, res: Resp
  * DELETE /api/notifications/unregister-token
  * Remove FCM token for the authenticated user/astrologer (on logout)
  */
-router.delete('/unregister-token', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/unregister-token', authMiddleware, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
         const userRole = (req as any).userRole;
@@ -116,7 +94,7 @@ router.delete('/unregister-token', authenticateToken, async (req: Request, res: 
  * POST /api/notifications/test-call/:id
  * Admin test route to trigger a high-priority ring on a specific astrologer's device
  */
-router.post('/test-call/:id', authenticateToken, async (req: Request, res: Response) => {
+router.post('/test-call/:id', authMiddleware, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const userRole = (req as any).userRole;
@@ -147,7 +125,7 @@ router.post('/test-call/:id', authenticateToken, async (req: Request, res: Respo
  * POST /api/notifications/test-broadcast
  * Admin test route to send a notification to ALL users
  */
-router.post('/test-broadcast', authenticateToken, async (req: Request, res: Response) => {
+router.post('/test-broadcast', authMiddleware, async (req: Request, res: Response) => {
     try {
         const { title, body } = req.body;
 
