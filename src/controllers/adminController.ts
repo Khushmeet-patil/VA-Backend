@@ -10,6 +10,7 @@ import ChatReview from '../models/ChatReview';
 import AstrologerFollower from '../models/AstrologerFollower';
 import Banner from '../models/Banner';
 import Skill from '../models/Skill';
+import ProfileChangeRequest from '../models/ProfileChangeRequest';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
@@ -1073,5 +1074,144 @@ export const deleteSkill = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Delete skill error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// 7. Astrologer Profile Change Request Management
+
+// Get all change requests (with optional status filter)
+export const getChangeRequests = async (req: Request, res: Response) => {
+    try {
+        const { status } = req.query;
+        const query: any = {};
+        if (status) query.status = status;
+
+        const requests = await ProfileChangeRequest.find(query)
+            .populate('astrologerId', 'firstName lastName profilePhoto mobileNumber')
+            .sort({ createdAt: -1 })
+            .limit(100);
+
+        res.json({ success: true, data: requests });
+    } catch (error: any) {
+        console.error('getChangeRequests error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Approve a change request — apply afterData to astrologer and notify
+export const approveChangeRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const changeRequest = await ProfileChangeRequest.findById(id);
+
+        if (!changeRequest) {
+            return res.status(404).json({ success: false, message: 'Change request not found' });
+        }
+        if (changeRequest.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'Request already processed' });
+        }
+
+        const astrologer = await Astrologer.findById(changeRequest.astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // If profile photo is being changed, delete the old one from R2
+        if (changeRequest.afterData.profilePhoto && astrologer.profilePhoto && astrologer.profilePhoto.includes('r2.')) {
+            try {
+                const oldKey = getKeyFromUrl(astrologer.profilePhoto);
+                if (oldKey) {
+                    await deleteFromR2(oldKey);
+                    console.log('[Admin] Deleted old profile photo from R2 on approval');
+                }
+            } catch (deleteError) {
+                console.warn('[Admin] Failed to delete old profile photo:', deleteError);
+            }
+        }
+
+        // Apply afterData to astrologer
+        const afterData = changeRequest.afterData;
+        for (const key of Object.keys(afterData)) {
+            (astrologer as any)[key] = afterData[key];
+        }
+        await astrologer.save();
+
+        // Mark request as approved
+        changeRequest.status = 'approved';
+        await changeRequest.save();
+
+        // Send push notification to astrologer
+        const typeLabel = changeRequest.requestType === 'rate_update' ? 'rate change'
+            : changeRequest.requestType === 'photo_update' ? 'profile photo change'
+                : 'profile update';
+        notificationService.sendToAstrologer(
+            astrologer._id.toString(),
+            {
+                title: 'Changes Approved ✅',
+                body: `Your ${typeLabel} has been approved by the admin.`
+            },
+            { type: 'change_request_approved', requestId: id }
+        ).catch(err => console.error('[Admin] Notification error on approve:', err));
+
+        console.log(`[Admin] Change request ${id} approved for astrologer ${astrologer._id}`);
+
+        res.json({ success: true, message: 'Change request approved', data: astrologer });
+    } catch (error: any) {
+        console.error('approveChangeRequest error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Reject a change request — don't apply changes, notify astrologer
+export const rejectChangeRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { adminNote } = req.body;
+
+        const changeRequest = await ProfileChangeRequest.findById(id);
+        if (!changeRequest) {
+            return res.status(404).json({ success: false, message: 'Change request not found' });
+        }
+        if (changeRequest.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'Request already processed' });
+        }
+
+        // If a pending photo was uploaded to R2, clean it up
+        if (changeRequest.afterData.profilePhoto && changeRequest.afterData.profilePhoto.includes('r2.')) {
+            try {
+                const pendingKey = getKeyFromUrl(changeRequest.afterData.profilePhoto);
+                if (pendingKey) {
+                    await deleteFromR2(pendingKey);
+                    console.log('[Admin] Deleted pending photo from R2 on rejection');
+                }
+            } catch (deleteError) {
+                console.warn('[Admin] Failed to delete pending photo:', deleteError);
+            }
+        }
+
+        changeRequest.status = 'rejected';
+        changeRequest.adminNote = adminNote || '';
+        await changeRequest.save();
+
+        // Send push notification to astrologer
+        const typeLabel = changeRequest.requestType === 'rate_update' ? 'rate change'
+            : changeRequest.requestType === 'photo_update' ? 'profile photo change'
+                : 'profile update';
+        const noteText = adminNote ? ` Reason: ${adminNote}` : '';
+        notificationService.sendToAstrologer(
+            changeRequest.astrologerId.toString(),
+            {
+                title: 'Changes Rejected ❌',
+                body: `Your ${typeLabel} has been rejected by the admin.${noteText}`
+            },
+            { type: 'change_request_rejected', requestId: id }
+        ).catch(err => console.error('[Admin] Notification error on reject:', err));
+
+        console.log(`[Admin] Change request ${id} rejected`);
+
+        res.json({ success: true, message: 'Change request rejected' });
+    } catch (error: any) {
+        console.error('rejectChangeRequest error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };

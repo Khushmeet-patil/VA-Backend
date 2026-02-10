@@ -35,7 +35,10 @@ import {
     getAstrologerEarnings,
     getAstrologerWithdrawals,
     getAstrologerChats,
-    warnAstrologer
+    warnAstrologer,
+    getChangeRequests,
+    approveChangeRequest,
+    rejectChangeRequest
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -93,6 +96,11 @@ router.delete('/skills/:skillId', deleteSkill);
 import { getAllSettings, updateSetting } from '../controllers/systemSettingController';
 router.get('/settings', getAllSettings);
 router.put('/settings', updateSetting);
+
+// Change Requests (Astrologer profile edit approval)
+router.get('/change-requests', getChangeRequests);
+router.put('/change-requests/:id/approve', approveChangeRequest);
+router.put('/change-requests/:id/reject', rejectChangeRequest);
 
 export default router;
 

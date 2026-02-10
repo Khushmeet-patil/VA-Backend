@@ -7,6 +7,7 @@ import ChatSession from '../models/ChatSession';
 import ChatMessage from '../models/ChatMessage';
 import Withdrawal from '../models/Withdrawal';
 import ChatReview from '../models/ChatReview';
+import ProfileChangeRequest from '../models/ProfileChangeRequest';
 import mongoose from 'mongoose';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import { getSettingValue } from './systemSettingController';
@@ -217,7 +218,7 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 };
 
-// Update Astrologer Profile
+// Update Astrologer Profile (creates a change request for admin approval)
 export const updateProfile = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
@@ -227,73 +228,71 @@ export const updateProfile = async (req: Request, res: Response) => {
             bankDetails, isFreeChatAvailable, freeChatLimit
         } = req.body;
 
-        const updateData: any = { firstName, lastName, bio, experience, systemKnown, language };
-        if (aboutMe !== undefined) {
-            updateData.aboutMe = aboutMe;
-        }
-        if (specialties !== undefined) {
-            updateData.specialties = specialties;
-        }
-        if (bankDetails !== undefined) {
-            updateData.bankDetails = bankDetails;
-        }
-        if (isFreeChatAvailable !== undefined) {
-            updateData.isFreeChatAvailable = isFreeChatAvailable;
-        }
-        if (freeChatLimit !== undefined) {
-            updateData.freeChatLimit = freeChatLimit;
-        }
-
-        // Handle profile photo upload to R2
-        if (profilePhoto !== undefined) {
-            // Check if it's a base64 image (starts with data:image or is raw base64)
-            if (profilePhoto && (profilePhoto.startsWith('data:image') || profilePhoto.length > 500)) {
-                try {
-                    // Upload to R2
-                    const r2Url = await uploadBase64ToR2(profilePhoto, 'profiles/astrologers', astrologerId);
-                    if (r2Url) {
-                        // Delete old photo from R2 if it exists
-                        const astrologer = await Astrologer.findById(astrologerId);
-                        if (astrologer?.profilePhoto && astrologer.profilePhoto.includes('r2.')) {
-                            try {
-                                const oldKey = getKeyFromUrl(astrologer.profilePhoto);
-                                if (oldKey) {
-                                    await deleteFromR2(oldKey);
-                                    console.log('[AstrologerPanel] Deleted old profile photo from R2');
-                                }
-                            } catch (deleteError) {
-                                console.warn('[AstrologerPanel] Failed to delete old profile photo:', deleteError);
-                            }
-                        }
-                        updateData.profilePhoto = r2Url;
-                        console.log('[AstrologerPanel] Profile photo uploaded to R2:', r2Url);
-                    } else {
-                        // R2 not configured, store base64 as fallback
-                        updateData.profilePhoto = profilePhoto;
-                        console.log('[AstrologerPanel] R2 not configured, storing base64');
-                    }
-                } catch (uploadError: any) {
-                    console.error('[AstrologerPanel] Error uploading profile photo:', uploadError.message);
-                    // Fall back to storing base64
-                    updateData.profilePhoto = profilePhoto;
-                }
-            } else {
-                // It's already a URL or empty, store as-is
-                updateData.profilePhoto = profilePhoto;
-            }
-        }
-
-        const astrologer = await Astrologer.findByIdAndUpdate(
-            astrologerId,
-            updateData,
-            { new: true }
-        );
-
+        const astrologer = await Astrologer.findById(astrologerId);
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        res.json({ success: true, message: 'Profile updated', data: astrologer });
+        // Build the afterData (requested changes)
+        const afterData: any = {};
+        if (firstName !== undefined) afterData.firstName = firstName;
+        if (lastName !== undefined) afterData.lastName = lastName;
+        if (bio !== undefined) afterData.bio = bio;
+        if (aboutMe !== undefined) afterData.aboutMe = aboutMe;
+        if (experience !== undefined) afterData.experience = experience;
+        if (systemKnown !== undefined) afterData.systemKnown = systemKnown;
+        if (language !== undefined) afterData.language = language;
+        if (specialties !== undefined) afterData.specialties = specialties;
+        if (bankDetails !== undefined) afterData.bankDetails = bankDetails;
+        if (isFreeChatAvailable !== undefined) afterData.isFreeChatAvailable = isFreeChatAvailable;
+        if (freeChatLimit !== undefined) afterData.freeChatLimit = freeChatLimit;
+
+        // Determine request type
+        let requestType: 'profile_update' | 'photo_update' = 'profile_update';
+
+        // Handle profile photo upload to R2 (upload now so URL is available for admin preview)
+        if (profilePhoto !== undefined) {
+            if (profilePhoto && (profilePhoto.startsWith('data:image') || profilePhoto.length > 500)) {
+                try {
+                    const r2Url = await uploadBase64ToR2(profilePhoto, 'profiles/astrologers/pending', astrologerId);
+                    if (r2Url) {
+                        afterData.profilePhoto = r2Url;
+                        console.log('[AstrologerPanel] Pending profile photo uploaded to R2:', r2Url);
+                    } else {
+                        afterData.profilePhoto = profilePhoto;
+                    }
+                } catch (uploadError: any) {
+                    console.error('[AstrologerPanel] Error uploading profile photo:', uploadError.message);
+                    afterData.profilePhoto = profilePhoto;
+                }
+            } else {
+                afterData.profilePhoto = profilePhoto;
+            }
+            // If only photo is being changed, mark as photo_update
+            if (Object.keys(afterData).length === 1 && afterData.profilePhoto) {
+                requestType = 'photo_update';
+            }
+        }
+
+        // Build beforeData (current values for the fields being changed)
+        const beforeData: any = {};
+        for (const key of Object.keys(afterData)) {
+            beforeData[key] = (astrologer as any)[key];
+        }
+
+        // Create the change request
+        const changeRequest = new ProfileChangeRequest({
+            astrologerId: astrologer._id,
+            requestType,
+            beforeData,
+            afterData,
+            status: 'pending'
+        });
+        await changeRequest.save();
+
+        console.log(`[AstrologerPanel] Change request created: ${changeRequest._id} for astrologer ${astrologerId}`);
+
+        res.json({ success: true, message: 'Changes submitted for admin approval' });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
@@ -524,7 +523,7 @@ export const getChats = async (req: Request, res: Response) => {
     }
 };
 
-// Update Chat Rate (within admin-defined range)
+// Update Chat Rate (creates a change request for admin approval)
 export const updateChatRate = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
@@ -556,17 +555,21 @@ export const updateChatRate = async (req: Request, res: Response) => {
             });
         }
 
-        // Use updateOne to avoid validation issues with old data format
-        await Astrologer.updateOne(
-            { _id: astrologerId },
-            { $set: { pricePerMin: pricePerMin } }
-        );
+        // Create change request instead of direct update
+        const changeRequest = new ProfileChangeRequest({
+            astrologerId: astrologer._id,
+            requestType: 'rate_update',
+            beforeData: { pricePerMin: astrologer.pricePerMin },
+            afterData: { pricePerMin },
+            status: 'pending'
+        });
+        await changeRequest.save();
 
-        console.log('Rate updated successfully:', pricePerMin);
+        console.log(`[AstrologerPanel] Rate change request created: ${changeRequest._id}`);
 
         res.json({
             success: true,
-            message: 'Chat rate updated successfully',
+            message: 'Rate change submitted for admin approval',
             data: { pricePerMin: pricePerMin }
         });
     } catch (error: any) {
