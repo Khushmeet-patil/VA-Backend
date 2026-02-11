@@ -38,7 +38,11 @@ import {
     warnAstrologer,
     getChangeRequests,
     approveChangeRequest,
-    rejectChangeRequest
+    rejectChangeRequest,
+    getAllPendingWithdrawals,
+    markWithdrawalsPaid,
+    getPaymentHistory,
+    getPaymentBatchDetails
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -101,6 +105,14 @@ router.put('/settings', updateSetting);
 router.get('/change-requests', getChangeRequests);
 router.put('/change-requests/:id/approve', approveChangeRequest);
 router.put('/change-requests/:id/reject', rejectChangeRequest);
+
+// Withdrawal Management
+router.get('/withdrawals/pending', getAllPendingWithdrawals);
+router.post('/withdrawals/mark-paid', markWithdrawalsPaid);
+
+// Payment History
+router.get('/payment-history', getPaymentHistory);
+router.get('/payment-history/:batchId', getPaymentBatchDetails);
 
 export default router;
 

@@ -11,6 +11,7 @@ import AstrologerFollower from '../models/AstrologerFollower';
 import Banner from '../models/Banner';
 import Skill from '../models/Skill';
 import ProfileChangeRequest from '../models/ProfileChangeRequest';
+import PaymentBatch from '../models/PaymentBatch';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
@@ -1212,6 +1213,207 @@ export const rejectChangeRequest = async (req: Request, res: Response) => {
         res.json({ success: true, message: 'Change request rejected' });
     } catch (error: any) {
         console.error('rejectChangeRequest error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// ===== WITHDRAWAL MANAGEMENT =====
+
+// Get All Pending Withdrawals (with astrologer details)
+export const getAllPendingWithdrawals = async (req: Request, res: Response) => {
+    try {
+        const withdrawals = await Withdrawal.find({ status: 'PENDING' })
+            .sort({ requestedAt: -1 })
+            .lean();
+
+        // Get all unique astrologer IDs
+        const astrologerIds = [...new Set(withdrawals.map(w => w.astrologerId.toString()))];
+        const astrologers = await Astrologer.find({ _id: { $in: astrologerIds } })
+            .select('firstName lastName mobileNumber email bankDetails pendingWithdrawal')
+            .lean();
+
+        // Create a map for quick lookup
+        const astrologerMap: Record<string, any> = {};
+        astrologers.forEach(a => { astrologerMap[(a._id as any).toString()] = a; });
+
+        // Merge withdrawal + astrologer data
+        const result = withdrawals.map(w => {
+            const astro = astrologerMap[w.astrologerId.toString()] || {};
+            return {
+                _id: w._id,
+                amount: w.amount,
+                status: w.status,
+                requestedAt: w.requestedAt,
+                notes: w.notes,
+                astrologerId: w.astrologerId,
+                astrologerName: `${astro.firstName || ''} ${astro.lastName || ''}`.trim(),
+                phone: astro.mobileNumber || '',
+                email: astro.email || '',
+                bankDetails: astro.bankDetails || {},
+                pendingWithdrawal: astro.pendingWithdrawal || 0
+            };
+        });
+
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        console.error('getAllPendingWithdrawals error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Mark Withdrawals as Paid (batch or single)
+export const markWithdrawalsPaid = async (req: Request, res: Response) => {
+    try {
+        const { withdrawalIds, notes } = req.body;
+
+        if (!withdrawalIds || !Array.isArray(withdrawalIds) || withdrawalIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'withdrawalIds array is required' });
+        }
+
+        // Get the withdrawals
+        const withdrawals = await Withdrawal.find({
+            _id: { $in: withdrawalIds },
+            status: 'PENDING'
+        });
+
+        if (withdrawals.length === 0) {
+            return res.status(400).json({ success: false, message: 'No pending withdrawals found for given IDs' });
+        }
+
+        const now = new Date();
+        let totalAmount = 0;
+        const astrologerAmounts: Record<string, number> = {};
+
+        // Calculate total and per-astrologer amounts
+        for (const w of withdrawals) {
+            totalAmount += w.amount;
+            const aid = w.astrologerId.toString();
+            astrologerAmounts[aid] = (astrologerAmounts[aid] || 0) + w.amount;
+        }
+
+        // Update all withdrawals to PAID
+        await Withdrawal.updateMany(
+            { _id: { $in: withdrawalIds }, status: 'PENDING' },
+            { $set: { status: 'PAID', processedAt: now } }
+        );
+
+        // Reset pendingWithdrawal for each astrologer
+        for (const [astrologerId, paidAmount] of Object.entries(astrologerAmounts)) {
+            await Astrologer.findByIdAndUpdate(astrologerId, {
+                $inc: { pendingWithdrawal: -paidAmount }
+            });
+        }
+
+        // Create PaymentBatch record
+        const batch = new PaymentBatch({
+            withdrawalIds: withdrawals.map(w => w._id),
+            astrologerIds: [...new Set(withdrawals.map(w => w.astrologerId))],
+            totalAmount,
+            totalEntries: withdrawals.length,
+            paidAt: now,
+            notes: notes || '',
+            paidBy: 'Admin'
+        });
+        await batch.save();
+
+        console.log(`[Admin] Payment batch created: ${batch._id}, total: ₹${totalAmount}, entries: ${withdrawals.length}`);
+
+        res.json({
+            success: true,
+            message: `${withdrawals.length} withdrawal(s) marked as paid`,
+            data: {
+                batchId: batch._id,
+                totalAmount,
+                totalEntries: withdrawals.length,
+                paidAt: now
+            }
+        });
+    } catch (error: any) {
+        console.error('markWithdrawalsPaid error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Get Payment History (all batches)
+export const getPaymentHistory = async (req: Request, res: Response) => {
+    try {
+        const batches = await PaymentBatch.find()
+            .sort({ paidAt: -1 })
+            .lean();
+
+        // Populate astrologer names for each batch
+        const allAstrologerIds = [...new Set(batches.flatMap(b => b.astrologerIds.map((id: any) => id.toString())))];
+        const astrologers = await Astrologer.find({ _id: { $in: allAstrologerIds } })
+            .select('firstName lastName')
+            .lean();
+        const astroMap: Record<string, string> = {};
+        astrologers.forEach(a => { astroMap[(a._id as any).toString()] = `${a.firstName} ${a.lastName}`; });
+
+        const result = batches.map(b => ({
+            _id: b._id,
+            totalAmount: b.totalAmount,
+            totalEntries: b.totalEntries,
+            paidAt: b.paidAt,
+            notes: b.notes,
+            paidBy: b.paidBy,
+            astrologerNames: b.astrologerIds.map((id: any) => astroMap[id.toString()] || 'Unknown')
+        }));
+
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        console.error('getPaymentHistory error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Get Single Payment Batch Details
+export const getPaymentBatchDetails = async (req: Request, res: Response) => {
+    try {
+        const { batchId } = req.params;
+        const batch = await PaymentBatch.findById(batchId).lean();
+
+        if (!batch) {
+            return res.status(404).json({ success: false, message: 'Payment batch not found' });
+        }
+
+        // Get the withdrawals in this batch
+        const withdrawals = await Withdrawal.find({ _id: { $in: batch.withdrawalIds } }).lean();
+
+        // Get astrologer details
+        const astrologers = await Astrologer.find({ _id: { $in: batch.astrologerIds } })
+            .select('firstName lastName mobileNumber email bankDetails')
+            .lean();
+        const astroMap: Record<string, any> = {};
+        astrologers.forEach(a => { astroMap[(a._id as any).toString()] = a; });
+
+        const details = withdrawals.map(w => {
+            const astro = astroMap[w.astrologerId.toString()] || {};
+            return {
+                withdrawalId: w._id,
+                amount: w.amount,
+                requestedAt: w.requestedAt,
+                processedAt: w.processedAt,
+                astrologerName: `${astro.firstName || ''} ${astro.lastName || ''}`.trim(),
+                phone: astro.mobileNumber || '',
+                email: astro.email || '',
+                bankDetails: astro.bankDetails || {}
+            };
+        });
+
+        res.json({
+            success: true,
+            data: {
+                _id: batch._id,
+                totalAmount: batch.totalAmount,
+                totalEntries: batch.totalEntries,
+                paidAt: batch.paidAt,
+                notes: batch.notes,
+                paidBy: batch.paidBy,
+                withdrawals: details
+            }
+        });
+    } catch (error: any) {
+        console.error('getPaymentBatchDetails error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };
