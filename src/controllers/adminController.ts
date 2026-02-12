@@ -15,6 +15,7 @@ import PaymentBatch from '../models/PaymentBatch';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
+import ChatMessage from '../models/ChatMessage';
 
 
 // 1. Dashboard Stats
@@ -208,9 +209,38 @@ export const updateUser = async (req: Request, res: Response) => {
 export const getUserActivity = async (req: Request, res: Response) => {
     try {
         const { userId } = req.params;
-        // For now returning transactions as activity
-        const transactions = await Transaction.find({ fromUser: userId }).sort({ createdAt: -1 });
-        res.status(200).json({ success: true, data: transactions });
+
+        // 1. Fetch Transactions
+        const transactions = await Transaction.find({ fromUser: userId }).lean();
+
+        // 2. Fetch Chat Sessions
+        const chatSessions = await ChatSession.find({ userId }).populate('astrologerId', 'firstName lastName').lean();
+
+        // 3. Combine and Sort
+        const activity = [
+            ...transactions.map(t => ({ ...t, activityType: 'transaction' })),
+            ...chatSessions.map(c => ({
+                ...c,
+                activityType: 'chat_session',
+                amount: c.totalAmount, // Map for UI consistency
+                type: 'debit', // Chats are debits
+                status: c.status === 'ENDED' ? 'success' : c.status.toLowerCase(),
+                description: `Chat with ${c.astrologerId ? (c.astrologerId as any).firstName : 'Astrologer'}`,
+                createdAt: c.createdAt
+            }))
+        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        res.status(200).json({ success: true, data: activity });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const getChatSessionMessages = async (req: Request, res: Response) => {
+    try {
+        const { sessionId } = req.params;
+        const messages = await ChatMessage.find({ sessionId }).sort({ timestamp: 1 });
+        res.status(200).json({ success: true, data: messages });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }

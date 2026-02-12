@@ -42,7 +42,8 @@ import {
     getAllPendingWithdrawals,
     markWithdrawalsPaid,
     getPaymentHistory,
-    getPaymentBatchDetails
+    getPaymentBatchDetails,
+    getChatSessionMessages
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -53,7 +54,9 @@ router.get('/dashboard', getDashboardStats);
 // Users
 router.get('/users', getAllUsers);
 router.put('/users/:userId', updateUser);
+router.get('/users/:userId/active-chats', getUserActivity); // Kept for reference but likely unused if combined
 router.get('/users/:userId/activity', getUserActivity);
+router.get('/chat-sessions/:sessionId/messages', getChatSessionMessages);
 router.get('/users/:userId/reviews', getUserReviews);
 router.get('/users/:userId/follows', getUserFollows);
 router.post('/users/:userId/wallet/add', addWalletBalance);
