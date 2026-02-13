@@ -21,7 +21,7 @@ router.get('/reviews/:id', getAstrologerReviews);
 router.get('/skills', getAllSkills);
 
 // Protected routes
-router.post('/apply', authMiddleware, applyForAstrologer);
+router.post('/apply', optionalAuthMiddleware, applyForAstrologer);
 router.post('/follow', authMiddleware, followAstrologer);
 router.post('/unfollow', authMiddleware, unfollowAstrologer);
 router.post('/rate', authMiddleware, rateAstrologer);

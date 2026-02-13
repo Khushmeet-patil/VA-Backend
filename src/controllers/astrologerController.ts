@@ -5,10 +5,10 @@ import AstrologerFollower from '../models/AstrologerFollower';
 import ChatReview from '../models/ChatReview';
 import Skill from '../models/Skill';
 
-// Apply for Astrologer (User)
+// Apply for Astrologer (User or Guest)
 export const applyForAstrologer = async (req: Request, res: Response) => {
     try {
-        const userId = (req as any).userId;
+        let userId = (req as any).userId;
         const {
             firstName,
             lastName,
@@ -23,7 +23,31 @@ export const applyForAstrologer = async (req: Request, res: Response) => {
             bio
         } = req.body;
 
-        // Check if already applied
+        // Validation for required fields
+        if (!firstName || !lastName || !mobileNumber || !email || !city || !country) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        // If not authenticated, find or create user
+        if (!userId) {
+            // Check if user exists with this mobile number
+            let user = await User.findOne({ mobile: mobileNumber });
+
+            if (!user) {
+                // Create new user for this applicant
+                user = new User({
+                    mobile: mobileNumber,
+                    name: `${firstName} ${lastName}`,
+                    role: 'user', // Default role, will be updated to 'astrologer' upon approval
+                    isVerified: false
+                });
+                await user.save();
+            }
+
+            userId = user._id;
+        }
+
+        // Check if already applied as an astrologer
         const existing = await Astrologer.findOne({ userId });
         if (existing) {
             return res.status(400).json({ message: 'You have already applied. Current status: ' + existing.status });
