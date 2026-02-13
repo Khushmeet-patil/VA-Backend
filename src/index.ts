@@ -29,6 +29,7 @@ import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
 import panchangRoutes from './routes/panchangRoutes';
+import policyRoutes from './routes/policyRoutes';
 
 console.log('All modules loaded successfully');
 
@@ -84,6 +85,7 @@ app.use('/api/astrology', astrologyRoutes);
 app.use('/api/matching', matchingRoutes);
 app.use('/api/kundli', kundliRoutes);
 app.use('/api/panchang', panchangRoutes);
+app.use('/api/policies', policyRoutes);
 
 // Root route
 app.get('/', (req, res) => {
