@@ -34,7 +34,7 @@ export const sendOtp = async (req: Request, res: Response) => {
         const { mobile } = req.body;
         let otp = generateOtp();
 
-        if (mobile === '7990358824') {
+        if (['7990358824', '1234567890', '9374742346'].includes(mobile)) {
             otp = '1234';
         }
 

@@ -57,7 +57,12 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
         }
 
         // Generate OTP (dev mode: use 1234 for testing)
-        const otpCode = mobile === '9999999999' ? '1234' : Math.floor(1000 + Math.random() * 9000).toString();
+        // const otpCode = mobile === '9999999999' ? '1234' : Math.floor(1000 + Math.random() * 9000).toString();
+
+        let otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+        if (['7990358821', '2345678901', '9999999999'].includes(mobile)) {
+            otpCode = '1234';
+        }
 
         // Save OTP
         await Otp.findOneAndUpdate(
@@ -86,12 +91,14 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Mobile and OTP required' });
         }
 
-        // Dev bypass for testing - specific test number with '1234' or allow '1234' for any dev testing
-        const isDevBypass = otp === '1234';
+        // Dev bypass for testing - specific test number with '1234'
+        const testNumbers = ['7990358821', '2345678901', '9999999999'];
+        const isTestNumber = testNumbers.includes(mobile);
+        const isDevBypass = otp === '1234' && isTestNumber;
 
         let isValidOtp = false;
         if (isDevBypass) {
-            console.log(`[verifyAstrologerOtp] Dev bypass activated`);
+            console.log(`[verifyAstrologerOtp] Dev bypass activated for ${mobile}`);
             isValidOtp = true;
         } else {
             // Check OTP in database
@@ -610,6 +617,13 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
         }
 
         const actualWithdrawAmount = withdrawableAmount - minBalance;
+
+        if (actualWithdrawAmount < 1000) {
+            return res.status(400).json({
+                success: false,
+                message: `Minimum withdrawal amount is ₹1000. Your withdrawable amount is only ₹${actualWithdrawAmount}.`
+            });
+        }
 
         // Create withdrawal request
         const withdrawal = new Withdrawal({
