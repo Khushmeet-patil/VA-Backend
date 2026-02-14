@@ -717,7 +717,7 @@ export const bulkUpdateAstrologers = async (req: Request, res: Response) => {
 export const getAstrologerDetails = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
-        const astrologer = await Astrologer.findById(astrologerId).populate('userId', 'name mobile');
+        const astrologer = await Astrologer.findById(astrologerId).populate('userId', 'name mobile profilePhoto');
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
         res.json({ success: true, data: astrologer });
     } catch (error: any) {
