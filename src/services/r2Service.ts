@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import path from 'path';
 
 /**
@@ -240,9 +240,60 @@ export const getKeyFromUrl = (url: string): string | null => {
     return url.replace(publicUrl.replace(/\/$/, '') + '/', '');
 };
 
+/**
+ * Move file in R2 (Copy + Delete)
+ * @param sourceUrl - The current public URL of the file
+ * @param destinationFolder - The target folder (e.g., 'profiles/astrologers')
+ * @returns The new public URL
+ */
+export const moveFileInR2 = async (sourceUrl: string, destinationFolder: string): Promise<string | null> => {
+    if (!isR2Configured()) return null;
+
+    const sourceKey = getKeyFromUrl(sourceUrl);
+    if (!sourceKey) return null;
+
+    const bucketName = process.env.R2_BUCKET_NAME!;
+    const publicUrl = process.env.R2_PUBLIC_URL!;
+    const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!; // Ensure account ID is available
+
+    try {
+        const fileName = path.basename(sourceKey);
+        const destinationKey = `${destinationFolder}/${fileName}`;
+
+        console.log(`[R2Service] Moving file from ${sourceKey} to ${destinationKey}`);
+
+        const r2Client = getR2Client();
+
+        // 1. Copy Object
+        // For R2/S3 CopySource, it usually expects 'BucketName/Key'
+        const copyCommand = new CopyObjectCommand({
+            Bucket: bucketName,
+            CopySource: `${bucketName}/${sourceKey}`,
+            Key: destinationKey,
+        });
+        await r2Client.send(copyCommand);
+
+        // 2. Delete Original Object
+        const deleteCommand = new DeleteObjectCommand({
+            Bucket: bucketName,
+            Key: sourceKey,
+        });
+        await r2Client.send(deleteCommand);
+
+        const newUrl = `${publicUrl.replace(/\/$/, '')}/${destinationKey}`;
+        console.log('[R2Service] File moved successfully:', newUrl);
+        return newUrl;
+
+    } catch (error: any) {
+        console.error('[R2Service] Error moving file:', error.message);
+        return null; // Return null on failure so caller knows not to update DB
+    }
+};
+
 export default {
     uploadToR2,
     uploadBase64ToR2,
     deleteFromR2,
     getKeyFromUrl,
+    moveFileInR2
 };

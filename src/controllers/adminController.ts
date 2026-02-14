@@ -12,7 +12,7 @@ import Banner from '../models/Banner';
 import Skill from '../models/Skill';
 import ProfileChangeRequest from '../models/ProfileChangeRequest';
 import PaymentBatch from '../models/PaymentBatch';
-import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
+import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl, moveFileInR2 } from '../services/r2Service';
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
 import ChatMessage from '../models/ChatMessage';
@@ -1147,8 +1147,21 @@ export const approveChangeRequest = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        // If profile photo is being changed, delete the old one from R2
-        if (changeRequest.afterData.profilePhoto && astrologer.profilePhoto && astrologer.profilePhoto.includes('r2.')) {
+
+
+        // 1. Move pending photo to live folder if it exists
+        if (changeRequest.afterData.profilePhoto && changeRequest.afterData.profilePhoto.includes('pending')) {
+            const newPhotoUrl = await moveFileInR2(changeRequest.afterData.profilePhoto, 'profiles/astrologers');
+            if (newPhotoUrl) {
+                changeRequest.afterData.profilePhoto = newPhotoUrl;
+                // Update the change request with the new URL so we have a record of the final URL
+                await ProfileChangeRequest.findByIdAndUpdate(id, { 'afterData.profilePhoto': newPhotoUrl });
+                console.log('[Admin] Moved pending photo to live folder:', newPhotoUrl);
+            }
+        }
+
+        // 2. If profile photo is being changed, delete the old one from R2
+        if (changeRequest.afterData.profilePhoto && astrologer.profilePhoto && astrologer.profilePhoto !== changeRequest.afterData.profilePhoto && astrologer.profilePhoto.includes('r2.')) {
             try {
                 const oldKey = getKeyFromUrl(astrologer.profilePhoto);
                 if (oldKey) {
