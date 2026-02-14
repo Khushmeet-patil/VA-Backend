@@ -1460,3 +1460,97 @@ export const getPaymentBatchDetails = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };
+
+// Reject Withdrawal Request
+export const rejectWithdrawal = async (req: Request, res: Response) => {
+    try {
+        const { withdrawalId, reason } = req.body;
+
+        if (!withdrawalId || !reason) {
+            return res.status(400).json({ success: false, message: 'Withdrawal ID and Reason are required' });
+        }
+
+        const withdrawal = await Withdrawal.findById(withdrawalId);
+        if (!withdrawal) {
+            return res.status(404).json({ success: false, message: 'Withdrawal request not found' });
+        }
+
+        if (withdrawal.status !== 'PENDING') {
+            return res.status(400).json({ success: false, message: 'Withdrawal request is already processed' });
+        }
+
+        // 1. Update Withdrawal Status
+        withdrawal.status = 'REJECTED';
+        withdrawal.notes = reason;
+        withdrawal.processedAt = new Date();
+        await withdrawal.save();
+
+        // 2. Refund to Astrologer Wallet
+        const astrologer = await Astrologer.findById(withdrawal.astrologerId);
+        if (astrologer) {
+            // Find the User linked to Astrologer to update wallet (Astrologer model has earnings, but maybe wallet is on User or Astrologer? 
+            // In AdminController.ts lines 38-40: "earnings" seems to be what is used for withdrawal. 
+            // Let's check Astrologer model. It has "earnings" which seems to be the wallet balance for astrologers.
+            const previousBalance = astrologer.earnings || 0;
+            const refundAmount = withdrawal.amount;
+            const newBalance = previousBalance + refundAmount;
+
+            astrologer.earnings = newBalance;
+            await astrologer.save();
+
+            // 3. Create Transaction Record (Refund)
+            // We need a transaction to show this refund. 
+            // Transaction model usually links to User. Astrologer has a userId. 
+            // Let's check Transaction model usage in `addWalletBalance` (lines 291+). It uses `fromUser`.
+            // For Astrologer withdrawal refund, we should probably record it.
+
+            await Transaction.create({
+                fromUser: astrologer.userId, // Link to the user account of the astrologer
+                type: 'credit',
+                amount: refundAmount,
+                description: `Withdrawal Rejected: ${reason}`,
+                status: 'success',
+                previousBalance,
+                newBalance,
+                meta: {
+                    withdrawalId: withdrawal._id,
+                    type: 'withdrawal_refund'
+                }
+            });
+
+            // 4. Send Notification
+            // Create database notification
+            await Notification.create({
+                title: 'Withdrawal Rejected',
+                message: `Your withdrawal request for ₹${refundAmount} has been rejected. Reason: ${reason}. The amount has been refunded to your wallet.`,
+                type: 'alert',
+                audience: 'user',
+                userId: astrologer.userId,
+                isRead: false
+            });
+
+            // Send push notification
+            await notificationService.sendToAstrologer(
+                astrologer.userId.toString(),
+                {
+                    title: 'Withdrawal Rejected',
+                    body: `Your withdrawal request for ₹${refundAmount} has been rejected. Reason: ${reason}.`
+                },
+                {
+                    type: 'wallet',
+                    click_action: 'WALLET_SCREEN'
+                }
+            );
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Withdrawal rejected and amount refunded successfully',
+            data: withdrawal
+        });
+
+    } catch (error: any) {
+        console.error('rejectWithdrawal error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};

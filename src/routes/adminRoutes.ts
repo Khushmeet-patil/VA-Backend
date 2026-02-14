@@ -43,7 +43,8 @@ import {
     markWithdrawalsPaid,
     getPaymentHistory,
     getPaymentBatchDetails,
-    getChatSessionMessages
+    getChatSessionMessages,
+    rejectWithdrawal
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -112,6 +113,7 @@ router.put('/change-requests/:id/reject', rejectChangeRequest);
 // Withdrawal Management
 router.get('/withdrawals/pending', getAllPendingWithdrawals);
 router.post('/withdrawals/mark-paid', markWithdrawalsPaid);
+router.post('/withdrawals/reject', rejectWithdrawal);
 
 // Payment History
 router.get('/payment-history', getPaymentHistory);
