@@ -101,9 +101,10 @@ router.put('/skills/:skillId', updateSkill);
 router.delete('/skills/:skillId', deleteSkill);
 
 // Settings
-import { getAllSettings, updateSetting } from '../controllers/systemSettingController';
+import { getAllSettings, updateSetting, getSettingByKey } from '../controllers/systemSettingController';
 router.get('/settings', getAllSettings);
 router.put('/settings', updateSetting);
+router.get('/settings/:key', getSettingByKey); // Public/App endpoint
 
 // Change Requests (Astrologer profile edit approval)
 router.get('/change-requests', getChangeRequests);

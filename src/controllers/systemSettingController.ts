@@ -69,6 +69,19 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'bonusUsagePercent') {
                 return res.json({ success: true, data: { key, value: 20 } }); // 20% from bonus wallet
             }
+            if (key === 'socialMediaLinks') {
+                return res.json({
+                    success: true, data: {
+                        key, value: {
+                            instagram: 'https://instagram.com',
+                            facebook: 'https://facebook.com',
+                            linkedin: 'https://linkedin.com',
+                            youtube: 'https://youtube.com',
+                            website: 'https://vedicastro.com'
+                        }
+                    }
+                });
+            }
             return res.status(404).json({ success: false, message: 'Setting not found' });
         }
 
