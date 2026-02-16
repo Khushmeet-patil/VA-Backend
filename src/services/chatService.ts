@@ -453,7 +453,7 @@ class ChatService {
 
         console.log(`[ChatService] Chat request timed out: ${sessionId}`);
 
-        // Emit CHAT_TIMEOUT to both parties
+        // Emit CHAT_TIMEOUT to both parties via socket
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('CHAT_TIMEOUT', {
                 sessionId,
@@ -464,6 +464,13 @@ class ChatService {
                 reason: 'Request timed out'
             });
         }
+
+        // Also send FCM push to cancel notification (works even if socket is disconnected)
+        notificationService.sendChatCancelNotification(
+            session.astrologerId.toString(),
+            sessionId,
+            'timeout'
+        ).catch(err => console.error('[ChatService] FCM timeout push failed:', err));
 
         // Increment missedChats for astrologer
         await Astrologer.findByIdAndUpdate(session.astrologerId, { $inc: { missedChats: 1 } });
@@ -517,13 +524,20 @@ class ChatService {
 
         console.log(`[ChatService] Chat request cancelled by user: ${sessionId}`);
 
-        // Emit CHAT_CANCELLED to astrologer
+        // Emit CHAT_CANCELLED to astrologer via socket
         if (this.io) {
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_CANCELLED', {
                 sessionId,
                 reason: 'User cancelled the request'
             });
         }
+
+        // Also send FCM push to cancel notification (works even if socket is disconnected)
+        notificationService.sendChatCancelNotification(
+            session.astrologerId.toString(),
+            sessionId,
+            'cancelled'
+        ).catch(err => console.error('[ChatService] FCM cancel push failed:', err));
 
         return { cancelled: true };
     }

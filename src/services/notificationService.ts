@@ -303,6 +303,54 @@ class NotificationService {
     }
 
     /**
+     * Send a data-only FCM push to cancel the incoming call notification
+     * This ensures the astrologer's background handler cancels the notification
+     * even when the socket is disconnected (app killed or in background)
+     */
+    async sendChatCancelNotification(
+        astrologerId: string,
+        sessionId: string,
+        reason: 'cancelled' | 'timeout'
+    ): Promise<boolean> {
+        if (!this.initialized) {
+            console.warn('[NotificationService] Not initialized, skipping cancel notification');
+            return false;
+        }
+
+        try {
+            let astrologer = await Astrologer.findById(astrologerId);
+            if (!astrologer) {
+                astrologer = await Astrologer.findOne({ userId: astrologerId });
+            }
+
+            if (!astrologer?.fcmToken) {
+                console.log(`[NotificationService] Astrologer ${astrologerId} has no FCM token for cancel notification`);
+                return false;
+            }
+
+            const message: admin.messaging.Message = {
+                token: astrologer.fcmToken,
+                data: {
+                    type: 'chat_cancel',
+                    sessionId,
+                    reason,
+                },
+                android: {
+                    priority: 'high',
+                    ttl: 10 * 1000, // Short TTL since this is time-sensitive
+                },
+            };
+
+            const response = await admin.messaging().send(message);
+            console.log(`[NotificationService] Cancel notification sent for session ${sessionId}: ${response}`);
+            return true;
+        } catch (error: any) {
+            console.error('[NotificationService] Error sending cancel notification:', error);
+            return false;
+        }
+    }
+
+    /**
      * Send notification to a specific FCM token
      */
     private async sendNotification(
