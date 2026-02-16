@@ -546,6 +546,31 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
+        // Handle cancel chat request (for users)
+        socket.on('cancel_chat_request', async (data: { sessionId: string }) => {
+            try {
+                if (userType !== 'user') {
+                    socket.emit('error', { message: 'Only users can cancel chat requests' });
+                    return;
+                }
+
+                const { sessionId } = data;
+                console.log(`[Socket] Cancel chat request from user ${userId} for session ${sessionId}`);
+
+                const result = await chatService.cancelChatRequest(sessionId, userId);
+
+                if (result.cancelled) {
+                    socket.emit('CHAT_REQUEST_CANCELLED_SUCCESS', { sessionId });
+                } else {
+                    socket.emit('error', { message: `Failed to cancel request: ${result.reason}` });
+                }
+
+            } catch (error: any) {
+                console.error('[Socket] Cancel chat request error:', error);
+                socket.emit('error', { message: error.message || 'Failed to cancel chat request' });
+            }
+        });
+
         // Handle disconnect
         socket.on('disconnect', () => {
             console.log(`[Socket] ${userType} disconnected: ${userId}`);
