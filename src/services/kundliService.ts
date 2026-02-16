@@ -52,13 +52,13 @@ export const getManglik = async (input: any) => {
     }
 };
 
-export const getBasicPanchang = async (input: any) => {
+export const getAdvancedPanchang = async (input: any) => {
     try {
-        console.log('[KundliService] Astrology API /basic_panchang/sunrise input:', JSON.stringify(input));
-        const response = await api.post('/basic_panchang/sunrise', input);
+        console.log('[KundliService] Astrology API /advanced_panchang input:', JSON.stringify(input));
+        const response = await api.post('/advanced_panchang', input);
         return response.data;
     } catch (error: any) {
-        console.error('Astrology API BasicPanchang Error:', error.response?.data || error.message);
+        console.error('Astrology API AdvancedPanchang Error:', error.response?.data || error.message);
         throw error;
     }
 };
@@ -360,7 +360,7 @@ export const getNumeroPrediction = async (input: any) => {
 export default {
     getBirthDetails,
     getManglik,
-    getBasicPanchang,
+    getAdvancedPanchang,
     getAstroDetails,
     getPlanets,
     getChartImage,

@@ -29,11 +29,11 @@ export const getManglik = async (req: AuthRequest, res: Response) => {
 
 export const getBasicPanchang = async (req: AuthRequest, res: Response) => {
     try {
-        console.log('[KundliController] Received BasicPanchang request:', JSON.stringify(req.body));
-        const data = await kundliService.getBasicPanchang(req.body);
+        console.log('[KundliController] Received AdvancedPanchang (Basic Tab) request:', JSON.stringify(req.body));
+        const data = await kundliService.getAdvancedPanchang(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
-        console.error('[KundliController] BasicPanchang Error:', error);
+        console.error('[KundliController] AdvancedPanchang Error:', error);
         return res.status(500).json({ success: false, message: error.message || 'Failed to fetch panchang details' });
     }
 };
