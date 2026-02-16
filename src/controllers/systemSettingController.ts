@@ -61,7 +61,7 @@ export const getSettingByKey = async (req: Request, res: Response) => {
                 return res.json({ success: true, data: { key, value: 200 } });
             }
             if (key === 'astrologerSupportEmail') {
-                return res.json({ success: true, data: { key, value: 'support@vedicastro.com' } });
+                return res.json({ success: true, data: { key, value: 'support@vedicastro.co.in' } });
             }
             if (key === 'astrologerCommission') {
                 return res.json({ success: true, data: { key, value: 40 } }); // 40% to astrologer
