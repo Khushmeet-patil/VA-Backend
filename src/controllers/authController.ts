@@ -640,6 +640,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('[Auth] Create Order Error:', error);
+        console.error('[Auth] Create Order Error Details:', JSON.stringify(error, null, 2));
         res.status(500).json({ success: false, message: 'Failed to create order', error: error.message });
     }
 };

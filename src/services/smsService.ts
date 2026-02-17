@@ -31,10 +31,10 @@ export const sendSmsOtp = async (mobile: string, otp: string, appName: string = 
         console.log(`[Fast2SMS] Sending OTP to ${mobile} for ${appName}`);
 
         const response = await axios.get(url, { params });
-        console.log('[Fast2SMS] Response:', response.data);
+        console.log('[Fast2SMS] Full Response Data:', JSON.stringify(response.data, null, 2));
 
-        // Fast2SMS returns { return: true, request_id: ..., ... } on success
         if (response.data && response.data.return === true) {
+            console.log('[Fast2SMS] Success:', response.data.message);
             return true;
         }
         return false;
