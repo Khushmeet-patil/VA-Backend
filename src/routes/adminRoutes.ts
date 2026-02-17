@@ -46,8 +46,13 @@ import {
     getChatSessionMessages,
     rejectWithdrawal
 } from '../controllers/adminController';
+import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
 const router = express.Router();
+
+// Protect all routes
+router.use(authMiddleware);
+router.use(adminMiddleware);
 
 // Dashboard
 router.get('/dashboard', getDashboardStats);

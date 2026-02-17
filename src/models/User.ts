@@ -24,6 +24,7 @@ export interface IBirthProfile {
 
 export interface IUser extends Document {
     mobile: string;
+    email?: string;
     password?: string;
     name?: string;
     gender?: string;  // User's gender
@@ -77,6 +78,7 @@ const BirthProfileSchema: Schema = new Schema({
 
 const UserSchema: Schema = new Schema({
     mobile: { type: String, required: true, unique: true },
+    email: { type: String, unique: true, sparse: true }, // Added for Admin/User email login
     password: { type: String }, // Optional now as we use OTP only
     name: { type: String },
     gender: { type: String },

@@ -11,6 +11,84 @@ import Transaction from '../models/Transaction';
 import geoService from '../services/geoService';
 import astrologyService from '../services/astrologyService';
 
+// Admin Login (Email + Password)
+export const adminLogin = async (req: Request, res: Response) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: 'Email and password are required' });
+        }
+
+        // Find admin user (must have role 'admin' and password set)
+        // We search by email (which is not unique index in schema but should be for admins)
+        // OR we can search by mobile if admin uses mobile. 
+        // User requested "email id and password". 
+        // User schema has 'mobile' unique, but 'email' is in 'IAstrologer' not IUser explicitly in schema? 
+        // Wait, UserSchema does NOT have 'email' field! It has 'mobile', 'password', 'name'.
+        // AstrologerSchema has 'email'.
+        // Checking UserSchema again...
+        // Line 79: mobile: ... unique
+        // Line 80: password
+        // It does NOT have email.
+
+        // ISSUE: User requested Email login, but User model has no email field.
+        // I should probably add email to User model or use Mobile for login.
+        // Or, I can check if the user meant "Admin" as a separate entity? 
+        // The codebase uses 'role: admin' on User model.
+
+        // I will add 'email' field to User model first? 
+        // Or just map email to username?
+        // Let's look at the User model again. 
+        // I see 'Astrologer' has email. 'User' does not.
+
+        // SOLUTION: I should add 'email' to User schema to support this properly.
+        // But for now, to avoid DB migration issues if possible, I will check if I can use mobile?
+        // No, user explicitly asked for "email id".
+        // So I MUST add email to User schema.
+
+        // I will first ABORT this edit, add email to User schema, then come back.
+        // But I can't abort inside a tool call.
+        // I will add the code assuming 'email' exists, and then updating the model in the next step.
+
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+
+        if (user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Access denied. Not an admin.' });
+        }
+
+        if (!user.password) {
+            return res.status(401).json({ success: false, message: 'Password not set for this admin' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+
+        return res.status(200).json({
+            success: true,
+            token,
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            }
+        });
+
+    } catch (error) {
+        console.error('Admin login error:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error });
+    }
+};
+
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
 export const checkUser = async (req: Request, res: Response) => {
@@ -498,8 +576,8 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
 const razorpay = new Razorpay({
-    key_id: 'rzp_test_SCou5PsU5pqYaH', // REPLACE WITH YOUR ACTUAL KEY_ID
-    key_secret: 'L64tdhhWB2RSpHq3rKaYj14H' // REPLACE WITH YOUR ACTUAL KEY_SECRET
+    key_id: process.env.RAZORPAY_KEY_ID || '',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || ''
 });
 
 // 1. Create Order
@@ -524,7 +602,8 @@ export const createOrder = async (req: Request, res: Response) => {
             success: true,
             orderId: order.id,
             amount: order.amount,
-            currency: order.currency
+            currency: order.currency,
+            key_id: process.env.RAZORPAY_KEY_ID
         });
 
     } catch (error: any) {
@@ -548,7 +627,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
         // 1. Verify Signature
         const body = razorpay_order_id + "|" + razorpay_payment_id;
         const expectedSignature = crypto
-            .createHmac('sha256', 'L64tdhhWB2RSpHq3rKaYj14H') // REPLACE WITH YOUR ACTUAL KEY_SECRET
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
             .update(body.toString())
             .digest('hex');
 
