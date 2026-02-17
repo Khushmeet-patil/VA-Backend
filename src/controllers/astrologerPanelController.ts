@@ -41,7 +41,7 @@ export const checkAstrologer = async (req: Request, res: Response) => {
 // Send OTP to astrologer
 export const sendAstrologerOtp = async (req: Request, res: Response) => {
     try {
-        const { mobile } = req.body;
+        const { mobile, deviceId } = req.body;
 
         if (!mobile) {
             return res.status(400).json({ success: false, message: 'Mobile number required' });
@@ -55,6 +55,14 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
 
         if (astrologer.status !== 'approved') {
             return res.status(403).json({ success: false, message: 'Not approved' });
+        }
+
+        // Device-based login restriction: check before sending OTP
+        if (deviceId && astrologer.activeDeviceId && astrologer.activeDeviceId !== deviceId) {
+            return res.status(409).json({
+                success: false,
+                message: 'This number is already logged in on another device. Please logout from there to login here.'
+            });
         }
 
         // Generate OTP (dev mode: use 1234 for testing)
@@ -86,7 +94,7 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
 // Verify OTP and login astrologer
 export const verifyAstrologerOtp = async (req: Request, res: Response) => {
     try {
-        const { mobile, otp } = req.body;
+        const { mobile, otp, deviceId } = req.body;
 
         console.log(`[verifyAstrologerOtp] Attempting verification for mobile: ${mobile}, otp: ${otp}`);
 
@@ -139,6 +147,20 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             return res.status(403).json({ success: false, message: 'Your account has been blocked. Please contact admin.' });
         }
 
+        // Device-based login restriction
+        if (deviceId && astrologer.activeDeviceId && astrologer.activeDeviceId !== deviceId) {
+            return res.status(409).json({
+                success: false,
+                message: 'This number is already logged in on another device. Please logout from there to login here.'
+            });
+        }
+
+        // Save device ID
+        if (deviceId) {
+            astrologer.activeDeviceId = deviceId;
+            await astrologer.save();
+        }
+
         // Generate token
         const token = jwt.sign(
             { id: astrologer._id, role: 'astrologer' },
@@ -173,6 +195,17 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error(`[verifyAstrologerOtp] Server error:`, error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Logout astrologer (clear active device ID)
+export const logoutAstrologer = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        await Astrologer.findByIdAndUpdate(astrologerId, { $unset: { activeDeviceId: 1 } });
+        return res.status(200).json({ success: true, message: 'Logged out successfully' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Server error', error });
     }
 };
 

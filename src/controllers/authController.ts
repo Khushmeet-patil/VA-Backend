@@ -109,7 +109,19 @@ export const checkUser = async (req: Request, res: Response) => {
 
 export const sendOtp = async (req: Request, res: Response) => {
     try {
-        const { mobile } = req.body;
+        const { mobile, deviceId } = req.body;
+
+        // Device-based login restriction: check before sending OTP
+        if (deviceId) {
+            const existingUser = await User.findOne({ mobile });
+            if (existingUser && existingUser.activeDeviceId && existingUser.activeDeviceId !== deviceId) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                });
+            }
+        }
+
         let otp = generateOtp();
 
         if (['7990358824', '1234567890', '9374742346'].includes(mobile)) {
@@ -138,7 +150,7 @@ export const sendOtp = async (req: Request, res: Response) => {
 
 export const verifyOtp = async (req: Request, res: Response) => {
     try {
-        const { mobile, otp } = req.body;
+        const { mobile, otp, deviceId } = req.body;
         const user = await User.findOne({ mobile });
 
         if (!user || user.otp !== otp) {
@@ -149,10 +161,19 @@ export const verifyOtp = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'OTP expired' });
         }
 
+        // Device-based login restriction
+        if (deviceId && user.activeDeviceId && user.activeDeviceId !== deviceId) {
+            return res.status(409).json({
+                success: false,
+                message: 'This number is already logged in on another device. Please logout from there to login here.'
+            });
+        }
+
         // Clear OTP after successful verification
         user.otp = undefined;
         user.otpExpires = undefined;
         user.isVerified = true;
+        if (deviceId) user.activeDeviceId = deviceId;
         await user.save();
 
         // Generate Token immediately upon verification
@@ -166,6 +187,17 @@ export const verifyOtp = async (req: Request, res: Response) => {
         });
     } catch (error) {
         return res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+// Logout user (clear active device ID)
+export const logoutUser = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        await User.findByIdAndUpdate(userId, { $unset: { activeDeviceId: 1 } });
+        return res.status(200).json({ success: true, message: 'Logged out successfully' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Server error', error });
     }
 };
 

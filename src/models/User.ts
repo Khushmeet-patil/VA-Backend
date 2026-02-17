@@ -54,6 +54,7 @@ export interface IUser extends Document {
     fcmToken?: string;  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt?: Date;  // When FCM token was last updated
     zodiacSign?: string; // User's preferred Zodiac Sign
+    activeDeviceId?: string;  // Device ID of the currently logged-in device
     createdAt: Date;
 }
 
@@ -107,6 +108,7 @@ const UserSchema: Schema = new Schema({
     fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
     zodiacSign: { type: String }, // User's preferred Zodiac Sign
+    activeDeviceId: { type: String },  // Device ID of the currently logged-in device
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);

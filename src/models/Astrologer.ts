@@ -39,6 +39,7 @@ export interface IAstrologer extends Document {
     tag: 'None' | 'Celebrity' | 'Top Choice' | 'Rising Star';
     fcmToken?: string;  // Firebase Cloud Messaging token for push notifications
     fcmTokenUpdatedAt?: Date;  // When the FCM token was last updated
+    activeDeviceId?: string;  // Device ID of the currently logged-in device
     createdAt: Date;
     isVerified: boolean;
     verificationDocuments: {
@@ -105,6 +106,7 @@ const AstrologerSchema: Schema = new Schema({
     tag: { type: String, enum: ['None', 'Celebrity', 'Top Choice', 'Rising Star'], default: 'None' },
     fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
+    activeDeviceId: { type: String },  // Device ID of the currently logged-in device
 
     // Verification
     isVerified: { type: Boolean, default: false },
