@@ -1,50 +1,45 @@
-
 import axios from 'axios';
-import querystring from 'querystring';
 
-export const sendSmsOtp = async (mobile: string, otp: string): Promise<boolean> => {
+export const sendSmsOtp = async (mobile: string, otp: string, appName: string = 'VedicAstro'): Promise<boolean> => {
     // Dev Bypass for specific number
     if (mobile === '7990358824') {
-        console.log(`Dev Mode: OTP for ${mobile} is ${otp} (Fixed to 1234 in logic if needed, but here we just log request)`);
+        console.log(`Dev Mode: OTP for ${mobile} is ${otp} (AppName: ${appName})`);
         return true;
     }
 
     try {
-        const key = '56661ADC561B64';
-        const senderid = 'SPTSMS';
-        const message = `Your otp is ${otp} SELECTIAL`;
-        const template_id = '1707166619134631839';
+        const url = 'https://www.fast2sms.com/dev/bulkV2';
+        const authorization = process.env.FAST2SMS_API_KEY || '';
+        const route = process.env.FAST2SMS_ROUTE || 'dlt';
+        const sender_id = process.env.FAST2SMS_SENDER_ID || 'SPVEDI';
+        const message = process.env.FAST2SMS_MESSAGE_ID || '209382';
 
-        const data = {
-            key: key,
-            campaign: 0,
-            routeid: 9,
-            type: 'text',
-            contacts: mobile,
-            senderid: senderid,
-            msg: message,
-            template_id: template_id
+        // Variables: OTP | AppName
+        const variables_values = `${otp}|${appName}`;
+        const flash = 0;
+
+        const params = {
+            authorization,
+            route,
+            sender_id,
+            message,
+            variables_values,
+            flash,
+            numbers: mobile,
         };
 
-        const queryString = querystring.stringify(data);
-        const url = `http://msg.pwasms.com/app/smsapi/index.php?${queryString}`;
+        console.log(`[Fast2SMS] Sending OTP to ${mobile} for ${appName}`);
 
-        console.log('Sending SMS to:', mobile, 'OTP:', otp); // Debug log
+        const response = await axios.get(url, { params });
+        console.log('[Fast2SMS] Response:', response.data);
 
-        // In production, uncomment the axios call. For dev/debugging without burning credits, we might want to just log.
-        // But user asked to use PWASMS, so we will make the call.
-
-        const response = await axios.get(url);
-        console.log('SMS Response:', response.data);
-
-        // PWASMS usually returns strict text or specific field. 
-        // Based on legacy code: if (response.data) return 'success'
-        if (response.data) {
+        // Fast2SMS returns { return: true, request_id: ..., ... } on success
+        if (response.data && response.data.return === true) {
             return true;
         }
         return false;
     } catch (error) {
-        console.error('Error sending SMS:', error);
+        console.error('[Fast2SMS] Error sending SMS:', error);
         return false;
     }
 };

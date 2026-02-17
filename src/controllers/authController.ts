@@ -125,7 +125,7 @@ export const sendOtp = async (req: Request, res: Response) => {
             { upsert: true, new: true }
         );
 
-        const sent = await sendSmsOtp(mobile, otp);
+        const sent = await sendSmsOtp(mobile, otp, 'VedicAstro');
         if (sent) {
             return res.status(200).json({ success: true, message: 'OTP sent successfully' });
         } else {

@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Service';
 import { getSettingValue } from './systemSettingController';
 import { notificationService } from '../services/notificationService';
+import { sendSmsOtp } from '../services/smsService';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -73,6 +74,8 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
 
         // In production, send OTP via SMS here
         console.log(`OTP for ${mobile}: ${otpCode}`);
+
+        await sendSmsOtp(mobile, otpCode, 'VedicPannel');
 
         res.json({ success: true, message: 'OTP sent successfully' });
     } catch (error: any) {
