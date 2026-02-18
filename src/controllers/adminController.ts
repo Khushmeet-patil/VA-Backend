@@ -572,6 +572,12 @@ export const getAstrologers = async (req: Request, res: Response) => {
         const query = status ? { status } : {};
 
         const astrologers = await Astrologer.find(query).populate('userId', 'name mobile');
+
+        // Prevent caching
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.status(200).json({ success: true, data: astrologers });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -721,6 +727,12 @@ export const getAstrologerDetails = async (req: Request, res: Response) => {
         const { astrologerId } = req.params;
         const astrologer = await Astrologer.findById(astrologerId).populate('userId', 'name mobile profilePhoto');
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+
+        // Prevent caching
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.json({ success: true, data: astrologer });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
