@@ -584,6 +584,12 @@ export const updateSchedule = async (req: Request, res: Response) => {
 export const getAllSkills = async (req: Request, res: Response) => {
     try {
         const skills = await Skill.find().sort({ name: 1 });
+
+        // Prevent caching of this response
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.json({ success: true, data: skills });
     } catch (error: any) {
         console.error('Get all skills error:', error);

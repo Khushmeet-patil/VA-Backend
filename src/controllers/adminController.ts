@@ -1079,9 +1079,32 @@ export const updateSkill = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Skill name is required' });
         }
 
-        const skill = await Skill.findByIdAndUpdate(skillId, { name }, { new: true });
-        if (!skill) {
+        // 1. Find original skill to get old name
+        const oldSkill = await Skill.findById(skillId);
+        if (!oldSkill) {
             return res.status(404).json({ success: false, message: 'Skill not found' });
+        }
+
+        const oldName = oldSkill.name;
+
+        // 2. Update the skill in Skills collection
+        const skill = await Skill.findByIdAndUpdate(skillId, { name }, { new: true });
+
+        // 3. If name changed, propagate to all Astrologers
+        if (oldName !== name) {
+            console.log(`[Admin] Skill renamed from "${oldName}" to "${name}". Updating Astrologers...`);
+
+            // Update systemKnown array
+            await Astrologer.updateMany(
+                { systemKnown: oldName },
+                { $set: { "systemKnown.$": name } }
+            );
+
+            // Update specialties array (if used)
+            await Astrologer.updateMany(
+                { specialties: oldName },
+                { $set: { "specialties.$": name } }
+            );
         }
 
         res.status(200).json({ success: true, message: 'Skill updated successfully', data: skill });
@@ -1096,12 +1119,31 @@ export const deleteSkill = async (req: Request, res: Response) => {
     try {
         const { skillId } = req.params;
 
-        const skill = await Skill.findByIdAndDelete(skillId);
+        // 1. Find skill to get name
+        const skill = await Skill.findById(skillId);
         if (!skill) {
             return res.status(404).json({ success: false, message: 'Skill not found' });
         }
 
-        res.status(200).json({ success: true, message: 'Skill deleted successfully' });
+        const skillName = skill.name;
+
+        // 2. Delete the skill
+        await Skill.findByIdAndDelete(skillId);
+
+        // 3. Remove this skill from all Astrologers
+        console.log(`[Admin] Skill "${skillName}" deleted. Removing from Astrologers...`);
+
+        await Astrologer.updateMany(
+            { systemKnown: skillName },
+            { $pull: { systemKnown: skillName } }
+        );
+
+        await Astrologer.updateMany(
+            { specialties: skillName },
+            { $pull: { specialties: skillName } }
+        );
+
+        res.status(200).json({ success: true, message: 'Skill deleted and removed from astrologers successfully' });
     } catch (error) {
         console.error('Delete skill error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
