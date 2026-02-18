@@ -185,6 +185,11 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
 
         const total = await Astrologer.countDocuments(query);
 
+        // Prevent caching of this response
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.json({
             success: true,
             data: astrologers,
