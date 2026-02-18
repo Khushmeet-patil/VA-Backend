@@ -486,7 +486,7 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
     try {
         const {
             firstName, lastName, gender, mobileNumber, email,
-            experience, city, country, systemKnown, language, bio,
+            experience, city, country, systemKnown, language, bio, aboutMe,
             pricePerMin, priceRangeMin, priceRangeMax, tag, specialties, profileImage
         } = req.body;
 
@@ -534,6 +534,7 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
             systemKnown: systemKnown || [],
             language: language || [],
             bio: bio || '',
+            aboutMe: aboutMe || '',
             status: 'approved', // Admin created are approved by default
             pricePerMin: pricePerMin || 20,
             priceRangeMin: priceRangeMin || 10,
@@ -628,7 +629,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const { astrologerId } = req.params;
         const {
             isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
-            firstName, lastName, email, mobileNumber, experience, city, country, bio, specialties, profileImage
+            firstName, lastName, email, mobileNumber, experience, city, country, bio, aboutMe, specialties, profileImage
         } = req.body;
 
         const updateData: any = {};
@@ -647,6 +648,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (city) updateData.city = city;
         if (country) updateData.country = country;
         if (bio) updateData.bio = bio;
+        if (aboutMe) updateData.aboutMe = aboutMe;
         if (Array.isArray(specialties)) updateData.specialties = specialties;
 
         // Bank Details
