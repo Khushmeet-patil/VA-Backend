@@ -447,21 +447,23 @@ export const getWalletBalance = async (req: Request, res: Response) => {
 
         if (!hasUsedFreeTrial) {
             // 2. If flag is false, verify against chat history
-            // We count sessions where user participated and it ended (meaning they chatted)
+            // We count sessions where:
+            // - It was a paid session and at least 1 minute was charged (totalAmount > 0)
+            // - OR it was a free trial and it reached the end (endReason: FREE_TRIAL_ENDED)
             const chatCount = await ChatSession.countDocuments({
                 userId: userId,
-                status: 'ENDED'
-                // We typically count 'ENDED' sessions. 'REJECTED' or 'TIMEOUT' don't count as "usage".
+                status: 'ENDED',
+                $or: [
+                    { totalAmount: { $gt: 0 } },
+                    { isFreeTrialSession: true, endReason: 'FREE_TRIAL_ENDED' }
+                ]
             });
 
             if (chatCount > 0) {
-                console.log(`[Auth] User ${userId} has ${chatCount} prior chats. Marking as ineligible for free trial.`);
+                console.log(`[Auth] User ${userId} has ${chatCount} qualified prior chats. Marking as ineligible for free trial.`);
                 // Update DB
                 await User.findByIdAndUpdate(userId, { hasUsedFreeTrial: true });
                 hasUsedFreeTrial = true;
-            } else {
-                // Count is 0. Eligible.
-                // console.log(`[Auth] User ${userId} has 0 prior chats. Eligible for free trial.`);
             }
         }
 

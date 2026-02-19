@@ -378,12 +378,18 @@ class ChatService {
 
         // Check if both joined and billing NOT started
         if (session.userJoined && session.astrologerJoined && !session.startTime) {
-            console.log(`[ChatService] Both participants joined. STARTING BILLING for: ${sessionId}`);
-
             session.startTime = new Date();
             await session.save();
 
-            this.startBillingTimer(sessionId);
+            if (session.isFreeTrialSession) {
+                // Free trial - start countdown timer
+                this.startFreeTrialTimer(sessionId, session.freeTrialDurationSeconds || 120);
+                console.log(`[ChatService] Both participants joined. FREE TRIAL TIMER STARTED for: ${sessionId}`);
+            } else {
+                // Regular paid session - start billing timer
+                this.startBillingTimer(sessionId);
+                console.log(`[ChatService] Both participants joined. STARTING BILLING for: ${sessionId}`);
+            }
 
             // Notify clients that timer has started
             if (this.io) {
@@ -594,7 +600,7 @@ class ChatService {
 
                 if (user && astrologer) {
                     console.log(`[ChatService] Processing final partial deduction: ${remainingToCharge}`);
-                    const success = await this.processPayment(
+                    const paymentResult = await this.processPayment(
                         session,
                         user,
                         astrologer,
@@ -602,44 +608,48 @@ class ChatService {
                         `Chat session: ${sessionId} - Final Partial Settlement`
                     );
 
-                    if (!success) {
+                    if (!paymentResult.success) {
                         console.warn(`[ChatService] Failed to capture final partial amount ${remainingToCharge} from user ${user._id}`);
                     }
                 }
             }
 
-            // Update totalMinutes
-            session.totalMinutes = parseFloat(durationMinutes.toFixed(2));
+            // Update totalMinutes to exact duration string for safety (model expects number)
+            const finalTotalMinutes = parseFloat(durationMinutes.toFixed(2));
+
+            // Atomic update for Session
+            await ChatSession.findOneAndUpdate(
+                { sessionId: session.sessionId },
+                {
+                    $set: {
+                        status: 'ENDED',
+                        endTime: new Date(),
+                        endReason: endReason,
+                        totalMinutes: finalTotalMinutes
+                    }
+                }
+            );
         } else {
             console.log(`[ChatService] Ended session ${sessionId} before billing started.`);
-            // Ensure session.totalMinutes is set to 0 if not started
-            session.totalMinutes = 0;
+            await ChatSession.findOneAndUpdate(
+                { sessionId: session.sessionId },
+                {
+                    $set: {
+                        status: 'ENDED',
+                        endTime: new Date(),
+                        endReason: endReason,
+                        totalMinutes: 0
+                    }
+                }
+            );
         }
         // -----------------------------
 
-        // Update session
-        session.status = 'ENDED';
-        session.endTime = new Date();
-        session.endReason = endReason;
-        // Update totalMinutes to reflect the actual duration (e.g. 3.5 mins) or keep as "billed minutes count"?
-        // Let's store actual duration in minutes (float) for analytics, but TS model might expect number.
-        // If totalMinutes is used for "number of full minutes charged", we might leave it or update it.
-        // Let's update it to round up to nearest minute for display, or keeping it as is from processPayment?
-        // processPayment increments it. If we ran 3m 30s, processPayment ran 3 times. totalMinutes=3.
-        // It's better to store exact duration somewhere or just update totalMinutes to be accurate float.
-        // Assuming session.totalMinutes is a Number.
-        // Total minutes already updated in if/else block above
-
-        await session.save();
-
-        // Unlock astrologer
-        const astrologer = await Astrologer.findById(session.astrologerId);
-        if (astrologer) {
-            astrologer.isBusy = false;
-            astrologer.activeSessionId = undefined;
-            astrologer.totalChats += 1;
-            await astrologer.save();
-        }
+        // Unlock astrologer atomically
+        await Astrologer.findByIdAndUpdate(session.astrologerId, {
+            $set: { isBusy: false, activeSessionId: undefined },
+            $inc: { totalChats: 1 }
+        });
 
         console.log(`[ChatService] Chat ended: ${sessionId}, reason: ${endReason}`);
 
@@ -739,6 +749,13 @@ class ChatService {
     private async processBillingCycle(sessionId: string): Promise<void> {
         const session = await ChatSession.findOne({ sessionId });
         if (!session || session.status !== 'ACTIVE') {
+            this.stopBillingTimer(sessionId);
+            return;
+        }
+
+        // Safety check: Don't bill for free trial sessions
+        if (session.isFreeTrialSession) {
+            console.log(`[ChatService] processBillingCycle called for FREE TRIAL session: ${sessionId}. Stopping billing timer.`);
             this.stopBillingTimer(sessionId);
             return;
         }
@@ -863,81 +880,112 @@ class ChatService {
                 return { success: false };
             }
 
-            // Deduct from both wallets
-            user.bonusBalance = Math.round((bonusBalance - bonusDeduction) * 100) / 100;
-            user.walletBalance = Math.round((realBalance - realDeduction) * 100) / 100;
-            await user.save({ session: mongoSession });
+            // Atomic update for User
+            const userUpdate: any = {
+                $inc: {
+                    walletBalance: -realDeduction,
+                    bonusBalance: -bonusDeduction
+                }
+            };
+            const updatedUserDoc = await User.findOneAndUpdate(
+                { _id: user._id, walletBalance: { $gte: realDeduction }, bonusBalance: { $gte: bonusDeduction } },
+                userUpdate,
+                { session: mongoSession, new: true }
+            );
+
+            if (!updatedUserDoc) {
+                console.warn(`[ChatService] User ${user._id} could not afford deduction in atomic update`);
+                await mongoSession.abortTransaction();
+                return { success: false };
+            }
 
             // Astrologer earns only from REAL money portion (commission %)
             const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
 
             // ============ TDS CALCULATION LOGIC ============
-            // Fetch TDS settings
-            const tdsThresholdSetting = await SystemSetting.findOne({ key: 'tdsThreshold' });
-            const tdsRateSetting = await SystemSetting.findOne({ key: 'tdsRate' });
-            const tdsThreshold = tdsThresholdSetting?.value ?? 50000; // Default ₹50,000
-            const tdsRate = tdsRateSetting?.value ?? 10; // Default 10%
+            const systemSettingModel = mongoose.model('SystemSetting');
+            const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
+            const tdsRateSetting = await systemSettingModel.findOne({ key: 'tdsRate' });
+            const tdsThreshold = tdsThresholdSetting?.value ?? 50000;
+            const tdsRate = tdsRateSetting?.value ?? 10;
 
-            // Check if financial year needs to be reset (April 1 is new FY)
             const now = new Date();
-            const currentFYStart = new Date(now.getFullYear(), 3, 1); // April 1 of current year
-            if (now.getMonth() < 3) { // If before April, FY started last year
-                currentFYStart.setFullYear(now.getFullYear() - 1);
+            const currentFYStart = new Date(now.getFullYear(), 3, 1);
+            if (now.getMonth() < 3) currentFYStart.setFullYear(now.getFullYear() - 1);
+
+            // Re-fetch astrologer for TDS check (must be inside transaction for consistency)
+            const freshAstrologer = await Astrologer.findById(astrologer._id).session(mongoSession);
+            if (!freshAstrologer) throw new Error('Astrologer not found');
+
+            if (!freshAstrologer.yearlyEarningsStartDate || new Date(freshAstrologer.yearlyEarningsStartDate) < currentFYStart) {
+                freshAstrologer.yearlyEarningsStartDate = currentFYStart;
+                freshAstrologer.yearlyGrossEarnings = 0;
+                freshAstrologer.yearlyTdsDeducted = 0;
             }
 
-            // Reset yearly tracking if new financial year
-            if (!astrologer.yearlyEarningsStartDate || new Date(astrologer.yearlyEarningsStartDate) < currentFYStart) {
-                astrologer.yearlyEarningsStartDate = currentFYStart;
-                astrologer.yearlyGrossEarnings = 0;
-                astrologer.yearlyTdsDeducted = 0;
-                console.log(`[ChatService] Reset FY tracking for astrologer ${astrologer._id}, new FY: ${currentFYStart.toISOString()}`);
-            }
-
-            // Track previous yearly earnings to determine if this transaction crosses threshold
-            const previousYearlyEarnings = astrologer.yearlyGrossEarnings || 0;
+            const previousYearlyEarnings = freshAstrologer.yearlyGrossEarnings || 0;
             const newYearlyEarnings = previousYearlyEarnings + astrologerShare;
 
             let tdsDeduction = 0;
             let netAstrologerShare = astrologerShare;
 
             if (newYearlyEarnings > tdsThreshold) {
-                // TDS is applicable
                 if (previousYearlyEarnings <= tdsThreshold) {
-                    // Just crossed the threshold - TDS on ENTIRE amount that crossed (including previous earnings)
                     tdsDeduction = Math.round((newYearlyEarnings * tdsRate / 100) * 100) / 100;
-                    console.log(`[ChatService] Crossed TDS threshold! Yearly: ₹${newYearlyEarnings}, TDS on full amount: ₹${tdsDeduction}`);
                 } else {
-                    // Already above threshold - TDS only on this earning
                     tdsDeduction = Math.round((astrologerShare * tdsRate / 100) * 100) / 100;
-                    console.log(`[ChatService] TDS on earning: ₹${astrologerShare}, TDS: ₹${tdsDeduction}`);
                 }
                 netAstrologerShare = Math.round((astrologerShare - tdsDeduction) * 100) / 100;
             }
 
-            // Update astrologer yearly tracking
-            astrologer.yearlyGrossEarnings = Math.round(newYearlyEarnings * 100) / 100;
-            astrologer.yearlyTdsDeducted = Math.round(((astrologer.yearlyTdsDeducted || 0) + tdsDeduction) * 100) / 100;
+            // Atomic update for Astrologer earnings and FY tracking
+            await Astrologer.updateOne(
+                { _id: astrologer._id },
+                {
+                    $inc: {
+                        earnings: netAstrologerShare,
+                        yearlyGrossEarnings: astrologerShare,
+                        yearlyTdsDeducted: tdsDeduction
+                    },
+                    $set: {
+                        yearlyEarningsStartDate: freshAstrologer.yearlyEarningsStartDate
+                    }
+                },
+                { session: mongoSession }
+            );
 
-            // Add NET earnings (after TDS) to astrologer's withdrawable balance
-            astrologer.earnings = Math.round((astrologer.earnings + netAstrologerShare) * 100) / 100;
-            await astrologer.save({ session: mongoSession });
-
-            // Update session totals
+            // Atomic update for Session totals
+            const sessionUpdate: any = {
+                $inc: {
+                    totalAmount: totalToDeduct,
+                    astrologerEarnings: astrologerShare
+                }
+            };
             if (amountOverride === undefined) {
-                session.totalMinutes += 1;
+                sessionUpdate.$inc.totalMinutes = 1;
             }
-            session.totalAmount = Math.round((session.totalAmount + totalToDeduct) * 100) / 100;
-            session.astrologerEarnings = Math.round((session.astrologerEarnings + astrologerShare) * 100) / 100;
-            await session.save({ session: mongoSession });
 
-            // Create transaction record with split info
+            const updatedSessionDoc = await ChatSession.findOneAndUpdate(
+                { sessionId: session.sessionId },
+                sessionUpdate,
+                { session: mongoSession, new: true }
+            );
+
+            // Update the local session object properties so caller sees new state
+            if (updatedSessionDoc) {
+                session.totalMinutes = updatedSessionDoc.totalMinutes;
+                session.totalAmount = updatedSessionDoc.totalAmount;
+                session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
+            }
+
+            // Create transaction record
             const transaction = new Transaction({
                 fromUser: user._id,
                 toAstrologer: astrologer._id,
                 amount: totalToDeduct,
                 type: 'debit',
                 status: 'success',
-                description: descriptionOverride || `Chat: ${session.sessionId} - Min ${session.totalMinutes} (Real: ₹${realDeduction}, Bonus: ₹${bonusDeduction}, Astro: ₹${astrologerShare})`
+                description: descriptionOverride || `Chat: ${session.sessionId} - Min ${updatedSessionDoc?.totalMinutes} (Real: ₹${realDeduction}, Bonus: ₹${bonusDeduction}, Astro: ₹${astrologerShare})`
             });
             await transaction.save({ session: mongoSession });
 
@@ -946,9 +994,11 @@ class ChatService {
             console.log(`[ChatService] Billing processed: Real=-${realDeduction}, Bonus=-${bonusDeduction}, AstroEarns=${astrologerShare}`);
             return { success: true, realDeducted: realDeduction, bonusDeducted: bonusDeduction };
 
-        } catch (error) {
-            await mongoSession.abortTransaction();
-            console.error('[ChatService] Payment transaction failed:', error);
+        } catch (error: any) {
+            if (mongoSession.inTransaction()) {
+                await mongoSession.abortTransaction();
+            }
+            console.error('[ChatService] Payment transaction failed:', error?.message || error);
             return { success: false };
         } finally {
             mongoSession.endSession();
