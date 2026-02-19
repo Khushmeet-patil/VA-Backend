@@ -162,6 +162,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         ]);
         const totalPayable = totalPayableAgg[0]?.total || 0;
 
+        // Prevent caching for real-time dashboard stats
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.status(200).json({
             success: true,
             data: {
