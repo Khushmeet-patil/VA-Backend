@@ -617,7 +617,7 @@ class ChatService {
             // Update totalMinutes to exact duration string for safety (model expects number)
             const finalTotalMinutes = parseFloat(durationMinutes.toFixed(2));
 
-            // Atomic update for Session
+            // Atomic update for Session to mark as ENDED and save final duration
             await ChatSession.findOneAndUpdate(
                 { sessionId: session.sessionId },
                 {
@@ -629,6 +629,12 @@ class ChatService {
                     }
                 }
             );
+
+            // Update local object so the emitted CHAT_ENDED event contains accurate data
+            session.status = 'ENDED';
+            session.endTime = new Date();
+            session.endReason = endReason;
+            session.totalMinutes = finalTotalMinutes;
         } else {
             console.log(`[ChatService] Ended session ${sessionId} before billing started.`);
             await ChatSession.findOneAndUpdate(
@@ -642,6 +648,10 @@ class ChatService {
                     }
                 }
             );
+            session.status = 'ENDED';
+            session.endTime = new Date();
+            session.endReason = endReason;
+            session.totalMinutes = 0;
         }
         // -----------------------------
 
@@ -845,14 +855,11 @@ class ChatService {
         amountOverride?: number,
         descriptionOverride?: string
     ): Promise<{ success: boolean; realDeducted?: number; bonusDeducted?: number }> {
-        const mongoSession = await mongoose.startSession();
-        mongoSession.startTransaction();
-
         try {
             // Fetch settings for bonus usage and commission
-            const SystemSetting = mongoose.model('SystemSetting');
-            const bonusUsageSetting = await SystemSetting.findOne({ key: 'bonusUsagePercent' });
-            const commissionSetting = await SystemSetting.findOne({ key: 'astrologerCommission' });
+            const systemSettingModel = mongoose.model('SystemSetting');
+            const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
+            const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
 
             const bonusUsagePercent = bonusUsageSetting?.value ?? 20; // Default 20%
             const astrologerCommission = commissionSetting?.value ?? 40; // Default 40%
@@ -872,38 +879,29 @@ class ChatService {
                 realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
             }
 
-            // Check if user can afford the real portion
-            const realBalance = user.walletBalance || 0;
-            if (realDeduction > realBalance) {
-                // Not enough in real wallet
-                await mongoSession.abortTransaction();
-                return { success: false };
-            }
-
-            // Atomic update for User
+            // ATOMIC STEP 1: Deduct from User
             const userUpdate: any = {
                 $inc: {
                     walletBalance: -realDeduction,
                     bonusBalance: -bonusDeduction
                 }
             };
+            // Only proceed if user has enough balance (safety filter)
             const updatedUserDoc = await User.findOneAndUpdate(
                 { _id: user._id, walletBalance: { $gte: realDeduction }, bonusBalance: { $gte: bonusDeduction } },
                 userUpdate,
-                { session: mongoSession, new: true }
+                { new: true }
             );
 
             if (!updatedUserDoc) {
                 console.warn(`[ChatService] User ${user._id} could not afford deduction in atomic update`);
-                await mongoSession.abortTransaction();
                 return { success: false };
             }
 
-            // Astrologer earns only from REAL money portion (commission %)
+            // ATOMIC STEP 2: Add to Astrologer Earnings
             const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
 
             // ============ TDS CALCULATION LOGIC ============
-            const systemSettingModel = mongoose.model('SystemSetting');
             const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
             const tdsRateSetting = await systemSettingModel.findOne({ key: 'tdsRate' });
             const tdsThreshold = tdsThresholdSetting?.value ?? 50000;
@@ -913,17 +911,20 @@ class ChatService {
             const currentFYStart = new Date(now.getFullYear(), 3, 1);
             if (now.getMonth() < 3) currentFYStart.setFullYear(now.getFullYear() - 1);
 
-            // Re-fetch astrologer for TDS check (must be inside transaction for consistency)
-            const freshAstrologer = await Astrologer.findById(astrologer._id).session(mongoSession);
+            // Re-fetch astrologer for freshest TDS tracking data
+            const freshAstrologer = await Astrologer.findById(astrologer._id);
             if (!freshAstrologer) throw new Error('Astrologer not found');
 
+            let fyResetUpdate: any = {};
             if (!freshAstrologer.yearlyEarningsStartDate || new Date(freshAstrologer.yearlyEarningsStartDate) < currentFYStart) {
-                freshAstrologer.yearlyEarningsStartDate = currentFYStart;
-                freshAstrologer.yearlyGrossEarnings = 0;
-                freshAstrologer.yearlyTdsDeducted = 0;
+                fyResetUpdate = {
+                    yearlyEarningsStartDate: currentFYStart,
+                    yearlyGrossEarnings: 0,
+                    yearlyTdsDeducted: 0
+                };
             }
 
-            const previousYearlyEarnings = freshAstrologer.yearlyGrossEarnings || 0;
+            const previousYearlyEarnings = fyResetUpdate.yearlyGrossEarnings ?? (freshAstrologer.yearlyGrossEarnings || 0);
             const newYearlyEarnings = previousYearlyEarnings + astrologerShare;
 
             let tdsDeduction = 0;
@@ -948,13 +949,12 @@ class ChatService {
                         yearlyTdsDeducted: tdsDeduction
                     },
                     $set: {
-                        yearlyEarningsStartDate: freshAstrologer.yearlyEarningsStartDate
+                        yearlyEarningsStartDate: fyResetUpdate.yearlyEarningsStartDate || freshAstrologer.yearlyEarningsStartDate
                     }
-                },
-                { session: mongoSession }
+                }
             );
 
-            // Atomic update for Session totals
+            // ATOMIC STEP 3: Update Session Totals
             const sessionUpdate: any = {
                 $inc: {
                     totalAmount: totalToDeduct,
@@ -968,17 +968,17 @@ class ChatService {
             const updatedSessionDoc = await ChatSession.findOneAndUpdate(
                 { sessionId: session.sessionId },
                 sessionUpdate,
-                { session: mongoSession, new: true }
+                { new: true }
             );
 
-            // Update the local session object properties so caller sees new state
+            // Update local session object for caller
             if (updatedSessionDoc) {
                 session.totalMinutes = updatedSessionDoc.totalMinutes;
                 session.totalAmount = updatedSessionDoc.totalAmount;
                 session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
             }
 
-            // Create transaction record
+            // ATOMIC STEP 4: Create Transaction Record
             const transaction = new Transaction({
                 fromUser: user._id,
                 toAstrologer: astrologer._id,
@@ -987,21 +987,14 @@ class ChatService {
                 status: 'success',
                 description: descriptionOverride || `Chat: ${session.sessionId} - Min ${updatedSessionDoc?.totalMinutes} (Real: ₹${realDeduction}, Bonus: ₹${bonusDeduction}, Astro: ₹${astrologerShare})`
             });
-            await transaction.save({ session: mongoSession });
-
-            await mongoSession.commitTransaction();
+            await transaction.save();
 
             console.log(`[ChatService] Billing processed: Real=-${realDeduction}, Bonus=-${bonusDeduction}, AstroEarns=${astrologerShare}`);
             return { success: true, realDeducted: realDeduction, bonusDeducted: bonusDeduction };
 
         } catch (error: any) {
-            if (mongoSession.inTransaction()) {
-                await mongoSession.abortTransaction();
-            }
-            console.error('[ChatService] Payment transaction failed:', error?.message || error);
+            console.error('[ChatService] Payment process failed:', error?.message || error);
             return { success: false };
-        } finally {
-            mongoSession.endSession();
         }
     }
 
