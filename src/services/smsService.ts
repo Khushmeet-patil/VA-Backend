@@ -1,9 +1,14 @@
 import axios from 'axios';
 
+// Test numbers that bypass fast2sms and use fixed OTP 1234
+// VedicAstro (user app): 7990358824, 1234567890, 9374742346
+// VedicPannel (astrologer app): 7990358821, 2345678901, 9999999999
+const TEST_NUMBERS = ['7990358824', '1234567890', '9374742346', '7990358821', '2345678901', '9999999999'];
+
 export const sendSmsOtp = async (mobile: string, otp: string, appName: string = 'VedicAstro'): Promise<boolean> => {
-    // Dev Bypass for specific number
-    if (mobile === '7990358824') {
-        console.log(`Dev Mode: OTP for ${mobile} is ${otp} (AppName: ${appName})`);
+    // Dev Bypass: skip fast2sms for test numbers (OTP is already set to 1234 by the controller)
+    if (TEST_NUMBERS.includes(mobile)) {
+        console.log(`[SMS Bypass] Test number ${mobile} — OTP: ${otp} (App: ${appName})`);
         return true;
     }
 
