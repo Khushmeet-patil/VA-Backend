@@ -125,6 +125,33 @@ router.post('/withdrawals/reject', rejectWithdrawal);
 router.get('/payment-history', getPaymentHistory);
 router.get('/payment-history/:batchId', getPaymentBatchDetails);
 
+// Image Proxy (for CORS-free image loading in cropper)
+import axios from 'axios';
+router.get('/proxy-image', async (req, res) => {
+    try {
+        const imageUrl = req.query.url as string;
+        if (!imageUrl) {
+            return res.status(400).json({ message: 'Missing url parameter' });
+        }
+        // Security: only allow proxying from our CDN domain
+        const allowedDomains = ['cdn.vedicastro.co.in', 'pub-'];
+        const url = new URL(imageUrl);
+        const isAllowed = allowedDomains.some(d => url.hostname.includes(d));
+        if (!isAllowed) {
+            return res.status(403).json({ message: 'Domain not allowed' });
+        }
+
+        const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        const contentType = response.headers['content-type'] || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.send(Buffer.from(response.data));
+    } catch (error: any) {
+        console.error('Proxy image error:', error.message);
+        res.status(500).json({ message: 'Failed to proxy image' });
+    }
+});
+
 export default router;
 
 
