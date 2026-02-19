@@ -31,13 +31,15 @@ export const updatePolicy = async (req: Request, res: Response) => {
         let policy = await Policy.findOne({ key });
 
         if (policy) {
+            // Use explicit undefined checks so that empty strings, whitespace,
+            // and HTML with only <p><br></p> (blank lines) are saved correctly.
             if (title !== undefined) policy.title = title;
             if (content !== undefined) policy.content = content;
             policy.lastUpdated = new Date();
             await policy.save();
         } else {
             // Create if not exists (optional, but good for initialization)
-            policy = new Policy({ key, title: title || 'Untitled', content: content || '' });
+            policy = new Policy({ key, title, content: content ?? '' });
             await policy.save();
         }
 
