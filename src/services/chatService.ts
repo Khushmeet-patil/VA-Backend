@@ -673,7 +673,7 @@ class ChatService {
                 endReason,
                 totalMinutes: session.totalMinutes,
                 totalAmount: session.totalAmount,
-                astrologerEarnings: session.astrologerEarnings
+                astrologerEarnings: (session as any).astrologerNetEarnings ?? session.astrologerEarnings
             };
 
             this.io.to(`user:${session.userId}`).emit('CHAT_ENDED', endPayload);
@@ -849,7 +849,7 @@ class ChatService {
                 sessionId,
                 minutesElapsed: session.totalMinutes,
                 amountDeducted: session.totalAmount,
-                astrologerEarnings: session.astrologerEarnings
+                astrologerEarnings: (session as any).astrologerNetEarnings ?? session.astrologerEarnings
             });
         }
 
@@ -989,7 +989,8 @@ class ChatService {
             const sessionUpdate: any = {
                 $inc: {
                     totalAmount: totalToDeduct,
-                    astrologerEarnings: astrologerShare
+                    astrologerEarnings: astrologerShare,
+                    astrologerNetEarnings: netAstrologerShare
                 }
             };
             if (amountOverride === undefined) {
@@ -1007,6 +1008,7 @@ class ChatService {
                 session.totalMinutes = updatedSessionDoc.totalMinutes;
                 session.totalAmount = updatedSessionDoc.totalAmount;
                 session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
+                (session as any).astrologerNetEarnings = (updatedSessionDoc as any).astrologerNetEarnings;
             }
 
             // ATOMIC STEP 4: Create Transaction Record

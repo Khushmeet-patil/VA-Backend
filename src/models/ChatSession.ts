@@ -16,7 +16,8 @@ export interface IChatSession extends Document {
     endTime?: Date;                     // Set when status becomes ENDED
     totalMinutes: number;               // Completed billing cycles
     totalAmount: number;                // Total amount deducted from user
-    astrologerEarnings: number;         // Total earnings for astrologer (may differ if platform fee)
+    astrologerEarnings: number;         // Gross earnings (after commission, before TDS)
+    astrologerNetEarnings: number;      // Net earnings (after commission and TDS)
     endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT' | 'FREE_TRIAL_ENDED';
     intakeDetails?: {                   // User's intake form data
         name?: string;
@@ -73,6 +74,7 @@ const ChatSessionSchema: Schema = new Schema({
     totalMinutes: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
     astrologerEarnings: { type: Number, default: 0 },
+    astrologerNetEarnings: { type: Number, default: 0 },
     endReason: {
         type: String,
         enum: ['USER_END', 'ASTROLOGER_END', 'INSUFFICIENT_BALANCE', 'DISCONNECT', 'TIMEOUT', 'FREE_TRIAL_ENDED']

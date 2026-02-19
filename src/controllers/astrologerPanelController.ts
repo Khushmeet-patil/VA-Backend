@@ -410,7 +410,7 @@ export const getStats = async (req: Request, res: Response) => {
             {
                 $group: {
                     _id: null,
-                    lifetimeEarnings: { $sum: '$astrologerEarnings' },
+                    lifetimeEarnings: { $sum: { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] } },
                     totalChats: { $sum: 1 },
                     totalDuration: { $sum: '$totalMinutes' }
                 }
@@ -449,7 +449,7 @@ export const getStats = async (req: Request, res: Response) => {
             {
                 $group: {
                     _id: null,
-                    todayEarnings: { $sum: '$astrologerEarnings' },
+                    todayEarnings: { $sum: { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] } },
                     todayChats: { $sum: 1 }
                 }
             }
