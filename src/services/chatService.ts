@@ -43,6 +43,9 @@ class ChatService {
     // Map of free trial timers: sessionId -> NodeJS.Timeout
     private freeTrialTimers: Map<string, NodeJS.Timeout> = new Map();
 
+    // Map of free trial warning timers: sessionId -> NodeJS.Timeout
+    private freeTrialWarningTimers: Map<string, NodeJS.Timeout> = new Map();
+
     // Free trial duration (120 seconds = 2 minutes)
     private readonly FREE_TRIAL_DURATION_MS = 120000;
 
@@ -709,14 +712,35 @@ class ChatService {
      * Start the free trial countdown timer for a session
      * Auto-ends the session after the trial duration
      */
-    private startFreeTrialTimer(sessionId: string, durationSeconds: number): void {
+    private async startFreeTrialTimer(sessionId: string, durationSeconds: number): Promise<void> {
         console.log(`[ChatService] Starting FREE TRIAL timer for: ${sessionId}, duration: ${durationSeconds}s`);
 
-        const timer = setTimeout(async () => {
+        const session = await ChatSession.findOne({ sessionId });
+        if (!session) return;
+
+        // Timer to end the session
+        const endTimer = setTimeout(async () => {
             await this.endFreeTrialSession(sessionId);
         }, durationSeconds * 1000);
 
-        this.freeTrialTimers.set(sessionId, timer);
+        this.freeTrialTimers.set(sessionId, endTimer);
+
+        // Timer to send warning 60s before end (if duration > 60s)
+        if (durationSeconds > 60) {
+            const warningTimer = setTimeout(() => {
+                if (this.io) {
+                    this.io.to(`user:${session.userId}`).emit('LAST_MINUTE_WARNING', {
+                        sessionId,
+                        remainingBalance: 0,
+                        ratePerMinute: 0,
+                        isFreeTrial: true,
+                        isBalanceDepleted: false
+                    });
+                    console.log(`[ChatService] Free trial last-minute warning sent for: ${sessionId}`);
+                }
+            }, (durationSeconds - 60) * 1000);
+            this.freeTrialWarningTimers.set(sessionId, warningTimer);
+        }
     }
 
     /**
@@ -728,6 +752,13 @@ class ChatService {
             clearTimeout(timer);
             this.freeTrialTimers.delete(sessionId);
             console.log(`[ChatService] Stopped free trial timer for: ${sessionId}`);
+        }
+
+        const warningTimer = this.freeTrialWarningTimers.get(sessionId);
+        if (warningTimer) {
+            clearTimeout(warningTimer);
+            this.freeTrialWarningTimers.delete(sessionId);
+            console.log(`[ChatService] Stopped free trial warning timer for: ${sessionId}`);
         }
     }
 
