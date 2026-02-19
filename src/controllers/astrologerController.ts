@@ -20,7 +20,8 @@ export const applyForAstrologer = async (req: Request, res: Response) => {
             country,
             systemKnown,
             language,
-            bio
+            bio,
+            aboutMe
         } = req.body;
 
         // Validation for required fields
@@ -66,6 +67,7 @@ export const applyForAstrologer = async (req: Request, res: Response) => {
             systemKnown: systemKnown || [],
             language: language || [],
             bio: bio || '',
+            aboutMe: aboutMe || '',
             status: 'under_review'
         });
 

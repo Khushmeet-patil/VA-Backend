@@ -674,8 +674,8 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (typeof experience === 'number') updateData.experience = experience;
         if (city) updateData.city = city;
         if (country) updateData.country = country;
-        if (bio) updateData.bio = bio;
-        if (aboutMe) updateData.aboutMe = aboutMe;
+        if (bio !== undefined) updateData.bio = bio;
+        if (aboutMe !== undefined) updateData.aboutMe = aboutMe;
         if (Array.isArray(specialties)) updateData.specialties = specialties;
         if (Array.isArray(language)) updateData.language = language;
         if (Array.isArray(systemKnown)) updateData.systemKnown = systemKnown;
