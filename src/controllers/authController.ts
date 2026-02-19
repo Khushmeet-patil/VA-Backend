@@ -115,10 +115,21 @@ export const sendOtp = async (req: Request, res: Response) => {
         if (deviceId) {
             const existingUser = await User.findOne({ mobile });
             if (existingUser && existingUser.activeDeviceId && existingUser.activeDeviceId !== deviceId) {
-                return res.status(409).json({
-                    success: false,
-                    message: 'This number is already logged in on another device. Please logout from there to login here.'
-                });
+                // MIGRATION LOGIC:
+                // If existing ID is legacy (starts with 'dev_') and new ID is NOT (persistent ID),
+                // we allow this request. The ID will be updated upon successful verification.
+                const isLegacyId = existingUser.activeDeviceId.startsWith('dev_');
+                const isNewIdPersistent = !deviceId.startsWith('dev_');
+
+                if (isLegacyId && isNewIdPersistent) {
+                    console.log(`[Auth] Allowing device migration for ${mobile} from ${existingUser.activeDeviceId} to ${deviceId}`);
+                    // Proceed with OTP sending
+                } else {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'This number is already logged in on another device. Please logout from there to login here.'
+                    });
+                }
             }
         }
 
@@ -163,10 +174,19 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
         // Device-based login restriction
         if (deviceId && user.activeDeviceId && user.activeDeviceId !== deviceId) {
-            return res.status(409).json({
-                success: false,
-                message: 'This number is already logged in on another device. Please logout from there to login here.'
-            });
+            // MIGRATION LOGIC:
+            const isLegacyId = user.activeDeviceId.startsWith('dev_');
+            const isNewIdPersistent = !deviceId.startsWith('dev_');
+
+            if (isLegacyId && isNewIdPersistent) {
+                console.log(`[Auth] Migrating device ID for ${mobile} on verification`);
+                // Allow proceeding
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                });
+            }
         }
 
         // Clear OTP after successful verification

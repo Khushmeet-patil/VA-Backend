@@ -59,10 +59,19 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
 
         // Device-based login restriction: check before sending OTP
         if (deviceId && astrologer.activeDeviceId && astrologer.activeDeviceId !== deviceId) {
-            return res.status(409).json({
-                success: false,
-                message: 'This number is already logged in on another device. Please logout from there to login here.'
-            });
+            // MIGRATION LOGIC:
+            const isLegacyId = astrologer.activeDeviceId.startsWith('dev_');
+            const isNewIdPersistent = !deviceId.startsWith('dev_');
+
+            if (isLegacyId && isNewIdPersistent) {
+                console.log(`[AstrologerPanel] Allowing device migration for ${mobile}`);
+                // Proceed
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                });
+            }
         }
 
         // Generate OTP (dev mode: use 1234 for testing)
@@ -149,10 +158,19 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
 
         // Device-based login restriction
         if (deviceId && astrologer.activeDeviceId && astrologer.activeDeviceId !== deviceId) {
-            return res.status(409).json({
-                success: false,
-                message: 'This number is already logged in on another device. Please logout from there to login here.'
-            });
+            // MIGRATION LOGIC:
+            const isLegacyId = astrologer.activeDeviceId.startsWith('dev_');
+            const isNewIdPersistent = !deviceId.startsWith('dev_');
+
+            if (isLegacyId && isNewIdPersistent) {
+                console.log(`[verifyAstrologerOtp] Migrating device ID for ${mobile}`);
+                // Proceed
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                });
+            }
         }
 
         // Save device ID
