@@ -494,22 +494,31 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'FirstName, LastName and Mobile are required' });
         }
 
+        let savedUser;
         // 1. Check if user already exists
         const existingUser = await User.findOne({ mobile: mobileNumber });
+
         if (existingUser) {
-            return res.status(400).json({ success: false, message: 'User with this mobile number already exists' });
+            if (existingUser.role === 'astrologer') {
+                return res.status(400).json({ success: false, message: 'Astrologer with this mobile number already exists' });
+            }
+            // Upgrade user to astrologer
+            existingUser.role = 'astrologer';
+            // Update name if provided, or keep existing? Let's update name to match astrologer profile if desired, or keep as is.
+            // Requirement says "role will be changed", implying we use the existing user record.
+            existingUser.name = `${firstName} ${lastName}`.trim(); // Update name to match new profile
+            savedUser = await existingUser.save();
+        } else {
+            // 2. Create New User
+            const newUser = new User({
+                name: `${firstName} ${lastName}`.trim(),
+                mobile: mobileNumber,
+                role: 'astrologer',
+                isVerified: true,
+                isBlocked: false
+            });
+            savedUser = await newUser.save();
         }
-
-        // 2. Create User first
-        const newUser = new User({
-            name: `${firstName} ${lastName}`.trim(),
-            mobile: mobileNumber,
-            role: 'astrologer',
-            isVerified: true,
-            isBlocked: false
-        });
-
-        const savedUser = await newUser.save();
 
         // 2.1 Upload Profile Image if provided
         let profilePhotoUrl = '';
@@ -521,6 +530,12 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
         }
 
         // 3. Create Astrologer Profile
+        // Check if profile already exists for this user (parity check)
+        const existingProfile = await Astrologer.findOne({ userId: savedUser._id });
+        if (existingProfile) {
+            return res.status(400).json({ success: false, message: 'Astrologer profile already exists for this user.' });
+        }
+
         const newAstrologer = new Astrologer({
             userId: savedUser._id,
             firstName,
@@ -635,7 +650,8 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const { astrologerId } = req.params;
         const {
             isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
-            firstName, lastName, email, mobileNumber, experience, city, country, bio, aboutMe, specialties, profileImage
+            firstName, lastName, email, mobileNumber, experience, city, country, bio, aboutMe, specialties, profileImage,
+            language, systemKnown
         } = req.body;
 
         const updateData: any = {};
@@ -656,6 +672,8 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (bio) updateData.bio = bio;
         if (aboutMe) updateData.aboutMe = aboutMe;
         if (Array.isArray(specialties)) updateData.specialties = specialties;
+        if (Array.isArray(language)) updateData.language = language;
+        if (Array.isArray(systemKnown)) updateData.systemKnown = systemKnown;
 
         // Bank Details
         if (req.body.bankDetails) {
@@ -672,9 +690,20 @@ export const updateAstrologer = async (req: Request, res: Response) => {
 
         // Image Upload
         if (profileImage) {
+            // 1. Upload new image
             const uploadedUrl = await uploadBase64ToR2(profileImage, 'astrologers', `admin-update-${astrologerId}-${Date.now()}`);
+
             if (uploadedUrl) {
-                // Should delete old image? Maybe later for optimization
+                // 2. Fetch current astrologer to get old image URL
+                const currentAstrologer = await Astrologer.findById(astrologerId);
+                if (currentAstrologer && currentAstrologer.profilePhoto) {
+                    // 3. Delete old image from R2
+                    const oldKey = getKeyFromUrl(currentAstrologer.profilePhoto);
+                    if (oldKey) {
+                        await deleteFromR2(oldKey).catch(err => console.error('Failed to delete old image:', err));
+                    }
+                }
+
                 updateData.profilePhoto = uploadedUrl;
             }
         }
