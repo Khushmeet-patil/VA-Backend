@@ -14,7 +14,8 @@ import {
     getWithdrawalHistory,
     getSessionHistory,
     getPanelReviews,
-    getUserProfileForAstrologer
+    getUserProfileForAstrologer,
+    requestAccountDeletion
 } from '../controllers/astrologerPanelController';
 import {
     getSchedule,
@@ -29,6 +30,7 @@ router.post('/check', checkAstrologer);
 router.post('/send-otp', sendAstrologerOtp);
 router.post('/verify-otp', verifyAstrologerOtp);
 router.post('/logout', authMiddleware, logoutAstrologer); // Logout (clear device ID)
+router.post('/request-deletion', authMiddleware, requestAccountDeletion); // Request Account Deletion
 
 // Protected routes (require token)
 router.get('/profile', authMiddleware, getProfile);

@@ -221,6 +221,41 @@ export const logoutUser = async (req: Request, res: Response) => {
     }
 };
 
+// Delete User Account (Soft Delete / Anonymize)
+export const deleteUser = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Anonymize user data to allow re-registration with same number
+        const timestamp = Date.now();
+        const originalMobile = user.mobile;
+
+        user.mobile = `deleted_${timestamp}_${originalMobile}`;
+        user.name = 'Deleted User';
+        user.profilePhoto = '';
+        user.fcmToken = '';
+        user.activeDeviceId = '';
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        // We keep wallet balance and history for records, but they are now inaccessible
+        // as this user record is effectively orphaned from the original mobile number.
+
+        await user.save();
+
+        console.log(`[Auth] User ${userId} (formerly ${originalMobile}) deleted/anonymized.`);
+
+        return res.status(200).json({ success: true, message: 'Account deleted successfully' });
+    } catch (error) {
+        console.error('[Auth] Error deleting user:', error);
+        return res.status(500).json({ success: false, message: 'Server error', error });
+    }
+};
+
 // Update user profile after OTP login
 // Update user profile after OTP login
 export const updateProfile = async (req: Request, res: Response) => {

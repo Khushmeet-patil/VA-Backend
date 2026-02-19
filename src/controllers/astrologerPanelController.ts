@@ -13,6 +13,7 @@ import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl } from '../services/r2Ser
 import { getSettingValue } from './systemSettingController';
 import { notificationService } from '../services/notificationService';
 import { sendSmsOtp } from '../services/smsService';
+import DeletionRequest from '../models/DeletionRequest';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -737,6 +738,46 @@ export const getWithdrawalHistory = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('getWithdrawalHistory error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Request Account Deletion (Astrologer)
+export const requestAccountDeletion = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        const { reason } = req.body;
+
+        // Check if there is already a pending request
+        const existingRequest = await DeletionRequest.findOne({
+            astrologerId,
+            status: 'pending'
+        });
+
+        if (existingRequest) {
+            return res.status(400).json({
+                success: false,
+                message: 'You already have a pending deletion request.'
+            });
+        }
+
+        const deletionRequest = new DeletionRequest({
+            astrologerId,
+            userType: 'astrologer',
+            reason: reason || 'No reason provided',
+            status: 'pending'
+        });
+
+        await deletionRequest.save();
+
+        console.log(`[AstrologerPanel] Deletion request created for astrologer ${astrologerId}`);
+
+        res.json({
+            success: true,
+            message: 'Account deletion request submitted. Admin will contact you shortly.'
+        });
+    } catch (error: any) {
+        console.error('requestAccountDeletion error:', error);
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
