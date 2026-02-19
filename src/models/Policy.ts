@@ -13,7 +13,7 @@ const policySchema = new mongoose.Schema({
     },
     content: {
         type: String,
-        required: true
+        default: ''
     },
     lastUpdated: {
         type: Date,

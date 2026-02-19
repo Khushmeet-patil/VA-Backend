@@ -31,13 +31,13 @@ export const updatePolicy = async (req: Request, res: Response) => {
         let policy = await Policy.findOne({ key });
 
         if (policy) {
-            policy.title = title || policy.title;
-            policy.content = content || policy.content;
+            if (title !== undefined) policy.title = title;
+            if (content !== undefined) policy.content = content;
             policy.lastUpdated = new Date();
             await policy.save();
         } else {
             // Create if not exists (optional, but good for initialization)
-            policy = new Policy({ key, title, content });
+            policy = new Policy({ key, title: title || 'Untitled', content: content || '' });
             await policy.save();
         }
 
