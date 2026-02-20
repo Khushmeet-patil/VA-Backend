@@ -79,7 +79,7 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
         // const otpCode = mobile === '9999999999' ? '1234' : Math.floor(1000 + Math.random() * 9000).toString();
 
         let otpCode = Math.floor(1000 + Math.random() * 9000).toString();
-        if (['7990358821', '2345678901', '9999999999', '8957751054'].includes(mobile)) {
+        if (['7990358821', '2345678901', '9999999999', '8957751054', '8888888888'].includes(mobile)) {
             otpCode = '1234';
         }
 
@@ -113,7 +113,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
         }
 
         // Dev bypass for testing - specific test number with '1234'
-        const testNumbers = ['7990358821', '2345678901', '9999999999', '8957751054'];
+        const testNumbers = ['7990358821', '2345678901', '9999999999', '8957751054', '8888888888'];
         const isTestNumber = testNumbers.includes(mobile);
         const isDevBypass = otp === '1234' && isTestNumber;
 
