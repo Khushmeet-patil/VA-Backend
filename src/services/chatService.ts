@@ -664,6 +664,9 @@ class ChatService {
             $inc: { totalChats: 1 }
         });
 
+        // Fetch FINAL fresh user balance to send with end event
+        const finalUser = await User.findById(session.userId);
+
         console.log(`[ChatService] Chat ended: ${sessionId}, reason: ${endReason}`);
 
         // Emit CHAT_ENDED to both parties
@@ -676,7 +679,14 @@ class ChatService {
                 astrologerEarnings: (session as any).astrologerNetEarnings ?? session.astrologerEarnings
             };
 
-            this.io.to(`user:${session.userId}`).emit('CHAT_ENDED', endPayload);
+            // Send to user with THEIR updated balance
+            this.io.to(`user:${session.userId}`).emit('CHAT_ENDED', {
+                ...endPayload,
+                walletBalance: finalUser?.walletBalance || 0,
+                bonusBalance: finalUser?.bonusBalance || 0
+            });
+
+            // Send to astrologer (standard payload)
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_ENDED', endPayload);
         }
 
