@@ -518,6 +518,13 @@ export const getWalletTransactions = async (req: Request, res: Response) => {
                     // Update existing group
                     const group = sessionGroups.get(sessionId);
                     group.amount += t.amount;
+
+                    // Sum up Real deduction if present in description
+                    const realMatch = t.description?.match(/Real: ₹([0-9.]+)/);
+                    if (realMatch && realMatch[1]) {
+                        group.realAmount = (group.realAmount || 0) + parseFloat(realMatch[1]);
+                    }
+
                     // Keep the latest date (already sorted desc, so first allowed was latest, but let's be safe)
                     if (new Date(t.createdAt) > new Date(group.createdAt)) {
                         group.createdAt = t.createdAt;
@@ -531,11 +538,20 @@ export const getWalletTransactions = async (req: Request, res: Response) => {
                         description = `Chat with ${name}`;
                     }
 
+                    // Extract initial Real amount
+                    let realAmount = 0;
+                    const realMatch = t.description?.match(/Real: ₹([0-9.]+)/);
+                    if (realMatch && realMatch[1]) {
+                        realAmount = parseFloat(realMatch[1]);
+                    }
+
                     sessionGroups.set(sessionId, {
                         _id: sessionId, // Use session ID as the key for the view
                         type: 'debit',
                         amount: t.amount,
-                        description: description,
+                        realAmount: realAmount, // Store the real amount sum
+                        baseDescription: description, // Store the clean description
+                        description: description, // Placeholder, will be updated
                         createdAt: t.createdAt,
                         toAstrologer: t.toAstrologer // Keep ref just in case
                     });
@@ -543,6 +559,19 @@ export const getWalletTransactions = async (req: Request, res: Response) => {
             } else {
                 // Non-chat transaction or credit, add directly
                 aggregatedTransactions.push(t);
+            }
+        }
+
+        // Update descriptions with aggregated Real amount before pushing
+        for (const group of sessionGroups.values()) {
+            if (group.realAmount && group.realAmount > 0) {
+                // Determine bonus deduction for completeness if needed later, but mainly we want "Real" 
+                // formatted so frontend picks it up.
+                // Format: "Chat with Name (Real: ₹X.XX)"
+                // Verify if baseDescription already has it? No, baseDescription is clean.
+                group.description = `${group.baseDescription} (Real: ₹${group.realAmount.toFixed(2)})`;
+            } else {
+                group.description = group.baseDescription || group.description;
             }
         }
 
