@@ -715,8 +715,17 @@ export const updateAstrologer = async (req: Request, res: Response) => {
             }
         }
 
-        const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
+        const astrologer = await Astrologer.findById(astrologerId);
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+
+        // Special logic: If we are unblocking, and the current status is 'rejected' (e.g. from deletion), 
+        // we should set status to 'approved' so they can log in again.
+        if (isBlocked === false && astrologer.isBlocked === true && astrologer.status === 'rejected') {
+            updateData.status = 'approved';
+        }
+
+        const updatedAstrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
+        if (!updatedAstrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
 
         // If block status was toggled to true, notify via socket
         if (isBlocked === true && chatService.io) {
@@ -725,7 +734,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
             });
         }
 
-        res.status(200).json({ success: true, message: 'Astrologer updated', data: astrologer });
+        res.status(200).json({ success: true, message: 'Astrologer updated', data: updatedAstrologer });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
