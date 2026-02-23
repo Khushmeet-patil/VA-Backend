@@ -209,6 +209,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
                 pricePerMin: astrologer.pricePerMin || 20,
                 priceRangeMin: astrologer.priceRangeMin || 10,
                 priceRangeMax: astrologer.priceRangeMax || 100,
+                isDeletionRequested: astrologer.isDeletionRequested || false,
             }
         });
     } catch (error: any) {
@@ -272,7 +273,8 @@ export const getProfile = async (req: Request, res: Response) => {
                 },
                 isFreeChatAvailable: astrologer.isFreeChatAvailable || false,
                 freeChatLimit: astrologer.freeChatLimit || 0,
-                isVerified: astrologer.isVerified || false
+                isVerified: astrologer.isVerified || false,
+                isDeletionRequested: astrologer.isDeletionRequested || false
             }
         });
     } catch (error: any) {
@@ -770,11 +772,20 @@ export const requestAccountDeletion = async (req: Request, res: Response) => {
 
         await deletionRequest.save();
 
-        console.log(`[AstrologerPanel] Deletion request created for astrologer ${astrologerId}`);
+        // Mark astrologer as deletion requested and set to offline
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (astrologer) {
+            astrologer.isDeletionRequested = true;
+            astrologer.deletionRequestedAt = new Date();
+            astrologer.isOnline = false;
+            await astrologer.save();
+        }
+
+        console.log(`[AstrologerPanel] Deletion request created and astrologer ${astrologerId} set to offline`);
 
         res.json({
             success: true,
-            message: 'Account deletion request submitted. Admin will contact you shortly.'
+            message: 'Account deletion request submitted. Your account is now under review and you have been set to offline.'
         });
     } catch (error: any) {
         console.error('requestAccountDeletion error:', error);

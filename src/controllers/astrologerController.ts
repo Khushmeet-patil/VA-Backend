@@ -154,7 +154,7 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
 
-        const query: any = { status: 'approved', isBlocked: { $ne: true } };
+        const query: any = { status: 'approved', isBlocked: { $ne: true }, isDeletionRequested: { $ne: true } };
 
         // IF user is eligible for free chat, HIDE astrologers who reached their daily limit
         if (isFreeChatUser) {

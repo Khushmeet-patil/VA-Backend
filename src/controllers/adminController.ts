@@ -16,6 +16,7 @@ import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl, moveFileInR2 } from '../
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
 import ChatMessage from '../models/ChatMessage';
+import DeletionRequest from '../models/DeletionRequest';
 
 
 // 1. Dashboard Stats
@@ -1641,6 +1642,71 @@ export const rejectWithdrawal = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('rejectWithdrawal error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// 12. Account Deletion Management
+export const approveDeletion = async (req: Request, res: Response) => {
+    try {
+        const { requestId } = req.params;
+        const { adminNote } = req.body;
+
+        const request = await DeletionRequest.findById(requestId);
+        if (!request) return res.status(404).json({ success: false, message: 'Deletion request not found' });
+        if (request.status !== 'pending') return res.status(400).json({ success: false, message: 'Request is already processed or rejected' });
+
+        const astrologerId = request.astrologerId;
+        const astrologer = await Astrologer.findById(astrologerId);
+
+        if (astrologer) {
+            // Block the astrologer and set status to rejected to prevent re-registration with this number
+            astrologer.isBlocked = true;
+            astrologer.status = 'rejected';
+            astrologer.isDeletionRequested = false; // Reset request flag as it's now finalized
+            astrologer.activeDeviceId = undefined; // Force logout
+            await astrologer.save();
+
+            // Note: In a real production system, you might want to anonymize personal data here
+            // e.g., astrologer.firstName = 'Deleted'; astrologer.lastName = 'User';
+        }
+
+        request.status = 'processed';
+        request.adminNote = adminNote || 'Approved by admin';
+        await request.save();
+
+        res.status(200).json({ success: true, message: 'Account deletion approved. Astrologer account blocked.' });
+    } catch (error: any) {
+        console.error('approveDeletion error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+export const rejectDeletion = async (req: Request, res: Response) => {
+    try {
+        const { requestId } = req.params;
+        const { adminNote } = req.body;
+
+        const request = await DeletionRequest.findById(requestId);
+        if (!request) return res.status(404).json({ success: false, message: 'Deletion request not found' });
+        if (request.status !== 'pending') return res.status(400).json({ success: false, message: 'Request is already processed or rejected' });
+
+        const astrologerId = request.astrologerId;
+        const astrologer = await Astrologer.findById(astrologerId);
+
+        if (astrologer) {
+            astrologer.isDeletionRequested = false;
+            // Optionally astrologer could be set back to online if admin wishes, but better let them do it manually.
+            await astrologer.save();
+        }
+
+        request.status = 'rejected';
+        request.adminNote = adminNote || 'Rejected by admin';
+        await request.save();
+
+        res.status(200).json({ success: true, message: 'Account deletion rejected. Astrologer can access panel again.' });
+    } catch (error: any) {
+        console.error('rejectDeletion error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };
