@@ -46,7 +46,8 @@ import {
     getChatSessionMessages,
     rejectWithdrawal,
     approveDeletion,
-    rejectDeletion
+    rejectDeletion,
+    getDeletionRequests
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -126,6 +127,7 @@ router.post('/withdrawals/reject', rejectWithdrawal);
 // Account Deletion Management
 router.put('/account-deletion/:requestId/approve', approveDeletion);
 router.put('/account-deletion/:requestId/reject', rejectDeletion);
+router.get('/account-deletion/pending', getDeletionRequests);
 
 // Payment History
 router.get('/payment-history', getPaymentHistory);

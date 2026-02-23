@@ -1664,6 +1664,26 @@ export const rejectWithdrawal = async (req: Request, res: Response) => {
 };
 
 // 12. Account Deletion Management
+
+export const getDeletionRequests = async (req: Request, res: Response) => {
+    try {
+        const { status } = req.query;
+        const query: any = {};
+        if (status) query.status = status;
+
+        const requests = await DeletionRequest.find(query)
+            .populate('astrologerId', 'firstName lastName profilePhoto mobileNumber')
+            .populate('userId', 'name mobile profilePhoto')
+            .sort({ createdAt: -1 })
+            .limit(100);
+
+        res.json({ success: true, data: requests });
+    } catch (error: any) {
+        console.error('getDeletionRequests error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
 export const approveDeletion = async (req: Request, res: Response) => {
     try {
         const { requestId } = req.params;
