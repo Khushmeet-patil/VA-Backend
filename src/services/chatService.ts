@@ -20,7 +20,7 @@ import notificationService from './notificationService';
  * Apps MUST NOT control timing or billing.
  */
 class ChatService {
-    private io: SocketIOServer | null = null;
+    public io: SocketIOServer | null = null;
 
     // Map of active billing timers: sessionId -> NodeJS.Timeout
     private billingTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -481,8 +481,27 @@ class ChatService {
             'timeout'
         ).catch(err => console.error('[ChatService] FCM timeout push failed:', err));
 
-        // Increment missedChats for astrologer
-        await Astrologer.findByIdAndUpdate(session.astrologerId, { $inc: { missedChats: 1 } });
+        // Increment missedChats for astrologer and handle auto-blocking
+        const astrologer = await Astrologer.findById(session.astrologerId);
+        if (astrologer) {
+            astrologer.missedChats = (astrologer.missedChats || 0) + 1;
+
+            // AUTO-BLOCK LOGIC:
+            // If astrologer crosses the threshold of 3 missed chats AND already has 2 or more warnings
+            if (astrologer.warningCount >= 2 && astrologer.missedChats >= 3) {
+                console.log(`[ChatService] Auto-blocking astrologer ${astrologer._id} due to 3 missed chats after 2 warnings.`);
+                astrologer.isBlocked = true;
+                astrologer.isOnline = false; // Remove from user app
+
+                // Emit ASTROLOGER_BLOCKED to force real-time block screen
+                if (this.io) {
+                    this.io.to(`astrologer:${astrologer._id}`).emit('ASTROLOGER_BLOCKED', {
+                        reason: 'Account blocked due to missing 3 chats after receiving 2 official warnings.'
+                    });
+                }
+            }
+            await astrologer.save();
+        }
     }
 
     /**

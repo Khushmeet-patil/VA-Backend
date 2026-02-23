@@ -12,6 +12,7 @@ import Banner from '../models/Banner';
 import Skill from '../models/Skill';
 import ProfileChangeRequest from '../models/ProfileChangeRequest';
 import PaymentBatch from '../models/PaymentBatch';
+import chatService from '../services/chatService';
 import { uploadBase64ToR2, deleteFromR2, getKeyFromUrl, moveFileInR2 } from '../services/r2Service';
 import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
@@ -717,6 +718,13 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
 
+        // If block status was toggled to true, notify via socket
+        if (isBlocked === true && chatService.io) {
+            chatService.io.to(`astrologer:${astrologerId}`).emit('ASTROLOGER_BLOCKED', {
+                reason: 'Your account has been blocked by the administrator.'
+            });
+        }
+
         res.status(200).json({ success: true, message: 'Astrologer updated', data: astrologer });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -745,6 +753,15 @@ export const bulkUpdateAstrologers = async (req: Request, res: Response) => {
             { _id: { $in: astrologerIds } },
             { $set: updateData }
         );
+
+        // If blocking bulk, notify all via socket
+        if (isBlocked === true && chatService.io) {
+            astrologerIds.forEach((id: string) => {
+                chatService.io?.to(`astrologer:${id}`).emit('ASTROLOGER_BLOCKED', {
+                    reason: 'Your account has been blocked by the administrator as part of a bulk action.'
+                });
+            });
+        }
 
         res.status(200).json({
             success: true,
