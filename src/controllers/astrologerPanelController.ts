@@ -222,7 +222,10 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
 export const logoutAstrologer = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
-        await Astrologer.findByIdAndUpdate(astrologerId, { $unset: { activeDeviceId: 1 } });
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            $unset: { activeDeviceId: 1 },
+            $set: { isOnline: false }
+        });
         return res.status(200).json({ success: true, message: 'Logged out successfully' });
     } catch (error) {
         return res.status(500).json({ success: false, message: 'Server error', error });
