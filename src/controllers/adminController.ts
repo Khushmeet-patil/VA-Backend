@@ -1669,7 +1669,8 @@ export const getDeletionRequests = async (req: Request, res: Response) => {
     try {
         const { status } = req.query;
         const query: any = {};
-        if (status) query.status = status;
+        // Default to pending if no status is specified
+        query.status = status || 'pending';
 
         const requests = await DeletionRequest.find(query)
             .populate('astrologerId', 'firstName lastName profilePhoto mobileNumber')
