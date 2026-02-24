@@ -15,6 +15,7 @@ import {
     getScheduledNotifications,
     deleteNotification,
     deleteUser,
+    clearUserDevice,
     addUser,
     adminAddAstrologer,
     getUserReviews,
@@ -63,6 +64,7 @@ router.get('/dashboard', getDashboardStats);
 // Users
 router.get('/users', getAllUsers);
 router.put('/users/:userId', updateUser);
+router.put('/users/:userId/clear-device', clearUserDevice);
 router.get('/users/:userId/active-chats', getUserActivity); // Kept for reference but likely unused if combined
 router.get('/users/:userId/activity', getUserActivity);
 router.get('/chat-sessions/:sessionId/messages', getChatSessionMessages);

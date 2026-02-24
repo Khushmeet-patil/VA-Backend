@@ -213,6 +213,27 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 };
 
+export const clearUserDevice = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { $unset: { activeDeviceId: 1 } },
+            { new: true }
+        );
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.status(200).json({ success: true, message: 'User device cleared successfully', data: user });
+    } catch (error) {
+        console.error('Clear User Device error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
 export const getUserActivity = async (req: Request, res: Response) => {
     try {
         const { userId } = req.params;
