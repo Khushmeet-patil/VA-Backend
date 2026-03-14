@@ -10,6 +10,7 @@ import ChatSession from '../models/ChatSession';
 import Transaction from '../models/Transaction';
 import geoService from '../services/geoService';
 import astrologyService from '../services/astrologyService';
+import { getSettingValue } from './systemSettingController';
 
 // Admin Login (Email + Password)
 export const adminLogin = async (req: Request, res: Response) => {
@@ -667,12 +668,18 @@ export const processRecharge = async (req: Request, res: Response) => {
         await user.save();
 
         // Log transaction
+        const gstRate = 18; // Default for test
+        const gstAmountValue = (Number(amount) * gstRate) / 100;
+        const totalPaidValue = Number(amount) + gstAmountValue;
+
         await Transaction.create({
             fromUser: userId,
             amount: amount,
+            gstAmount: gstAmountValue,
+            totalPaid: totalPaidValue,
             type: 'credit',
             status: 'success',
-            description: `Recharge of ₹${amount} with bonus ₹${bonusAmount || 0}`
+            description: `Manual Recharge: ₹${amount} + ${gstRate}% GST (Total: ₹${totalPaidValue.toFixed(2)})`
         });
 
         res.json({
@@ -773,13 +780,19 @@ export const verifyPayment = async (req: Request, res: Response) => {
         user.bonusBalance = previousBonus + (Number(bonusAmount) || 0);
         await user.save();
 
-        // 3. Log Transaction
+        // 3. Log Transaction with GST details
+        const gstRate = await getSettingValue('gstRate', 18);
+        const gstAmountValue = (Number(amount) * gstRate) / 100;
+        const totalPaidValue = Number(amount) + gstAmountValue;
+
         await Transaction.create({
             fromUser: userId,
             amount: Number(amount),
+            gstAmount: gstAmountValue,
+            totalPaid: totalPaidValue,
             type: 'credit',
             status: 'success',
-            description: `Wallet Recharge via Razorpay (Txn: ${razorpay_payment_id})`
+            description: `Wallet Recharge: ₹${Number(amount).toFixed(2)} + ${gstRate}% GST (Total: ₹${totalPaidValue.toFixed(2)}) (Txn: ${razorpay_payment_id})`
         });
 
         res.json({

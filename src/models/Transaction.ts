@@ -4,6 +4,8 @@ export interface ITransaction extends Document {
     fromUser: mongoose.Types.ObjectId;
     toAstrologer?: mongoose.Types.ObjectId; // Optional if it's a platform fee or wallet load
     amount: number;
+    gstAmount?: number;
+    totalPaid?: number;
     type: 'credit' | 'debit';
     status: 'success' | 'failed' | 'pending';
     description: string;
@@ -14,6 +16,8 @@ const TransactionSchema: Schema = new Schema({
     fromUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     toAstrologer: { type: Schema.Types.ObjectId, ref: 'Astrologer' },
     amount: { type: Number, required: true },
+    gstAmount: { type: Number, default: 0 },
+    totalPaid: { type: Number },
     type: { type: String, enum: ['credit', 'debit'], required: true },
     status: { type: String, enum: ['success', 'failed', 'pending'], default: 'pending' },
     description: { type: String }
