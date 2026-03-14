@@ -213,13 +213,9 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
     }
 };
 
-// Get top/tagged astrologers (Public) - paginated for lazy loading on Home Screen
-export const getTopAstrologers = async (req: Request, res: Response) => {
+// Get tagged astrologers (Celebrity, Top Choice, Rising Star) - for Home Screen "Top Astrologers"
+export const getTaggedAstrologers = async (req: Request, res: Response) => {
     try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 6;
-        const skip = (page - 1) * limit;
-
         const query: any = {
             status: 'approved',
             isBlocked: { $ne: true },
@@ -229,30 +225,18 @@ export const getTopAstrologers = async (req: Request, res: Response) => {
         };
 
         const astrologers = await Astrologer.find(query)
-            .select('firstName lastName systemKnown language rating reviewsCount pricePerMin isOnline profilePhoto tag')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
             .sort({ isOnline: -1, rating: -1 })
-            .skip(skip)
-            .limit(limit)
             .lean();
 
-        const total = await Astrologer.countDocuments(query);
-
-        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.set('Pragma', 'no-cache');
-        res.set('Expires', '0');
-
+        // Set aggressive cache headers - data changes infrequently
+        res.set('Cache-Control', 'public, max-age=120'); // 2 min browser cache
         res.json({
             success: true,
-            data: astrologers,
-            pagination: {
-                page,
-                limit,
-                total,
-                hasMore: (skip + astrologers.length) < total
-            }
+            data: astrologers
         });
     } catch (error: any) {
-        console.error('Get top astrologers error:', error);
+        console.error('Get tagged astrologers error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };

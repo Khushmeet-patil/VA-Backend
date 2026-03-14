@@ -2,7 +2,7 @@ import express from 'express';
 import {
     applyForAstrologer,
     getApprovedAstrologers,
-    getTopAstrologers,
+    getTaggedAstrologers,
     getAstrologerProfile,
     getAstrologerReviews,
     followAstrologer,
@@ -17,7 +17,7 @@ const router = express.Router();
 
 // Public routes
 router.get('/list', optionalAuthMiddleware, getApprovedAstrologers);
-router.get('/top', getTopAstrologers);
+router.get('/tagged', getTaggedAstrologers);
 router.get('/profile/:id', optionalAuthMiddleware, getAstrologerProfile);
 router.get('/reviews/:id', getAstrologerReviews);
 router.get('/skills', getAllSkills);
