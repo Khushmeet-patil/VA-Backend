@@ -192,7 +192,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 // 2. User Management
 export const getAllUsers = async (req: Request, res: Response) => {
     try {
-        const users = await User.find({ role: 'user' }).sort({ createdAt: -1 });
+        const users = await User.find({ role: { $in: ['user', 'astrologer'] } }).sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: users });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -642,6 +642,34 @@ export const updateAstrologerStatus = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, message: 'Astrologer status updated', data: astrologer });
     } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Delete Astrologer Profile permanently
+export const deleteAstrologer = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+
+        const astrologer = await Astrologer.findByIdAndDelete(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Revert user role back to 'user' so they can still log in as a regular app user
+        await User.findByIdAndUpdate(astrologer.userId, { role: 'user', isVerified: true });
+
+        // Optionally delete profile image from R2 if it exists
+        if (astrologer.profilePhoto) {
+            const key = getKeyFromUrl(astrologer.profilePhoto);
+            if (key) {
+                await deleteFromR2(key).catch(err => console.error('Failed to delete astrologer image from R2:', err));
+            }
+        }
+        
+        res.status(200).json({ success: true, message: 'Astrologer deleted successfully' });
+    } catch (error) {
+        console.error('Delete astrologer error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };

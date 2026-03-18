@@ -48,7 +48,8 @@ import {
     rejectWithdrawal,
     approveDeletion,
     rejectDeletion,
-    getDeletionRequests
+    getDeletionRequests,
+    deleteAstrologer
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -81,6 +82,7 @@ router.get('/astrologers', getAstrologers);
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
+router.delete('/astrologers/:astrologerId', deleteAstrologer);
 router.put('/astrologers/:astrologerId/verification', verifyAstrologer);
 router.post('/astrologers/:astrologerId/verification/upload', uploadVerificationDocument);
 router.post('/astrologers/:astrologerId/warn', warnAstrologer); // Add warning route
