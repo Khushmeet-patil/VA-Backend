@@ -49,7 +49,8 @@ import {
     approveDeletion,
     rejectDeletion,
     getDeletionRequests,
-    deleteAstrologer
+    deleteAstrologer,
+    resetAstrologerWarnings
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -83,6 +84,7 @@ router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astro
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
 router.delete('/astrologers/:astrologerId', deleteAstrologer);
+router.put('/astrologers/:astrologerId/reset-warnings', resetAstrologerWarnings);
 router.put('/astrologers/:astrologerId/verification', verifyAstrologer);
 router.post('/astrologers/:astrologerId/verification/upload', uploadVerificationDocument);
 router.post('/astrologers/:astrologerId/warn', warnAstrologer); // Add warning route

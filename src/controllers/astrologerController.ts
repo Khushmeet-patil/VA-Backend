@@ -229,8 +229,11 @@ export const getTaggedAstrologers = async (req: Request, res: Response) => {
             .sort({ isOnline: -1, rating: -1 })
             .lean();
 
-        // Set aggressive cache headers - data changes infrequently
-        res.set('Cache-Control', 'public, max-age=120'); // 2 min browser cache
+        // Prevent caching - tagged astrologers change when admin assigns/updates tags or astrologers go online/offline
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.json({
             success: true,
             data: astrologers

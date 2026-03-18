@@ -207,6 +207,46 @@ export const updateUser = async (req: Request, res: Response) => {
         const user = await User.findByIdAndUpdate(userId, updates, { new: true });
         if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+        // If user was just blocked, handle real-time effects
+        if (updates.isBlocked === true) {
+            console.log(`[Admin] User ${userId} blocked. Handling real-time effects...`);
+
+            // 1. Emit USER_BLOCKED socket event for instant UI update
+            if (chatService.io) {
+                chatService.io.to(`user:${userId}`).emit('USER_BLOCKED', {
+                    reason: 'Your account has been suspended by the administrator.'
+                });
+                console.log(`[Admin] USER_BLOCKED event emitted to user:${userId}`);
+            }
+
+            // 2. Send FCM push notification (works even if app is in background/killed)
+            try {
+                if (user.fcmToken) {
+                    await notificationService.sendToUser(userId, {
+                        title: 'Account Suspended',
+                        body: 'Your account has been suspended. Please contact support for more information.'
+                    }, { type: 'account_blocked' });
+                    console.log(`[Admin] FCM notification sent to blocked user ${userId}`);
+                }
+            } catch (fcmErr) {
+                console.error(`[Admin] Failed to send FCM to blocked user:`, fcmErr);
+            }
+
+            // 3. Force-end any active chat session
+            try {
+                const activeSession = await ChatSession.findOne({
+                    userId,
+                    status: 'ACTIVE'
+                });
+                if (activeSession) {
+                    console.log(`[Admin] Force-ending active session ${activeSession.sessionId} for blocked user ${userId}`);
+                    await chatService.endChat(activeSession.sessionId, 'USER_END');
+                }
+            } catch (chatErr) {
+                console.error(`[Admin] Failed to end active chat for blocked user:`, chatErr);
+            }
+        }
+
         res.status(200).json({ success: true, message: 'User updated', data: user });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -656,8 +696,14 @@ export const deleteAstrologer = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        // Revert user role back to 'user' so they can still log in as a regular app user
-        await User.findByIdAndUpdate(astrologer.userId, { role: 'user', isVerified: true });
+        // If the application was pending ('under_review'), delete the base user account completely
+        // to prevent applicants from clogging up the main users list.
+        if (astrologer.status === 'under_review') {
+            await User.findByIdAndDelete(astrologer.userId);
+        } else {
+            // Otherwise (e.g., they were an approved working astrologer), revert user role back to 'user'
+            await User.findByIdAndUpdate(astrologer.userId, { role: 'user', isVerified: true });
+        }
 
         // Optionally delete profile image from R2 if it exists
         if (astrologer.profilePhoto) {
@@ -695,6 +741,22 @@ export const warnAstrologer = async (req: Request, res: Response) => {
             message: `Astrologer warned. Warning count: ${astrologer.warningCount}`,
             data: astrologer
         });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Reset Astrologer Warnings
+export const resetAstrologerWarnings = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const astrologer = await Astrologer.findByIdAndUpdate(
+            astrologerId,
+            { $set: { warningCount: 0 } },
+            { new: true }
+        );
+        if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        res.status(200).json({ success: true, message: 'Warnings reset to 0', data: astrologer });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
@@ -776,11 +838,43 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const updatedAstrologer = await Astrologer.findByIdAndUpdate(astrologerId, updateData, { new: true });
         if (!updatedAstrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
 
-        // If block status was toggled to true, notify via socket
-        if (isBlocked === true && chatService.io) {
-            chatService.io.to(`astrologer:${astrologerId}`).emit('ASTROLOGER_BLOCKED', {
-                reason: 'Your account has been blocked by the administrator.'
-            });
+        // If block status was toggled to true, handle real-time effects
+        if (isBlocked === true) {
+            console.log(`[Admin] Astrologer ${astrologerId} blocked. Handling real-time effects...`);
+
+            // 1. Set astrologer to offline (remove from user app listings)
+            await Astrologer.findByIdAndUpdate(astrologerId, { isOnline: false });
+
+            // 2. Emit ASTROLOGER_BLOCKED socket event for instant UI update
+            if (chatService.io) {
+                chatService.io.to(`astrologer:${astrologerId}`).emit('ASTROLOGER_BLOCKED', {
+                    reason: 'Your account has been blocked by the administrator.'
+                });
+                console.log(`[Admin] ASTROLOGER_BLOCKED event emitted to astrologer:${astrologerId}`);
+            }
+
+            // 3. Send FCM push notification (works even if app is in background/killed)
+            try {
+                if (astrologer.fcmToken) {
+                    await notificationService.sendToUser(astrologerId, {
+                        title: 'Account Blocked',
+                        body: 'Your account has been blocked. Please contact support for more information.'
+                    }, { type: 'account_blocked' });
+                    console.log(`[Admin] FCM notification sent to blocked astrologer ${astrologerId}`);
+                }
+            } catch (fcmErr) {
+                console.error(`[Admin] Failed to send FCM to blocked astrologer:`, fcmErr);
+            }
+
+            // 4. Force-end any active chat session
+            try {
+                if (astrologer.activeSessionId) {
+                    console.log(`[Admin] Force-ending active session ${astrologer.activeSessionId} for blocked astrologer ${astrologerId}`);
+                    await chatService.endChat(astrologer.activeSessionId, 'ASTROLOGER_END');
+                }
+            } catch (chatErr) {
+                console.error(`[Admin] Failed to end active chat for blocked astrologer:`, chatErr);
+            }
         }
 
         res.status(200).json({ success: true, message: 'Astrologer updated', data: updatedAstrologer });
