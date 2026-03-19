@@ -150,13 +150,30 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             }
         }
 
-        // Use lean() to get plain objects and avoid schema validation issues with old data
-        // Return all approved astrologers (online and offline) for the list
         // Extract search, specialty, and sortBy from query
         const { search, specialty, sortBy } = req.query;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
+
+        // Optimized field selection for lighter payload
+        const projection = {
+            firstName: 1,
+            lastName: 1,
+            systemKnown: 1,
+            specialties: 1,
+            experience: 1,
+            rating: 1,
+            reviewsCount: 1,
+            pricePerMin: 1,
+            isOnline: 1,
+            language: 1,
+            bio: 1,
+            profilePhoto: 1,
+            tag: 1,
+            isBusy: 1,
+            status: 1
+        };
 
         const query: any = {
             status: 'approved',
