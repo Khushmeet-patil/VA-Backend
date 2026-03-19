@@ -152,6 +152,8 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
 
         // Use lean() to get plain objects and avoid schema validation issues with old data
         // Return all approved astrologers (online and offline) for the list
+        // Extract search, specialty, and sortBy from query
+        const { search, specialty, sortBy } = req.query;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
@@ -163,31 +165,92 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             activeDeviceId: { $exists: true }
         };
 
+        // Search filter (name, skills/specialties, or price)
+        if (search) {
+            const searchRegex = new RegExp(search as string, 'i');
+            const searchOr: any[] = [
+                { firstName: { $regex: searchRegex } },
+                { lastName: { $regex: searchRegex } },
+                { systemKnown: { $in: [searchRegex] } },
+                { specialties: { $in: [searchRegex] } }
+            ];
+
+            // If search query is a number, also search by price
+            const searchPrice = parseFloat(search as string);
+            if (!isNaN(searchPrice)) {
+                searchOr.push({ pricePerMin: { $lte: searchPrice } });
+            }
+
+            query.$or = searchOr;
+        }
+
+        // Specialty filter
+        if (specialty) {
+            const specialtyRegex = new RegExp(specialty as string, 'i');
+            // If query.$or already exists from search, we need to wrap it in $and
+            const specialtyQuery = {
+                $or: [
+                    { systemKnown: { $in: [specialtyRegex] } },
+                    { specialties: { $in: [specialtyRegex] } }
+                ]
+            };
+
+            if (query.$or) {
+                query.$and = [{ $or: query.$or }, specialtyQuery];
+                delete query.$or;
+            } else {
+                query.$or = specialtyQuery.$or;
+            }
+        }
+
         // IF user is eligible for free chat, HIDE astrologers who reached their daily limit
         if (isFreeChatUser) {
             console.log(`[getApprovedAstrologers] User ${userId} is eligible for free chat. Filtering astrologers...`);
-            // We want to find astrologers where:
-            // 1. isFreeChatAvailable is true (or check logic? prompt says "if i set 0 free chat... astrologer is not shown")
-            // 2. freeChatsToday < freeChatLimit
-
-            // $expr allows comparing two fields in the same document
-            query.$expr = {
-                // Treat missing freeChatsToday as 0 so it doesn't compare as null < 0 (true)
-                $lt: [{ $ifNull: ["$freeChatsToday", 0] }, "$freeChatLimit"]
+            
+            const freeChatQuery: any = {
+                $expr: {
+                    $lt: [{ $ifNull: ["$freeChatsToday", 0] }, "$freeChatLimit"]
+                },
+                freeChatLimit: { $gt: 0 },
+                isFreeChatAvailable: true
             };
 
-            // Explicitly exclude astrologers with 0 limit form free users
-            query.freeChatLimit = { $gt: 0 };
+            if (query.$and) {
+                query.$and.push(freeChatQuery);
+            } else if (query.$or) {
+                // If we have $or, we need to move it into $and with the free chat query
+                const existingOr = query.$or;
+                delete query.$or;
+                query.$and = [{ $or: existingOr }, freeChatQuery];
+            } else {
+                // No search/specialty, just add free chat conditions
+                Object.assign(query, freeChatQuery);
+            }
+        }
 
-            // Also ensure free chat is actually enabled for them
-            query.isFreeChatAvailable = true;
+        // Determine sort order
+        let sort: any = { isOnline: -1, rating: -1 };
+        if (sortBy) {
+            switch (sortBy) {
+                case 'rating':
+                    sort = { rating: -1, isOnline: -1 };
+                    break;
+                case 'experience':
+                    sort = { experience: -1, isOnline: -1 };
+                    break;
+                case 'price_low':
+                    sort = { pricePerMin: 1, isOnline: -1 };
+                    break;
+                case 'price_high':
+                    sort = { pricePerMin: -1, isOnline: -1 };
+                    break;
+            }
         }
 
         // Use lean() to get plain objects and avoid schema validation issues with old data
-        // Return all approved astrologers (online and offline) for the list
         const astrologers = await Astrologer.find(query)
             .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
-            .sort({ isOnline: -1, rating: -1 }) // Sort online first, then by rating
+            .sort(sort)
             .skip(skip)
             .limit(limit)
             .lean();
