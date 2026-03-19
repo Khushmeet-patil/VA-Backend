@@ -24,7 +24,7 @@ import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
 import scheduledNotificationService from './services/scheduledNotificationService';
-import scheduleAutoOnline, { scheduleDailyReset } from './services/scheduler'; // Auto-online scheduler
+import scheduleAutoOnline, { scheduleDailyReset, setIOInstance } from './services/scheduler'; // Auto-online scheduler
 import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
@@ -41,7 +41,7 @@ checkR2Connection();
 console.log('[Main] Initializing Notification Service...');
 notificationService.initialize();
 
-// Initialize Auto-Online Scheduling
+// Initialize Auto-Online Scheduling (cron registration - io will be injected below)
 scheduleAutoOnline();
 scheduleDailyReset(); // Reset freeChatsToday & isManualOverride daily at midnight IST
 
@@ -73,6 +73,9 @@ const io = new SocketIOServer(httpServer, {
 
 // Initialize socket handlers
 initializeSocketHandlers(io);
+
+// NOW inject io into the scheduler so it can emit socket events
+setIOInstance(io);
 
 // Routes - these are registered immediately so health check works
 app.use('/api/health', healthRoutes);
