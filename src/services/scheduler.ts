@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import Astrologer from '../models/Astrologer';
 import { notificationService } from './notificationService';
+import { io } from '../index';
 
 // Run every minute
 const scheduleAutoOnline = () => {
@@ -66,6 +67,13 @@ const scheduleAutoOnline = () => {
                             await astro.save();
                             console.log(`[Scheduler] Set ${astro.firstName} ${astro.lastName} to ONLINE (Time: ${currentTime}, Schedule: ${startTime}-${endTime})`);
 
+                            // Notify the Astrologer app via socket so the dashboard UI updates automatically
+                            try {
+                                io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
+                            } catch (e) {
+                                console.error('[Scheduler] Failed to emit socket event:', e);
+                            }
+
                             // Send notification to all users
                             try {
                                 const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
@@ -103,6 +111,13 @@ const scheduleAutoOnline = () => {
                                 astro.isOnline = false;
                                 await astro.save();
                                 console.log(`[Scheduler] Set ${astro.firstName} ${astro.lastName} to OFFLINE`);
+
+                                // Notify the Astrologer app via socket so the dashboard UI updates automatically
+                                try {
+                                    io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
+                                } catch (e) {
+                                    console.error('[Scheduler] Failed to emit socket event:', e);
+                                }
                             } else {
                                 console.log(`[Scheduler] Skipping OFFLINE for ${astro.firstName} ${astro.lastName} (Currently BUSY)`);
                             }
