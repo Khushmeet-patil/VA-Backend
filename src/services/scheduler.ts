@@ -19,12 +19,15 @@ const scheduleAutoOnline = () => {
         const minutes = now.getUTCMinutes().toString().padStart(2, '0');
         const currentTime = `${hours}:${minutes}`;
 
+        console.log(`[Scheduler] Current IST time: ${currentDay} ${currentTime}`);
+
         try {
-            // Find astrologers who have auto-online enabled
+            // Find approved, non-blocked astrologers who have auto-online enabled
+            // Note: isVerified is for KYC/payment only - NOT for scheduling eligibility
             const astrologers = await Astrologer.find({
                 isAutoOnlineEnabled: true,
-                isVerified: true,
-                isBlocked: false
+                status: 'approved',
+                isBlocked: { $ne: true }
             });
 
             for (const astro of astrologers) {

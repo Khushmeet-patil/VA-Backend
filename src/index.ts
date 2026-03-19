@@ -24,7 +24,7 @@ import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
 import scheduledNotificationService from './services/scheduledNotificationService';
-import scheduleAutoOnline from './services/scheduler'; // Auto-online scheduler
+import scheduleAutoOnline, { scheduleDailyReset } from './services/scheduler'; // Auto-online scheduler
 import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
 import kundliRoutes from './routes/kundliRoutes';
@@ -43,6 +43,7 @@ notificationService.initialize();
 
 // Initialize Auto-Online Scheduling
 scheduleAutoOnline();
+scheduleDailyReset(); // Reset freeChatsToday & isManualOverride daily at midnight IST
 
 const app = express();
 
