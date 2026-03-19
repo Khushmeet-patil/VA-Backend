@@ -658,7 +658,21 @@ class ChatService {
             session.endReason = endReason;
             session.totalMinutes = finalTotalMinutes;
         } else {
-            console.log(`[ChatService] Ended session ${sessionId} before billing started.`);
+            let finalDuration = 0;
+            if (session.startTime) {
+                const endTime = new Date();
+                const startTime = session.startTime;
+                const durationMs = endTime.getTime() - startTime.getTime();
+                finalDuration = parseFloat((durationMs / 60000).toFixed(2));
+            }
+
+            if (session.isFreeTrialSession && session.startTime) {
+                console.log(`[ChatService] Ended FREE TRIAL session ${sessionId}. Duration: ${finalDuration}m. Marking free trial as used for user ${session.userId}.`);
+                await User.findByIdAndUpdate(session.userId, { hasUsedFreeTrial: true });
+            } else {
+                console.log(`[ChatService] Ended session ${sessionId} before billing started.`);
+            }
+
             await ChatSession.findOneAndUpdate(
                 { sessionId: session.sessionId },
                 {
@@ -666,14 +680,14 @@ class ChatService {
                         status: 'ENDED',
                         endTime: new Date(),
                         endReason: endReason,
-                        totalMinutes: 0
+                        totalMinutes: finalDuration
                     }
                 }
             );
             session.status = 'ENDED';
             session.endTime = new Date();
             session.endReason = endReason;
-            session.totalMinutes = 0;
+            session.totalMinutes = finalDuration;
         }
         // -----------------------------
 

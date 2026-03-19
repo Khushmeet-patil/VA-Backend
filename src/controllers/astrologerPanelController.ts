@@ -552,11 +552,11 @@ export const getChats = async (req: Request, res: Response) => {
                 const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 
                 if (diffDays === 0) {
-                    timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    timeString = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
                 } else if (diffDays === 1) {
                     timeString = 'Yesterday';
                 } else {
-                    timeString = date.toLocaleDateString();
+                    timeString = date.toLocaleDateString('en-IN');
                 }
             }
 
@@ -574,6 +574,7 @@ export const getChats = async (req: Request, res: Response) => {
                 lastMessage: lastMsg ? lastMsg.text : (hasActiveSession ? 'Chat in progress...' : 'No messages'),
                 lastMessageTime: timeString,
                 unreadCount: 0,
+                lastMessageTimestamp: lastMsg ? lastMsg.timestamp : null,
                 isActive: hasActiveSession
             };
         }));
@@ -812,8 +813,8 @@ export const getSessionHistory = async (req: Request, res: Response) => {
             astrologerId,
             status: 'ENDED',
             userJoined: true,
-            astrologerJoined: true,
-            astrologerEarnings: { $gt: 0 }
+            astrologerJoined: true
+            // Removed filter: astrologerEarnings: { $gt: 0 }
         })
             .populate('userId', 'name mobile profilePhoto')
             .sort({ endTime: -1 })
@@ -848,6 +849,8 @@ export const getSessionHistory = async (req: Request, res: Response) => {
                 },
                 duration: session.totalMinutes || 0,
                 earnings: session.astrologerEarnings || 0,
+                isFreeTrialSession: session.isFreeTrialSession || false,
+                timestamp: endTime,
                 date: dateStr,
                 time: timeStr,
                 dateTime: endTime,
