@@ -59,6 +59,7 @@ export interface IAstrologer extends Document {
     freeChatsToday: number;
     lastFreeChatDate?: Date;
     isAutoOnlineEnabled: boolean;
+    isManualOverride: boolean;
     availabilitySchedule: {
         day: string;
         enabled: boolean;
@@ -135,6 +136,7 @@ const AstrologerSchema: Schema = new Schema({
 
     // Auto-Online Scheduling
     isAutoOnlineEnabled: { type: Boolean, default: false },
+    isManualOverride: { type: Boolean, default: false },
     availabilitySchedule: [{
         day: { type: String, enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] },
         enabled: { type: Boolean, default: false },

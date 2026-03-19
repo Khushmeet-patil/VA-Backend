@@ -373,7 +373,10 @@ export const toggleStatus = async (req: Request, res: Response) => {
 
         const astrologer = await Astrologer.findByIdAndUpdate(
             astrologerId,
-            { isOnline },
+            { 
+               isOnline,
+               isManualOverride: true 
+            },
             { new: true }
         );
 
