@@ -375,7 +375,9 @@ export const toggleStatus = async (req: Request, res: Response) => {
             astrologerId,
             { 
                isOnline,
-               isManualOverride: true 
+               isManualOverride: true,
+               isAutoOnlineEnabled: false,
+               expectedScheduleState: 'none'
             },
             { new: true }
         );

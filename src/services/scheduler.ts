@@ -11,6 +11,11 @@ export function setIOInstance(io: any) {
     console.log('[Scheduler] Socket.IO instance registered.');
 }
 
+export function getIOInstance() {
+    return ioInstance;
+}
+
+
 // Run every minute
 const scheduleAutoOnline = () => {
     cron.schedule('* * * * *', async () => {

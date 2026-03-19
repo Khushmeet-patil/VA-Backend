@@ -4,6 +4,8 @@ import User from '../models/User';
 import AstrologerFollower from '../models/AstrologerFollower';
 import ChatReview from '../models/ChatReview';
 import Skill from '../models/Skill';
+import { getIOInstance } from '../services/scheduler';
+import { notificationService } from '../services/notificationService';
 
 // Apply for Astrologer (User or Guest)
 export const applyForAstrologer = async (req: Request, res: Response) => {
@@ -607,6 +609,63 @@ export const updateSchedule = async (req: Request, res: Response) => {
             }
         }
 
+        // --- NEW: Immediate Auto-Online Check ---
+        if (astrologer.isAutoOnlineEnabled) {
+            const nowUTC = new Date();
+            const istOffset = 5.5 * 60 * 60 * 1000;
+            const now = new Date(nowUTC.getTime() + istOffset);
+
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const currentDay = days[now.getUTCDay()];
+
+            const hours = now.getUTCHours().toString().padStart(2, '0');
+            const minutes = now.getUTCMinutes().toString().padStart(2, '0');
+            const currentMins = parseInt(hours) * 60 + parseInt(minutes);
+
+            const todaySchedule = astrologer.availabilitySchedule.find(s => s.day === currentDay);
+            let shouldBeOnline = false;
+
+            if (todaySchedule && todaySchedule.enabled) {
+                const startMins = parseInt(todaySchedule.startTime.split(':')[0]) * 60 + parseInt(todaySchedule.startTime.split(':')[1]);
+                const endMins = parseInt(todaySchedule.endTime.split(':')[0]) * 60 + parseInt(todaySchedule.endTime.split(':')[1]);
+                shouldBeOnline = currentMins >= startMins && currentMins < endMins;
+            }
+
+            const expectedState = shouldBeOnline ? 'online' : 'offline';
+            const statusChanged = astrologer.isOnline !== shouldBeOnline;
+
+            astrologer.isOnline = shouldBeOnline;
+            astrologer.expectedScheduleState = expectedState;
+            
+            console.log(`[updateSchedule] Auto-online check for ${astrologer.firstName}: shouldBeOnline=${shouldBeOnline}, statusChanged=${statusChanged}`);
+
+            if (statusChanged) {
+                const io = getIOInstance();
+                if (io) {
+                    const room = `astrologer:${astrologer._id.toString()}`;
+                    io.to(room).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: shouldBeOnline });
+                    console.log(`[updateSchedule] Emitted status update to ${room}`);
+                }
+
+                if (shouldBeOnline) {
+                    try {
+                        const firstName = astrologer.firstName.charAt(0).toUpperCase() + astrologer.firstName.slice(1);
+                        const lastName = astrologer.lastName.charAt(0).toUpperCase() + astrologer.lastName.slice(1);
+                        notificationService.broadcast('users', {
+                            title: 'Astrologer Online!',
+                            body: `${firstName} ${lastName} is now available for consultation.`
+                        }, {
+                            type: 'astrologer_online',
+                            astrologerId: astrologer._id.toString()
+                        }).catch(err => console.error('[updateSchedule] Broadcast error:', err));
+                    } catch (notifyError) {
+                        console.error(`[updateSchedule] Failed to send notification:`, notifyError);
+                    }
+                }
+            }
+        }
+        // --- END ---
+
         await astrologer.save();
 
         res.json({
@@ -614,7 +673,8 @@ export const updateSchedule = async (req: Request, res: Response) => {
             message: 'Schedule updated successfully',
             data: {
                 availabilitySchedule: astrologer.availabilitySchedule,
-                isAutoOnlineEnabled: astrologer.isAutoOnlineEnabled
+                isAutoOnlineEnabled: astrologer.isAutoOnlineEnabled,
+                isOnline: astrologer.isOnline
             }
         });
     } catch (error: any) {
