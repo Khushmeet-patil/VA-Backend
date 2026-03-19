@@ -32,95 +32,84 @@ const scheduleAutoOnline = () => {
             });
 
             for (const astro of astrologers) {
-                // Find today's schedule
                 const todaySchedule = astro.availabilitySchedule.find(s => s.day === currentDay);
-
-                let shouldBeOnline = false;
-                let startTime = '';
-                let endTime = '';
+                let handled = false;
 
                 if (todaySchedule && todaySchedule.enabled) {
-                    startTime = todaySchedule.startTime;
-                    endTime = todaySchedule.endTime;
-                    // Check if current time is within the range
-                    shouldBeOnline = currentTime >= startTime && currentTime < endTime;
+                    const { startTime, endTime } = todaySchedule;
+
+                    if (currentTime === startTime) {
+                        // Boundary: Start of schedule. Enforce ONLINE.
+                        astro.isOnline = true;
+                        astro.isManualOverride = false;
+                        await astro.save();
+                        console.log(`[Scheduler] Boundary START for ${astro.firstName}. Set ONLINE.`);
+                        io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
+                        
+                        try {
+                            const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
+                            const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
+                            await notificationService.broadcast('users', {
+                                title: 'Astrologer Online!',
+                                body: `${firstName} ${lastName} is now available for consultation.`
+                            }, {
+                                type: 'astrologer_online',
+                                astrologerId: astro._id.toString()
+                            });
+                        } catch (notifyError) {
+                            console.error(`[Scheduler] Failed to send notification for ${astro.firstName}:`, notifyError);
+                        }
+                        handled = true;
+                    } 
+                    else if (currentTime === endTime) {
+                        // Boundary: End of schedule. Enforce OFFLINE.
+                        if (!astro.isBusy) {
+                            astro.isOnline = false;
+                            astro.isManualOverride = false;
+                            await astro.save();
+                            console.log(`[Scheduler] Boundary END for ${astro.firstName}. Set OFFLINE.`);
+                            io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
+                        } else {
+                            console.log(`[Scheduler] Skipping OFFLINE boundary for ${astro.firstName} (BUSY)`);
+                        }
+                        handled = true;
+                    }
+                    else if (currentTime > startTime && currentTime < endTime) {
+                        // Mid-schedule block
+                        if (!astro.isOnline) {
+                            if (!astro.isManualOverride) {
+                                astro.isOnline = true;
+                                await astro.save();
+                                console.log(`[Scheduler] Enforcing ONLINE block for ${astro.firstName}.`);
+                                io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
+                            }
+                        } else {
+                            // Already online, clear override if true to reset clean state
+                            if (astro.isManualOverride) {
+                                astro.isManualOverride = false;
+                                await astro.save();
+                            }
+                        }
+                        handled = true;
+                    }
                 }
 
-                if (shouldBeOnline) {
+                if (!handled) {
+                    // Outside schedule hours
                     if (astro.isOnline) {
-                        // Astrologer is already online, which matches the schedule!
-                        // They might have turned on manually early. Since the state aligns with the schedule,
-                        // we can clear the manual override flag so the NEXT schedule boundary acts automatically.
-                        if (astro.isManualOverride) {
-                            astro.isManualOverride = false;
-                            await astro.save();
-                            console.log(`[Scheduler] ${astro.firstName} state matches schedule -> cleared manual override.`);
-                        }
-                    } else {
-                        // Astrologer is offline, but the schedule says they should be online.
-                        if (astro.isManualOverride) {
-                            // Astrologer manually turned offline! Respect their choice, skip turning them on.
-                            console.log(`[Scheduler] Skipping ONLINE for ${astro.firstName} (Manual Override Active)`);
-                        } else {
-                            // No manual override, apply the schedule!
-                            astro.isOnline = true;
-                            await astro.save();
-                            console.log(`[Scheduler] Set ${astro.firstName} ${astro.lastName} to ONLINE (Time: ${currentTime}, Schedule: ${startTime}-${endTime})`);
-
-                            // Notify the Astrologer app via socket so the dashboard UI updates automatically
-                            try {
-                                io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
-                            } catch (e) {
-                                console.error('[Scheduler] Failed to emit socket event:', e);
-                            }
-
-                            // Send notification to all users
-                            try {
-                                const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
-                                const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
-
-                                await notificationService.broadcast('users', {
-                                    title: 'Astrologer Online!',
-                                    body: `${firstName} ${lastName} is now available for consultation.`
-                                }, {
-                                    type: 'astrologer_online',
-                                    astrologerId: astro._id.toString()
-                                });
-                            } catch (notifyError) {
-                                console.error(`[Scheduler] Failed to send notification for ${astro.firstName}:`, notifyError);
-                            }
-                        }
-                    }
-                } else {
-                    // Schedule says they should be offline
-                    if (!astro.isOnline) {
-                        // Astrologer is offline, which matches the schedule!
-                        if (astro.isManualOverride) {
-                            astro.isManualOverride = false;
-                            await astro.save();
-                            console.log(`[Scheduler] ${astro.firstName} state matches schedule -> cleared manual override.`);
-                        }
-                    } else {
-                        // Astrologer is online, but the schedule says they should be offline.
-                        if (astro.isManualOverride) {
-                            // Astrologer manually turned online out of schedule! Respect their choice.
-                            console.log(`[Scheduler] Skipping OFFLINE for ${astro.firstName} (Manual Override Active)`);
-                        } else {
-                            // No manual override, apply the schedule!
+                        if (!astro.isManualOverride) {
                             if (!astro.isBusy) {
                                 astro.isOnline = false;
                                 await astro.save();
-                                console.log(`[Scheduler] Set ${astro.firstName} ${astro.lastName} to OFFLINE`);
-
-                                // Notify the Astrologer app via socket so the dashboard UI updates automatically
-                                try {
-                                    io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
-                                } catch (e) {
-                                    console.error('[Scheduler] Failed to emit socket event:', e);
-                                }
-                            } else {
-                                console.log(`[Scheduler] Skipping OFFLINE for ${astro.firstName} ${astro.lastName} (Currently BUSY)`);
+                                console.log(`[Scheduler] Enforcing OFFLINE out-of-block for ${astro.firstName}.`);
+                                io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                             }
+                        }
+                    } else {
+                        // Already offline, clear override if true to reset clean state
+                        if (astro.isManualOverride) {
+                            astro.isManualOverride = false;
+                            await astro.save();
                         }
                     }
                 }
