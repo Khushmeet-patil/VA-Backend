@@ -6,13 +6,17 @@ import { notificationService } from './notificationService';
 const scheduleAutoOnline = () => {
     cron.schedule('* * * * *', async () => {
         console.log('[Scheduler] Running auto-online check...');
-        const now = new Date();
-        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const currentDay = days[now.getDay()];
+        const nowUTC = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+        const now = new Date(nowUTC.getTime() + istOffset);
 
-        // Format current time as "HH:mm"
-        const hours = now.getHours().toString().padStart(2, '0');
-        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        // Use getUTCDay() since we added the offset manually to the timestamp, so the "UTC" methods will return the IST values
+        const currentDay = days[now.getUTCDay()];
+
+        // Format current time as "HH:mm" in IST
+        const hours = now.getUTCHours().toString().padStart(2, '0');
+        const minutes = now.getUTCMinutes().toString().padStart(2, '0');
         const currentTime = `${hours}:${minutes}`;
 
         try {

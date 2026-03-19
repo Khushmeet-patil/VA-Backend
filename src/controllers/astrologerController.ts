@@ -596,10 +596,15 @@ export const updateSchedule = async (req: Request, res: Response) => {
 
         if (availabilitySchedule) {
             astrologer.availabilitySchedule = availabilitySchedule;
+            (astrologer as any).isManualOverride = false; // Clear override on schedule update
         }
 
         if (typeof isAutoOnlineEnabled === 'boolean') {
             astrologer.isAutoOnlineEnabled = isAutoOnlineEnabled;
+            // Also clear override if they toggle auto-online
+            if (isAutoOnlineEnabled) {
+                (astrologer as any).isManualOverride = false;
+            }
         }
 
         await astrologer.save();
