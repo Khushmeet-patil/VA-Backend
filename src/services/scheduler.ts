@@ -62,16 +62,12 @@ const scheduleAutoOnline = () => {
                         handled = true;
                     } 
                     else if (currentTime === endTime) {
-                        // Boundary: End of schedule. Enforce OFFLINE.
-                        if (!astro.isBusy) {
-                            astro.isOnline = false;
-                            astro.isManualOverride = false;
-                            await astro.save();
-                            console.log(`[Scheduler] Boundary END for ${astro.firstName}. Set OFFLINE.`);
-                            io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
-                        } else {
-                            console.log(`[Scheduler] Skipping OFFLINE boundary for ${astro.firstName} (BUSY)`);
-                        }
+                        // Boundary: End of schedule. Enforce OFFLINE immediately regardless of busy state.
+                        astro.isOnline = false;
+                        astro.isManualOverride = false;
+                        await astro.save();
+                        console.log(`[Scheduler] Boundary END for ${astro.firstName}. Set OFFLINE.`);
+                        io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                         handled = true;
                     }
                     else if (currentTime > startTime && currentTime < endTime) {
@@ -98,12 +94,10 @@ const scheduleAutoOnline = () => {
                     // Outside schedule hours
                     if (astro.isOnline) {
                         if (!astro.isManualOverride) {
-                            if (!astro.isBusy) {
-                                astro.isOnline = false;
-                                await astro.save();
-                                console.log(`[Scheduler] Enforcing OFFLINE out-of-block for ${astro.firstName}.`);
-                                io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
-                            }
+                            astro.isOnline = false;
+                            await astro.save();
+                            console.log(`[Scheduler] Enforcing OFFLINE out-of-block for ${astro.firstName}.`);
+                            io.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                         }
                     } else {
                         // Already offline, clear override if true to reset clean state
