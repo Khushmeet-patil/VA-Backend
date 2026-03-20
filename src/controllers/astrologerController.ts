@@ -140,6 +140,7 @@ export const updateApplicationStatus = async (req: Request, res: Response) => {
 export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId; // Optional, might be passed from optionalAuthMiddleware
+        const mongoose = require('mongoose');
 
         // Check if user is eligible for free chat (first time user)
         let isFreeChatUser = false;
@@ -151,10 +152,17 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
         }
 
         // Extract search, specialty, and sortBy from query
-        const { search, specialty, sortBy } = req.query;
+        const { search, specialty, sortBy, excludeIds } = req.query;
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
+
+        // Convert excludeIds to array of ObjectIds
+        let excludeIdsArray: any[] = [];
+        if (excludeIds) {
+            const idsList = Array.isArray(excludeIds) ? excludeIds : (excludeIds as string).split(',');
+            excludeIdsArray = idsList.filter(id => id && id.length === 24).map(id => new mongoose.Types.ObjectId(id));
+        }
 
         // Optimized field selection for lighter payload
         const projection = {
@@ -181,6 +189,10 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             isDeletionRequested: { $ne: true },
             activeDeviceId: { $exists: true }
         };
+
+        if (excludeIdsArray.length > 0) {
+            query._id = { $nin: excludeIdsArray };
+        }
 
         // Search filter (name, skills/specialties, or price)
         if (search) {
@@ -245,32 +257,62 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             }
         }
 
-        // Determine sort order
-        let sort: any = { isOnline: -1, rating: -1 };
-        if (sortBy) {
-            switch (sortBy) {
-                case 'rating':
-                    sort = { rating: -1, isOnline: -1 };
-                    break;
-                case 'experience':
-                    sort = { experience: -1, isOnline: -1 };
-                    break;
-                case 'price_low':
-                    sort = { pricePerMin: 1, isOnline: -1 };
-                    break;
-                case 'price_high':
-                    sort = { pricePerMin: -1, isOnline: -1 };
-                    break;
-            }
-        }
+        let astrologers: any[];
 
-        // Use lean() to get plain objects and avoid schema validation issues with old data
-        const astrologers = await Astrologer.find(query)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
-            .sort(sort)
-            .skip(skip)
-            .limit(limit)
-            .lean();
+        if (sortBy === 'random') {
+            // Use aggregation for random sampling with priority
+            const pipeline: any[] = [
+                { $match: query },
+                {
+                    $addFields: {
+                        randomSortField: { $rand: {} }
+                    }
+                },
+                {
+                    $sort: {
+                        isOnline: -1,
+                        randomSortField: 1
+                    }
+                },
+                { $limit: limit },
+                {
+                    $project: {
+                        firstName: 1, lastName: 1, systemKnown: 1, language: 1, bio: 1,
+                        aboutMe: 1, experience: 1, rating: 1, reviewsCount: 1, followersCount: 1,
+                        isOnline: 1, isBusy: 1, pricePerMin: 1, priceRangeMin: 1, priceRangeMax: 1,
+                        profilePhoto: 1, specialties: 1, tag: 1, isFreeChatAvailable: 1,
+                        freeChatLimit: 1, freeChatsToday: 1
+                    }
+                }
+            ];
+            astrologers = await Astrologer.aggregate(pipeline);
+        } else {
+            // Determine sort order
+            let sort: any = { isOnline: -1, rating: -1 };
+            if (sortBy) {
+                switch (sortBy) {
+                    case 'rating':
+                        sort = { rating: -1, isOnline: -1 };
+                        break;
+                    case 'experience':
+                        sort = { experience: -1, isOnline: -1 };
+                        break;
+                    case 'price_low':
+                        sort = { pricePerMin: 1, isOnline: -1 };
+                        break;
+                    case 'price_high':
+                        sort = { pricePerMin: -1, isOnline: -1 };
+                        break;
+                }
+            }
+
+            astrologers = await Astrologer.find(query)
+                .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
+                .sort(sort)
+                .skip(skip)
+                .limit(limit)
+                .lean();
+        }
 
         const total = await Astrologer.countDocuments(query);
 
@@ -286,7 +328,7 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
                 page,
                 limit,
                 total,
-                hasMore: (skip + astrologers.length) < total
+                hasMore: total > astrologers.length
             }
         });
     } catch (error: any) {
