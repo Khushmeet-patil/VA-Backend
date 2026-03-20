@@ -1904,13 +1904,19 @@ export const rejectDeletion = async (req: Request, res: Response) => {
 // Get Chat Stats for Admin Dashboard
 export const getChatStats = async (req: Request, res: Response) => {
     try {
-        const { timeframe, month, year } = req.query; // 'today', 'yesterday', 'monthly', 'yearly'
+        const { timeframe, month, year, startDate: qStartDate, endDate: qEndDate } = req.query; 
         
         const now = new Date();
         let startDate = new Date();
         let endDate = new Date();
         
-        switch(timeframe) {
+        if (timeframe === 'custom' && qStartDate) {
+            startDate = new Date(qStartDate as string);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(qStartDate as string);
+            endDate.setHours(23, 59, 59, 999);
+        } else {
+            switch(timeframe) {
             case 'today':
                 startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
                 endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -1932,6 +1938,7 @@ export const getChatStats = async (req: Request, res: Response) => {
             default:
                 startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
                 endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+            }
         }
 
         const completedChats = await ChatSession.find({
@@ -1948,12 +1955,26 @@ export const getChatStats = async (req: Request, res: Response) => {
             .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
             .sort({ createdAt: -1 });
 
+        // Missed Chats (Rejected by astrologer or Timed out)
+        const missedChats = await ChatSession.find({
+            createdAt: { $gte: startDate, $lte: endDate },
+            $or: [
+                { status: 'REJECTED' },
+                { status: 'ENDED', endReason: 'TIMEOUT' }
+            ]
+        })
+        .populate('userId', 'name mobile')
+        .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
+        .sort({ createdAt: -1 });
+
         return res.status(200).json({
             success: true,
             data: {
                 totalChats: completedChats.length,
                 completedChats,
-                activeChats
+                activeChats,
+                missedChatsCount: missedChats.length,
+                missedChats
             }
         });
     } catch (error: any) {
@@ -1965,34 +1986,40 @@ export const getChatStats = async (req: Request, res: Response) => {
 // Get GST Stats for Admin Dashboard
 export const getGstStats = async (req: Request, res: Response) => {
     try {
-        const { timeframe, month, year } = req.query; 
-        
+        const { timeframe, month, year, startDate: qStartDate, endDate: qEndDate } = req.query;
         const now = new Date();
         let startDate = new Date();
         let endDate = new Date();
-        
-        switch(timeframe) {
-            case 'today':
-                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-                endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-                break;
-            case 'yesterday':
-                const yesterday = new Date(now);
-                yesterday.setDate(now.getDate() - 1);
-                startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
-                endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
-                break;
-            case 'monthly':
-                startDate = new Date(Number(year), Number(month), 1);
-                endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
-                break;
-            case 'yearly':
-                startDate = new Date(Number(year), 0, 1);
-                endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
-                break;
-            default: // all time or invalid
-                startDate = new Date(2000, 0, 1);
-                endDate = new Date(2100, 0, 1);
+
+        if (timeframe === 'custom' && qStartDate) {
+            startDate = new Date(qStartDate as string);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(qStartDate as string);
+            endDate.setHours(23, 59, 59, 999);
+        } else {
+            switch(timeframe) {
+                case 'today':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(now.getDate() - 1);
+                    startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+                    endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+                    break;
+                case 'monthly':
+                    startDate = new Date(Number(year), Number(month), 1);
+                    endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
+                    break;
+                case 'yearly':
+                    startDate = new Date(Number(year), 0, 1);
+                    endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+                    break;
+                default: // all time or invalid
+                    startDate = new Date(2000, 0, 1);
+                    endDate = new Date(2100, 0, 1);
+            }
         }
 
         const filter = {
