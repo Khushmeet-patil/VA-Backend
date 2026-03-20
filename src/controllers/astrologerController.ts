@@ -6,6 +6,7 @@ import ChatReview from '../models/ChatReview';
 import Skill from '../models/Skill';
 import { getIOInstance } from '../services/scheduler';
 import { notificationService } from '../services/notificationService';
+import mongoose from 'mongoose';
 
 // Apply for Astrologer (User or Guest)
 export const applyForAstrologer = async (req: Request, res: Response) => {
@@ -140,7 +141,6 @@ export const updateApplicationStatus = async (req: Request, res: Response) => {
 export const getApprovedAstrologers = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId; // Optional, might be passed from optionalAuthMiddleware
-        const mongoose = require('mongoose');
 
         // Check if user is eligible for free chat (first time user)
         let isFreeChatUser = false;
@@ -160,8 +160,19 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
         // Convert excludeIds to array of ObjectIds
         let excludeIdsArray: any[] = [];
         if (excludeIds) {
-            const idsList = Array.isArray(excludeIds) ? excludeIds : (excludeIds as string).split(',');
-            excludeIdsArray = idsList.filter(id => id && id.length === 24).map(id => new mongoose.Types.ObjectId(id));
+            let idsList: any[] = [];
+            if (Array.isArray(excludeIds)) {
+                idsList = excludeIds;
+            } else if (typeof excludeIds === 'string') {
+                idsList = excludeIds.split(',');
+            } else if (typeof excludeIds === 'object' && excludeIds !== null) {
+                // Handle ParsedQs (object with numeric indices)
+                idsList = Object.values(excludeIds);
+            }
+
+            excludeIdsArray = idsList
+                .filter(id => id && typeof id === 'string' && mongoose.Types.ObjectId.isValid(id))
+                .map(id => new mongoose.Types.ObjectId(id as string));
         }
 
         // Optimized field selection for lighter payload
