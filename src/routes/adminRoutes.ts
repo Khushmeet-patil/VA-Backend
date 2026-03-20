@@ -50,7 +50,9 @@ import {
     rejectDeletion,
     getDeletionRequests,
     deleteAstrologer,
-    resetAstrologerWarnings
+    resetAstrologerWarnings,
+    getChatStats,
+    getGstStats
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -62,6 +64,8 @@ router.use(adminMiddleware);
 
 // Dashboard
 router.get('/dashboard', getDashboardStats);
+router.get('/chat-stats', getChatStats);
+router.get('/finances/gst', getGstStats);
 
 // Users
 router.get('/users', getAllUsers);

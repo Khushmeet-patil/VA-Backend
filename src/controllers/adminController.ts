@@ -1900,3 +1900,123 @@ export const rejectDeletion = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };
+
+// Get Chat Stats for Admin Dashboard
+export const getChatStats = async (req: Request, res: Response) => {
+    try {
+        const { timeframe, month, year } = req.query; // 'today', 'yesterday', 'monthly', 'yearly'
+        
+        const now = new Date();
+        let startDate = new Date();
+        let endDate = new Date();
+        
+        switch(timeframe) {
+            case 'today':
+                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                break;
+            case 'yesterday':
+                const yesterday = new Date(now);
+                yesterday.setDate(now.getDate() - 1);
+                startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+                endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+                break;
+            case 'monthly':
+                startDate = new Date(Number(year), Number(month), 1);
+                endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
+                break;
+            case 'yearly':
+                startDate = new Date(Number(year), 0, 1);
+                endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+                break;
+            default:
+                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        }
+
+        const completedChats = await ChatSession.find({
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: 'ENDED'
+        })
+        .populate('userId', 'name mobile')
+        .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
+        .sort({ createdAt: -1 });
+
+        // Realtime Active Chats
+        const activeChats = await ChatSession.find({ status: 'ACTIVE' })
+            .populate('userId', 'name mobile')
+            .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                totalChats: completedChats.length,
+                completedChats,
+                activeChats
+            }
+        });
+    } catch (error: any) {
+        console.error('getChatStats error:', error);
+        return res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+// Get GST Stats for Admin Dashboard
+export const getGstStats = async (req: Request, res: Response) => {
+    try {
+        const { timeframe, month, year } = req.query; 
+        
+        const now = new Date();
+        let startDate = new Date();
+        let endDate = new Date();
+        
+        switch(timeframe) {
+            case 'today':
+                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                break;
+            case 'yesterday':
+                const yesterday = new Date(now);
+                yesterday.setDate(now.getDate() - 1);
+                startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+                endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+                break;
+            case 'monthly':
+                startDate = new Date(Number(year), Number(month), 1);
+                endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
+                break;
+            case 'yearly':
+                startDate = new Date(Number(year), 0, 1);
+                endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+                break;
+            default: // all time or invalid
+                startDate = new Date(2000, 0, 1);
+                endDate = new Date(2100, 0, 1);
+        }
+
+        const filter = {
+            status: 'success',
+            type: 'credit',
+            gstAmount: { $gt: 0 },
+            createdAt: { $gte: startDate, $lte: endDate }
+        };
+
+        const transactions = await Transaction.find(filter)
+            .populate('fromUser', 'name mobile')
+            .sort({ createdAt: -1 });
+
+        const totalGst = transactions.reduce((acc, curr) => acc + (curr.gstAmount || 0), 0);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                totalGst,
+                transactions
+            }
+        });
+    } catch (error: any) {
+        console.error('getGstStats error:', error);
+        return res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
