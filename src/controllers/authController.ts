@@ -11,6 +11,7 @@ import Transaction from '../models/Transaction';
 import geoService from '../services/geoService';
 import astrologyService from '../services/astrologyService';
 import { getSettingValue } from './systemSettingController';
+import notificationService from '../services/notificationService';
 
 // Admin Login (Email + Password)
 export const adminLogin = async (req: Request, res: Response) => {
@@ -614,28 +615,19 @@ export const registerFcmToken = async (req: Request, res: Response) => {
 
         console.log(`[Auth] Registering FCM token for ${appType} app with ID ${userId}: ${fcmToken.substring(0, 10)}...`);
 
+        let success = false;
         if (appType === 'astrologer') {
-            // Update Astrologer collection (userId is Astrologer _id)
-            const astrologer = await Astrologer.findById(userId);
-            if (astrologer) {
-                astrologer.fcmToken = fcmToken;
-                astrologer.fcmTokenUpdatedAt = new Date();
-                await astrologer.save();
-                return res.status(200).json({ success: true, message: 'Astrologer app token updated' });
-            } else {
-                return res.status(404).json({ success: false, message: 'Astrologer profile not found' });
-            }
+            // Use service method for astrologer (handles strict separation)
+            success = await notificationService.registerAstrologerToken(userId, fcmToken);
         } else {
-            // Update User collection (userId is User _id)
-            const user = await User.findById(userId);
-            if (user) {
-                user.fcmToken = fcmToken;
-                user.fcmTokenUpdatedAt = new Date();
-                await user.save();
-                return res.status(200).json({ success: true, message: 'User app token updated' });
-            } else {
-                return res.status(404).json({ success: false, message: 'User not found' });
-            }
+            // Use service method for user (handles strict separation)
+            success = await notificationService.registerUserToken(userId, fcmToken);
+        }
+
+        if (success) {
+            return res.status(200).json({ success: true, message: `${appType} app token updated` });
+        } else {
+            return res.status(500).json({ success: false, message: 'Failed to update FCM token' });
         }
     } catch (error) {
         console.error('[Auth] Error registering FCM token:', error);

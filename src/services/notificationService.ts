@@ -115,6 +115,10 @@ class NotificationService {
 
             this.initialized = true;
             console.log(`[NotificationService] Firebase Admin initialized successfully for project: ${activeProjectId}`);
+
+            // FORCED STARTUP CLEANUP: Decisively clear legacy duplicate tokens
+            this.performLegacyTokenCleanup().catch(err => console.error('[NotificationService] Startup cleanup failed:', err));
+            
         } catch (error) {
             console.error('[NotificationService] Failed to initialize Firebase Admin:', error);
         }
@@ -608,6 +612,39 @@ class NotificationService {
         } catch (error) {
             console.error('[NotificationService] Broadcast error:', error);
             return { success: 0, failure: 0 };
+        }
+    }
+
+    /**
+     * CLEANUP LOGIC: Identify and remove legacy synced tokens
+     * Clears fcmToken from Astrologer collection if it matches the User app token
+     */
+    async performLegacyTokenCleanup(): Promise<{ checked: number; cleaned: number }> {
+        try {
+            console.log('[NotificationService] Starting forced legacy token cleanup...');
+            const astrologersWithTokens = await Astrologer.find({ fcmToken: { $exists: true, $ne: '' } });
+            let checked = 0;
+            let cleaned = 0;
+
+            for (const astro of astrologersWithTokens) {
+                checked++;
+                if (!astro.fcmToken || !astro.userId) continue;
+
+                const user = await User.findById(astro.userId);
+                if (user && user.fcmToken === astro.fcmToken) {
+                    console.log(`[NotificationService] Found legacy duplicate token for astrologer ${astro.firstName} (User ID: ${astro.userId}). Clearing...`);
+                    
+                    // Clear from Astrologer doc 
+                    await Astrologer.findByIdAndUpdate(astro._id, { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } });
+                    cleaned++;
+                }
+            }
+
+            console.log(`[NotificationService] Forced Cleanup finished. Checked: ${checked}, Cleaned: ${cleaned}`);
+            return { checked, cleaned };
+        } catch (error) {
+            console.error('[NotificationService] Legacy cleanup failed:', error);
+            return { checked: 0, cleaned: 0 };
         }
     }
 }
