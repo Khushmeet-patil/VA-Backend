@@ -466,7 +466,16 @@ class NotificationService {
     async registerUserToken(userId: string, fcmToken: string): Promise<boolean> {
         try {
             const updatedAt = new Date();
+            // 1. Update User doc
             await User.findByIdAndUpdate(userId, { fcmToken, fcmTokenUpdatedAt: updatedAt });
+            
+            // 2. STRICT SEPARATION: Ensure this token is NOT present in the Astrologer doc for this user
+            // This prevents a User App token from lingering in the Astrologer collection
+            await Astrologer.findOneAndUpdate(
+                { userId: userId, fcmToken: fcmToken },
+                { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
+            );
+
             console.log(`[NotificationService] User app token registered for user ${userId}`);
             return true;
         } catch (error) {
@@ -481,7 +490,17 @@ class NotificationService {
     async registerAstrologerToken(astrologerId: string, fcmToken: string): Promise<boolean> {
         try {
             const updatedAt = new Date();
-            await Astrologer.findByIdAndUpdate(astrologerId, { fcmToken, fcmTokenUpdatedAt: updatedAt });
+            // 1. Update Astrologer doc (using Astrologer _id)
+            const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, { fcmToken, fcmTokenUpdatedAt: updatedAt }, { new: true });
+            
+            // 2. STRICT SEPARATION: Ensure this token is NOT present in the User doc for this person
+            if (astrologer && astrologer.userId) {
+                await User.findOneAndUpdate(
+                    { _id: astrologer.userId, fcmToken: fcmToken },
+                    { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
+                );
+            }
+
             console.log(`[NotificationService] Astrologer app token registered for astrologer ${astrologerId}`);
             return true;
         } catch (error) {
@@ -519,7 +538,8 @@ class NotificationService {
 
             if (audience === 'astrologers' || audience === 'all') {
                 const astrologers = await Astrologer.find({
-                    fcmToken: { $exists: true, $ne: '' }
+                    fcmToken: { $exists: true, $ne: '' },
+                    status: 'approved' // ONLY broadcast to approved astrologers
                 }).select('fcmToken');
                 tokens.push(...astrologers.map(a => a.fcmToken!).filter(t => !!t));
             }
