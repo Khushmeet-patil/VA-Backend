@@ -461,57 +461,31 @@ class NotificationService {
     }
 
     /**
-     * Register/update FCM token for a user
-     * Production Strategy: Update both Collections to ensure consistency regardless of role
+     * Register/update FCM token for a user (User App)
      */
     async registerUserToken(userId: string, fcmToken: string): Promise<boolean> {
-        return this.syncTokenEverywhere(userId, fcmToken, 'user');
-    }
-
-    /**
-     * Register/update FCM token for an astrologer
-     * Production Strategy: Update both Collections to ensure consistency regardless of role
-     */
-    async registerAstrologerToken(userId: string, fcmToken: string): Promise<boolean> {
-        return this.syncTokenEverywhere(userId, fcmToken, 'astrologer');
-    }
-
-    /**
-     * Core Sync Logic: Updates token in both User and Astrologer collections
-     * Tries matching by _id AND userId field to handle ID-messiness.
-     */
-    private async syncTokenEverywhere(id: string, fcmToken: string, context: string): Promise<boolean> {
         try {
             const updatedAt = new Date();
-
-            // 1. Update User collection (by _id)
-            const userUpdate = await User.findByIdAndUpdate(id, { fcmToken, fcmTokenUpdatedAt: updatedAt }, { new: true });
-
-            // 2. Update Astrologer collection (try by userId field first)
-            let astroUpdate = await Astrologer.findOneAndUpdate(
-                { userId: id },
-                { fcmToken, fcmTokenUpdatedAt: updatedAt },
-                { new: true }
-            );
-
-            // 3. Fallback: Update Astrologer collection (try by _id)
-            if (!astroUpdate) {
-                astroUpdate = await Astrologer.findByIdAndUpdate(
-                    id,
-                    { fcmToken, fcmTokenUpdatedAt: updatedAt },
-                    { new: true }
-                );
-            }
-
-            console.log(`[NotificationService] SyncToken [${context}]: ID=${id}, UserMapped=${!!userUpdate}, AstroMapped=${!!astroUpdate}`);
-
-            if (!userUpdate && !astroUpdate) {
-                console.warn(`[NotificationService] WARNING: No documents found in either collection for ID: ${id}`);
-            }
-
+            await User.findByIdAndUpdate(userId, { fcmToken, fcmTokenUpdatedAt: updatedAt });
+            console.log(`[NotificationService] User app token registered for user ${userId}`);
             return true;
         } catch (error) {
-            console.error(`[NotificationService] Error in syncTokenEverywhere for ${id}:`, error);
+            console.error(`[NotificationService] Error registering user token:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Register/update FCM token for an astrologer (Astrologer App)
+     */
+    async registerAstrologerToken(astrologerId: string, fcmToken: string): Promise<boolean> {
+        try {
+            const updatedAt = new Date();
+            await Astrologer.findByIdAndUpdate(astrologerId, { fcmToken, fcmTokenUpdatedAt: updatedAt });
+            console.log(`[NotificationService] Astrologer app token registered for astrologer ${astrologerId}`);
+            return true;
+        } catch (error) {
+            console.error(`[NotificationService] Error registering astrologer token:`, error);
             return false;
         }
     }

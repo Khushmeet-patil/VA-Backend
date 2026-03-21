@@ -6,6 +6,7 @@ import Astrologer from '../models/Astrologer';
 export interface AuthRequest extends Request {
     userId?: string;
     userRole?: string;
+    appType?: 'user' | 'astrologer';
 }
 
 export const authMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -18,7 +19,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { id: string; role?: string };
 
-        // Check if this is an astrologer token
+        // Check if this is an astrologer token (from Astrologer App)
         if (decoded.role === 'astrologer') {
             const astrologer = await Astrologer.findById(decoded.id);
             if (!astrologer) {
@@ -29,10 +30,11 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
             }
             req.userId = decoded.id;
             req.userRole = 'astrologer';
+            req.appType = 'astrologer';
             return next();
         }
 
-        // Regular user token
+        // Regular user token (from User App)
         const user = await User.findById(decoded.id);
         if (!user) {
             return res.status(401).json({ message: 'User not found' });
@@ -44,6 +46,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
 
         req.userId = decoded.id;
         req.userRole = user.role;
+        req.appType = 'user';
         next();
     } catch (error) {
         return res.status(401).json({ message: 'Invalid token' });
@@ -75,6 +78,7 @@ export const optionalAuthMiddleware = async (req: AuthRequest, res: Response, ne
             if (astrologer && astrologer.status === 'approved') {
                 req.userId = decoded.id;
                 req.userRole = 'astrologer';
+                req.appType = 'astrologer';
             }
             return next();
         }
@@ -84,6 +88,7 @@ export const optionalAuthMiddleware = async (req: AuthRequest, res: Response, ne
         if (user && !user.isBlocked) {
             req.userId = decoded.id;
             req.userRole = user.role;
+            req.appType = 'user';
         }
         next();
     } catch (error) {

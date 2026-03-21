@@ -23,7 +23,7 @@ router.post('/register-token', authMiddleware, async (req: Request, res: Respons
     try {
         const { fcmToken } = req.body;
         const userId = (req as any).userId;
-        const userRole = (req as any).userRole;
+        const appType = (req as any).appType;
 
         if (!fcmToken) {
             return res.status(400).json({
@@ -34,11 +34,11 @@ router.post('/register-token', authMiddleware, async (req: Request, res: Respons
 
         let success = false;
 
-        if (userRole === 'astrologer') {
-            // Register token for astrologer
+        if (appType === 'astrologer') {
+            // Register token for astrologer (Astrologer App)
             success = await notificationService.registerAstrologerToken(userId, fcmToken);
         } else {
-            // Register token for user
+            // Register token for user (User App)
             success = await notificationService.registerUserToken(userId, fcmToken);
         }
 

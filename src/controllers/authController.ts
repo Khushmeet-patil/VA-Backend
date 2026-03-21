@@ -605,36 +605,34 @@ export const getWalletTransactions = async (req: Request, res: Response) => {
 export const registerFcmToken = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId;
-        const { fcmToken, userType } = req.body; // userType: 'user' | 'astrologer'
+        const { fcmToken } = req.body;
+        const appType = (req as any).appType;
 
         if (!fcmToken) {
             return res.status(400).json({ success: false, message: 'FCM token required' });
         }
 
-        console.log(`[Auth] Registering FCM token for ${userType} ${userId}: ${fcmToken.substring(0, 10)}...`);
+        console.log(`[Auth] Registering FCM token for ${appType} app with ID ${userId}: ${fcmToken.substring(0, 10)}...`);
 
-        if (userType === 'astrologer') {
-            // Check if user is also an astrologer (userId in token is User ID)
-            // But Astrologer model uses 'userId' field ref to User, or _id?
-            // Astrologer.userId references User._id. The token contains User._id.
-            // So we find Astrologer where userId matches.
-            const astrologer = await Astrologer.findOne({ userId: userId });
-
+        if (appType === 'astrologer') {
+            // Update Astrologer collection (userId is Astrologer _id)
+            const astrologer = await Astrologer.findById(userId);
             if (astrologer) {
                 astrologer.fcmToken = fcmToken;
+                astrologer.fcmTokenUpdatedAt = new Date();
                 await astrologer.save();
-                return res.status(200).json({ success: true, message: 'Astrologer FCM token updated' });
+                return res.status(200).json({ success: true, message: 'Astrologer app token updated' });
             } else {
-                // Should not happen if logged in as astrologer
                 return res.status(404).json({ success: false, message: 'Astrologer profile not found' });
             }
         } else {
-            // Default to updating User model
+            // Update User collection (userId is User _id)
             const user = await User.findById(userId);
             if (user) {
                 user.fcmToken = fcmToken;
+                user.fcmTokenUpdatedAt = new Date();
                 await user.save();
-                return res.status(200).json({ success: true, message: 'User FCM token updated' });
+                return res.status(200).json({ success: true, message: 'User app token updated' });
             } else {
                 return res.status(404).json({ success: false, message: 'User not found' });
             }
