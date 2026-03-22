@@ -23,7 +23,7 @@ import DeletionRequest from '../models/DeletionRequest';
 // 1. Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        const totalUsers = await User.countDocuments({ role: 'user' });
+        const totalUsers = await User.countDocuments({ role: { $in: ['user', 'astrologer'] } });
         const totalAstrologers = await Astrologer.countDocuments({ status: 'approved' });
 
         // 1. Total Earnings (Net Company Earnings - defined as Total Transaction Volume for now as comm is 0%)
@@ -133,9 +133,9 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         };
 
         const newUsers = {
-            daily: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
-            weekly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
-            monthly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
+            daily: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+            weekly: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+            monthly: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
         };
 
         const newAstrologers = {
@@ -500,11 +500,14 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
 // Add User (Admin)
 export const addUser = async (req: Request, res: Response) => {
     try {
-        const { name, mobile, email, walletBalance, isBlocked } = req.body;
+        const { name, email, walletBalance, isBlocked } = req.body;
+        let { mobile } = req.body;
 
         if (!name || !mobile) {
             return res.status(400).json({ success: false, message: 'Name and Mobile are required' });
         }
+
+        mobile = mobile.trim();
 
         const existingUser = await User.findOne({ mobile });
         if (existingUser) {
@@ -553,29 +556,35 @@ export const deleteUser = async (req: Request, res: Response) => {
 export const adminAddAstrologer = async (req: Request, res: Response) => {
     try {
         const {
-            firstName, lastName, gender, mobileNumber, email,
+            firstName, lastName, gender, email,
             experience, city, country, systemKnown, language, bio, aboutMe,
             pricePerMin, priceRangeMin, priceRangeMax, tag, specialties, profileImage
         } = req.body;
+        let { mobileNumber } = req.body;
 
         if (!mobileNumber || !firstName || !lastName) {
             return res.status(400).json({ success: false, message: 'FirstName, LastName and Mobile are required' });
         }
+
+        mobileNumber = mobileNumber.trim();
 
         let savedUser;
         // 1. Check if user already exists
         const existingUser = await User.findOne({ mobile: mobileNumber });
 
         if (existingUser) {
-            if (existingUser.role === 'astrologer') {
-                return res.status(400).json({ success: false, message: 'Astrologer with this mobile number already exists' });
+            // Check if they already have an astrologer record regardless of role (production check)
+            const profileCheck = await Astrologer.findOne({ userId: existingUser._id });
+            if (profileCheck || existingUser.role === 'astrologer') {
+                return res.status(400).json({ success: false, message: 'This mobile number is already registered as an astrologer' });
             }
+
             // Upgrade user to astrologer
             existingUser.role = 'astrologer';
-            // Update name if provided, or keep existing? Let's update name to match astrologer profile if desired, or keep as is.
-            // Requirement says "role will be changed", implying we use the existing user record.
-            existingUser.name = `${firstName} ${lastName}`.trim(); // Update name to match new profile
+            existingUser.isVerified = true; 
+            existingUser.name = `${firstName} ${lastName}`.trim(); 
             savedUser = await existingUser.save();
+            console.log(`[Admin] Upgraded existing user ${existingUser._id} (${mobileNumber}) to astrologer`);
         } else {
             // 2. Create New User
             const newUser = new User({
@@ -839,41 +848,46 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (!updatedAstrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
 
         // If block status was toggled to true, handle real-time effects
-        if (isBlocked === true) {
-            console.log(`[Admin] Astrologer ${astrologerId} blocked. Handling real-time effects...`);
+        if (isBlocked !== undefined) {
+            console.log(`[Admin] Astrologer ${astrologerId} block status changed to ${isBlocked}. Synchronizing with User account...`);
+            
+            // Sync with User record
+            await User.findByIdAndUpdate(astrologer.userId, { isBlocked: isBlocked });
 
-            // 1. Set astrologer to offline (remove from user app listings)
-            await Astrologer.findByIdAndUpdate(astrologerId, { isOnline: false });
+            if (isBlocked === true) {
+                // 1. Set astrologer to offline (remove from user app listings)
+                await Astrologer.findByIdAndUpdate(astrologerId, { isOnline: false });
 
-            // 2. Emit ASTROLOGER_BLOCKED socket event for instant UI update
-            if (chatService.io) {
-                chatService.io.to(`astrologer:${astrologerId}`).emit('ASTROLOGER_BLOCKED', {
-                    reason: 'Your account has been blocked by the administrator.'
-                });
-                console.log(`[Admin] ASTROLOGER_BLOCKED event emitted to astrologer:${astrologerId}`);
-            }
-
-            // 3. Send FCM push notification (works even if app is in background/killed)
-            try {
-                if (astrologer.fcmToken) {
-                    await notificationService.sendToUser(astrologerId, {
-                        title: 'Account Blocked',
-                        body: 'Your account has been blocked. Please contact support for more information.'
-                    }, { type: 'account_blocked' });
-                    console.log(`[Admin] FCM notification sent to blocked astrologer ${astrologerId}`);
+                // 2. Emit ASTROLOGER_BLOCKED socket event for instant UI update
+                if (chatService.io) {
+                    chatService.io.to(`astrologer:${astrologerId}`).emit('ASTROLOGER_BLOCKED', {
+                        reason: 'Your account has been blocked by the administrator.'
+                    });
+                    console.log(`[Admin] ASTROLOGER_BLOCKED event emitted to astrologer:${astrologerId}`);
                 }
-            } catch (fcmErr) {
-                console.error(`[Admin] Failed to send FCM to blocked astrologer:`, fcmErr);
-            }
 
-            // 4. Force-end any active chat session
-            try {
-                if (astrologer.activeSessionId) {
-                    console.log(`[Admin] Force-ending active session ${astrologer.activeSessionId} for blocked astrologer ${astrologerId}`);
-                    await chatService.endChat(astrologer.activeSessionId, 'ASTROLOGER_END');
+                // 3. Send FCM push notification
+                try {
+                    if (astrologer.fcmToken) {
+                        await notificationService.sendToUser(astrologerId, {
+                            title: 'Account Blocked',
+                            body: 'Your account has been blocked. Please contact support for more information.'
+                        }, { type: 'account_blocked' });
+                        console.log(`[Admin] FCM notification sent to blocked astrologer ${astrologerId}`);
+                    }
+                } catch (fcmErr) {
+                    console.error(`[Admin] Failed to send FCM to blocked astrologer:`, fcmErr);
                 }
-            } catch (chatErr) {
-                console.error(`[Admin] Failed to end active chat for blocked astrologer:`, chatErr);
+
+                // 4. Force-end any active chat session
+                try {
+                    if (astrologer.activeSessionId) {
+                        console.log(`[Admin] Force-ending active session ${astrologer.activeSessionId} for blocked astrologer ${astrologerId}`);
+                        await chatService.endChat(astrologer.activeSessionId, 'ASTROLOGER_END');
+                    }
+                } catch (chatErr) {
+                    console.error(`[Admin] Failed to end active chat for blocked astrologer:`, chatErr);
+                }
             }
         }
 
@@ -893,7 +907,14 @@ export const bulkUpdateAstrologers = async (req: Request, res: Response) => {
         }
 
         const updateData: any = {};
-        if (typeof isBlocked === 'boolean') updateData.isBlocked = isBlocked;
+        if (typeof isBlocked === 'boolean') {
+            updateData.isBlocked = isBlocked;
+            // Sync block status to User accounts in bulk
+            const targetAstrologers = await Astrologer.find({ _id: { $in: astrologerIds } });
+            const userIds = targetAstrologers.map(a => (a as any).userId);
+            await User.updateMany({ _id: { $in: userIds } }, { isBlocked: isBlocked });
+            console.log(`[Admin] Bulk synced block status to ${userIds.length} users`);
+        }
         if (typeof priceRangeMin === 'number') updateData.priceRangeMin = priceRangeMin;
         if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
 

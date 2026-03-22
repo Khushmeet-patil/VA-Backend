@@ -16,7 +16,6 @@ export const applyForAstrologer = async (req: Request, res: Response) => {
             firstName,
             lastName,
             gender,
-            mobileNumber,
             email,
             experience,
             city,
@@ -26,6 +25,12 @@ export const applyForAstrologer = async (req: Request, res: Response) => {
             bio,
             aboutMe
         } = req.body;
+        let { mobileNumber } = req.body;
+
+        if (!mobileNumber) {
+            return res.status(400).json({ message: 'Mobile number is required' });
+        }
+        mobileNumber = mobileNumber.trim();
 
         // Validation for required fields
         if (!firstName || !lastName || !mobileNumber || !email || !city || !country) {
