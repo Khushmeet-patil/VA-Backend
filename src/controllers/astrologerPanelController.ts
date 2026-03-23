@@ -467,9 +467,9 @@ export const getStats = async (req: Request, res: Response) => {
 
         const todayData = todayStats[0] || { todayEarnings: 0, todayChats: 0 };
 
-        // Get Rating Distribution
+        // Get Rating Distribution (Approved Only)
         const ratingDistribution = await ChatReview.aggregate([
-            { $match: { astrologerId: astrologer._id } },
+            { $match: { astrologerId: astrologer._id, status: 'approved' } },
             { $group: { _id: '$rating', count: { $sum: 1 } } },
             { $sort: { _id: -1 } }
         ]);
@@ -876,14 +876,14 @@ export const getPanelReviews = async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
 
-        const reviews = await ChatReview.find({ astrologerId })
+        const reviews = await ChatReview.find({ astrologerId, status: 'approved' })
             .populate('userId', 'name')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
-        const totalReviews = await ChatReview.countDocuments({ astrologerId });
+        const totalReviews = await ChatReview.countDocuments({ astrologerId, status: 'approved' });
 
         res.json({
             success: true,
