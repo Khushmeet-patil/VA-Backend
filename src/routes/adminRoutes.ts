@@ -57,7 +57,11 @@ import {
     getAllReviews,
     approveReview,
     rejectReview,
-    updateReview
+    updateReview,
+    createStartPopup,
+    getStartPopups,
+    updateStartPopup,
+    deleteStartPopup
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -121,6 +125,12 @@ router.get('/banners', getBanners);
 router.get('/banners/active', getActiveBanners);
 router.put('/banners/:bannerId', updateBanner);
 router.delete('/banners/:bannerId', deleteBanner);
+
+// Start Pop-ups
+router.post('/start-popups', createStartPopup);
+router.get('/start-popups', getStartPopups);
+router.put('/start-popups/:popupId', updateStartPopup);
+router.delete('/start-popups/:popupId', deleteStartPopup);
 
 // Skills
 router.get('/skills', getSkills);

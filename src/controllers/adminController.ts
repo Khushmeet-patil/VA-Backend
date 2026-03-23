@@ -9,6 +9,7 @@ import Notification from '../models/Notification';
 import ChatReview from '../models/ChatReview';
 import AstrologerFollower from '../models/AstrologerFollower';
 import Banner from '../models/Banner';
+import StartPopup from '../models/StartPopup';
 import Skill from '../models/Skill';
 import ProfileChangeRequest from '../models/ProfileChangeRequest';
 import PaymentBatch from '../models/PaymentBatch';
@@ -2221,3 +2222,113 @@ export const updateReview = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 }
+
+// 12. Start Pop-up Management
+export const getStartPopups = async (req: Request, res: Response) => {
+    try {
+        const popups = await StartPopup.find().sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: popups });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const getActiveStartPopups = async (req: Request, res: Response) => {
+    try {
+        const popups = await StartPopup.find({ isActive: true }).sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: popups });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const createStartPopup = async (req: Request, res: Response) => {
+    try {
+        const { imageBase64, navigationType, navigationValue, isActive, showOnStart, dailyLimit } = req.body;
+
+        if (!imageBase64) {
+            return res.status(400).json({ success: false, message: 'Image is required' });
+        }
+
+        const imageUrl = await uploadBase64ToR2(imageBase64, 'popups', `popup-${Date.now()}`);
+        if (!imageUrl) {
+            return res.status(500).json({ success: false, message: 'Failed to upload image' });
+        }
+
+        const newPopup = new StartPopup({
+            imageUrl,
+            navigationType,
+            navigationValue,
+            isActive: isActive !== undefined ? isActive : true,
+            showOnStart: showOnStart !== undefined ? showOnStart : false,
+            dailyLimit: dailyLimit !== undefined ? dailyLimit : 1
+        });
+
+        await newPopup.save();
+        res.status(201).json({ success: true, data: newPopup });
+    } catch (error) {
+        console.error('Create start popup error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const updateStartPopup = async (req: Request, res: Response) => {
+    try {
+        const { popupId } = req.params;
+        const { imageBase64, navigationType, navigationValue, isActive, showOnStart, dailyLimit } = req.body;
+
+        const popup = await StartPopup.findById(popupId);
+        if (!popup) {
+            return res.status(404).json({ success: false, message: 'Pop-up not found' });
+        }
+
+        const updateData: any = {
+            navigationType,
+            navigationValue,
+            isActive: isActive !== undefined ? isActive : true,
+            showOnStart: showOnStart !== undefined ? showOnStart : false,
+            dailyLimit: dailyLimit !== undefined ? dailyLimit : 1
+        };
+
+        if (imageBase64) {
+            // Delete old image if new one is provided
+            const key = getKeyFromUrl(popup.imageUrl);
+            if (key) {
+                await deleteFromR2(key).catch(err => console.error('Failed to delete old popup image:', err));
+            }
+
+            const newImageUrl = await uploadBase64ToR2(imageBase64, 'popups', `popup-${Date.now()}`);
+            if (newImageUrl) {
+                updateData.imageUrl = newImageUrl;
+            }
+        }
+
+        const updatedPopup = await StartPopup.findByIdAndUpdate(popupId, updateData, { new: true });
+        res.status(200).json({ success: true, data: updatedPopup });
+    } catch (error) {
+        console.error('Update start popup error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const deleteStartPopup = async (req: Request, res: Response) => {
+    try {
+        const { popupId } = req.params;
+        const popup = await StartPopup.findById(popupId);
+
+        if (!popup) {
+            return res.status(404).json({ success: false, message: 'Pop-up not found' });
+        }
+
+        // Delete from R2
+        const key = getKeyFromUrl(popup.imageUrl);
+        if (key) {
+            await deleteFromR2(key).catch(err => console.error('Failed to delete popup image from R2:', err));
+        }
+
+        await StartPopup.findByIdAndDelete(popupId);
+        res.status(200).json({ success: true, message: 'Pop-up deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
