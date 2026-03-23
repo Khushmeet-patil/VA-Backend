@@ -1219,7 +1219,15 @@ class ChatService {
             console.warn('[ChatService] updateAstrologerAverageRating called with no astrologerId');
             return;
         }
-        const approvedReviews = await ChatReview.find({ astrologerId, status: 'approved' });
+
+        // Include both explicitly approved reviews and legacy reviews (those without a status field)
+        const approvedReviews = await ChatReview.find({ 
+            astrologerId, 
+            $or: [
+                { status: 'approved' },
+                { status: { $exists: false } }
+            ]
+        });
 
         if (approvedReviews.length === 0) {
             await Astrologer.findByIdAndUpdate(astrologerId, {

@@ -2159,7 +2159,11 @@ export const getAllReviews = async (req: Request, res: Response) => {
 
         const filter: any = {};
         if (status && status !== 'all') {
-            filter.status = status;
+            if (status === 'approved') {
+                filter.$or = [{ status: 'approved' }, { status: { $exists: false } }];
+            } else {
+                filter.status = status;
+            }
         }
 
         const reviews = await ChatReview.find(filter)
