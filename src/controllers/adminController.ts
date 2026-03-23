@@ -347,8 +347,18 @@ export const getUserFollows = async (req: Request, res: Response) => {
 export const deleteReview = async (req: Request, res: Response) => {
     try {
         const { reviewId } = req.params;
-        const review = await ChatReview.findByIdAndDelete(reviewId);
-        if (!review) return res.status(404).json({ success: false, message: 'Review not found' });
+        const review = await ChatReview.findById(reviewId);
+
+        if (!review) {
+            return res.status(404).json({ success: false, message: 'Review not found' });
+        }
+
+        const astrologerId = review.astrologerId.toString();
+        await ChatReview.findByIdAndDelete(reviewId);
+
+        // Recalculate astrologer rating
+        await chatService.updateAstrologerAverageRating(astrologerId);
+
         res.status(200).json({ success: true, message: 'Review deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -2131,3 +2141,72 @@ export const rejectReview = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
+
+/**
+ * Get all reviews with optional status filter and pagination
+ */
+export const getAllReviews = async (req: Request, res: Response) => {
+    try {
+        const { status, page = 1, limit = 20 } = req.query;
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const filter: any = {};
+        if (status && status !== 'all') {
+            filter.status = status;
+        }
+
+        const reviews = await ChatReview.find(filter)
+            .populate('userId', 'name mobile')
+            .populate('astrologerId', 'firstName lastName profilePhoto')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(Number(limit));
+
+        const total = await ChatReview.countDocuments(filter);
+
+        res.status(200).json({
+            success: true,
+            data: reviews,
+            pagination: {
+                total,
+                page: Number(page),
+                limit: Number(limit),
+                pages: Math.ceil(total / Number(limit))
+            }
+        });
+    } catch (error: any) {
+        console.error('getAllReviews error:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+/**
+ * Update a review (rating and/or text)
+ */
+export const updateReview = async (req: Request, res: Response) => {
+    try {
+        const { reviewId } = req.params;
+        const { rating, reviewText, status } = req.body;
+
+        const review = await ChatReview.findById(reviewId);
+        if (!review) {
+            return res.status(404).json({ success: false, message: 'Review not found' });
+        }
+
+        if (rating !== undefined) review.rating = rating;
+        if (reviewText !== undefined) review.reviewText = reviewText;
+        if (status !== undefined) review.status = status;
+
+        await review.save();
+
+        // Recalculate astrologer rating if it is approved
+        await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+
+        res.status(200).json({ success: true, message: 'Review updated successfully', data: review });
+    } catch (error: any) {
+        console.error('updateReview error:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+

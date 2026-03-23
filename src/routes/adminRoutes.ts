@@ -54,8 +54,10 @@ import {
     getChatStats,
     getGstStats,
     getPendingReviews,
+    getAllReviews,
     approveReview,
-    rejectReview
+    rejectReview,
+    updateReview
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -102,8 +104,10 @@ router.get('/astrologers/:astrologerId/chats', getAstrologerChats);
 
 // Reviews
 router.get('/reviews/pending', getPendingReviews);
+router.get('/reviews/all', getAllReviews);
 router.put('/reviews/:reviewId/approve', approveReview);
 router.put('/reviews/:reviewId/reject', rejectReview);
+router.put('/reviews/:reviewId', updateReview);
 router.delete('/reviews/:reviewId', deleteReview);
 
 // Notifications
