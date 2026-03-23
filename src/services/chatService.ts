@@ -1215,6 +1215,10 @@ class ChatService {
      * Ensures summary fields (reviewsCount, totalRatingSum) are in sync
      */
     async updateAstrologerAverageRating(astrologerId: string | mongoose.Types.ObjectId): Promise<void> {
+        if (!astrologerId) {
+            console.warn('[ChatService] updateAstrologerAverageRating called with no astrologerId');
+            return;
+        }
         const approvedReviews = await ChatReview.find({ astrologerId, status: 'approved' });
 
         if (approvedReviews.length === 0) {

@@ -353,11 +353,14 @@ export const deleteReview = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Review not found' });
         }
 
-        const astrologerId = review.astrologerId.toString();
-        await ChatReview.findByIdAndDelete(reviewId);
-
-        // Recalculate astrologer rating
-        await chatService.updateAstrologerAverageRating(astrologerId);
+        if (review.astrologerId) {
+            const astrologerId = review.astrologerId.toString();
+            await ChatReview.findByIdAndDelete(reviewId);
+            // Recalculate astrologer rating
+            await chatService.updateAstrologerAverageRating(astrologerId);
+        } else {
+            await ChatReview.findByIdAndDelete(reviewId);
+        }
 
         res.status(200).json({ success: true, message: 'Review deleted successfully' });
     } catch (error) {
@@ -2111,7 +2114,9 @@ export const approveReview = async (req: Request, res: Response) => {
         }
 
         // Trigger average rating recalculation to keep Astrologer document in sync
-        await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        if (review.astrologerId) {
+            await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        }
 
         res.status(200).json({ success: true, message: 'Review approved and rating updated', data: review });
     } catch (error: any) {
@@ -2133,7 +2138,9 @@ export const rejectReview = async (req: Request, res: Response) => {
         }
 
         // Trigger update in case it was previously approved
-        await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        if (review.astrologerId) {
+            await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        }
 
         res.status(200).json({ success: true, message: 'Review rejected', data: review });
     } catch (error: any) {
@@ -2200,13 +2207,13 @@ export const updateReview = async (req: Request, res: Response) => {
         await review.save();
 
         // Recalculate astrologer rating if it is approved
-        await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        if (review.astrologerId) {
+            await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        }
 
-        res.status(200).json({ success: true, message: 'Review updated successfully', data: review });
+        res.status(200).json({ success: true, message: 'Review updated', data: review });
     } catch (error: any) {
         console.error('updateReview error:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
-};
-
-
+}
