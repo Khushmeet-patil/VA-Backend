@@ -1202,19 +1202,41 @@ class ChatService {
             userId,
             astrologerId: session.astrologerId,
             rating,
-            reviewText
+            reviewText,
+            status: 'pending' // Always start as pending
         });
         await review.save();
 
-        // Update astrologer's average rating
-        const allReviews = await ChatReview.find({ astrologerId: session.astrologerId });
-        const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+        console.log(`[ChatService] Review submitted for session: ${sessionId} (pending admin approval)`);
+    }
 
-        await Astrologer.findByIdAndUpdate(session.astrologerId, {
-            rating: Math.round(avgRating * 10) / 10 // Round to 1 decimal
+    /**
+     * Update astrologer's average rating based on approved reviews
+     * Ensures summary fields (reviewsCount, totalRatingSum) are in sync
+     */
+    async updateAstrologerAverageRating(astrologerId: string | mongoose.Types.ObjectId): Promise<void> {
+        const approvedReviews = await ChatReview.find({ astrologerId, status: 'approved' });
+
+        if (approvedReviews.length === 0) {
+            await Astrologer.findByIdAndUpdate(astrologerId, {
+                rating: 0,
+                reviewsCount: 0,
+                totalRatingSum: 0
+            });
+            return;
+        }
+
+        const totalRatingSum = approvedReviews.reduce((sum, r) => sum + r.rating, 0);
+        const reviewsCount = approvedReviews.length;
+        const avgRating = totalRatingSum / reviewsCount;
+
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            rating: Math.round(avgRating * 10) / 10,
+            reviewsCount: reviewsCount,
+            totalRatingSum: totalRatingSum
         });
 
-        console.log(`[ChatService] Review submitted for session: ${sessionId}`);
+        console.log(`[ChatService] Updated ratings for astrologer ${astrologerId}: ${(Math.round(avgRating * 10) / 10).toFixed(1)} (${reviewsCount} approved reviews)`);
     }
 
     /**

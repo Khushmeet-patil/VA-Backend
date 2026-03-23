@@ -3,6 +3,7 @@ import Astrologer from '../models/Astrologer';
 import User from '../models/User';
 import AstrologerFollower from '../models/AstrologerFollower';
 import ChatReview from '../models/ChatReview';
+import ChatSession from '../models/ChatSession';
 import Skill from '../models/Skill';
 import { getIOInstance } from '../services/scheduler';
 import { notificationService } from '../services/notificationService';
@@ -410,17 +411,39 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
                 userId,
                 astrologerId: id
             });
+
+            // Check for unrated sessions
+            const unratedSession = await ChatSession.findOne({
+                userId,
+                astrologerId: id,
+                status: 'ENDED'
+            }).sort({ createdAt: -1 });
+
+            let unratedSessionId = null;
+            if (unratedSession) {
+                const reviewCount = await ChatReview.countDocuments({ sessionId: unratedSession.sessionId });
+                if (reviewCount === 0) {
+                    unratedSessionId = unratedSession.sessionId;
+                }
+            }
+
             if (existingRating) {
                 userRating = {
                     rating: existingRating.rating,
-                    reviewText: existingRating.reviewText || ''
+                    reviewText: existingRating.reviewText || '',
+                    status: existingRating.status,
+                    unratedSessionId // Include if user wants to update their review linked to a session
+                };
+            } else if (unratedSessionId) {
+                userRating = {
+                    unratedSessionId
                 };
             }
         }
 
-        // Get rating distribution
+        // Get rating distribution - ONLY APPROVED REVIEWS
         const ratingDistribution = await ChatReview.aggregate([
-            { $match: { astrologerId: astrologer._id } },
+            { $match: { astrologerId: astrologer._id, status: 'approved' } },
             { $group: { _id: '$rating', count: { $sum: 1 } } },
             { $sort: { _id: -1 } }
         ]);
@@ -453,14 +476,14 @@ export const getAstrologerReviews = async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 10;
         const skip = (page - 1) * limit;
 
-        const reviews = await ChatReview.find({ astrologerId: id })
+        const reviews = await ChatReview.find({ astrologerId: id, status: 'approved' })
             .populate('userId', 'name')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
-        const totalReviews = await ChatReview.countDocuments({ astrologerId: id });
+        const totalReviews = await ChatReview.countDocuments({ astrologerId: id, status: 'approved' });
 
         res.json({
             success: true,
@@ -612,29 +635,14 @@ export const rateAstrologer = async (req: Request, res: Response) => {
 
         if (existingReview) {
             // Update existing rating
-            const oldRating = existingReview.rating;
             existingReview.rating = rating;
             existingReview.reviewText = reviewText;
+            existingReview.status = 'pending'; // Re-verify on update
             await existingReview.save();
-
-            // Update astrologer's average rating
-            // Subtract old rating, add new rating
-            const newTotalSum = (astrologer.totalRatingSum || 0) - oldRating + rating;
-            const newAverage = astrologer.reviewsCount > 0 ? newTotalSum / astrologer.reviewsCount : rating;
-
-            await Astrologer.updateOne(
-                { _id: astrologerId },
-                {
-                    $set: {
-                        rating: Math.round(newAverage * 10) / 10,
-                        totalRatingSum: newTotalSum
-                    }
-                }
-            );
 
             res.json({
                 success: true,
-                message: 'Rating updated successfully',
+                message: 'Rating updated and submitted for approval',
                 review: existingReview
             });
         } else {
@@ -644,29 +652,14 @@ export const rateAstrologer = async (req: Request, res: Response) => {
                 userId,
                 astrologerId,
                 rating,
-                reviewText
+                reviewText,
+                status: 'pending'
             });
             await review.save();
 
-            // Update astrologer's average rating
-            const newReviewsCount = (astrologer.reviewsCount || 0) + 1;
-            const newTotalSum = (astrologer.totalRatingSum || 0) + rating;
-            const newAverage = newTotalSum / newReviewsCount;
-
-            await Astrologer.updateOne(
-                { _id: astrologerId },
-                {
-                    $set: {
-                        rating: Math.round(newAverage * 10) / 10,
-                        totalRatingSum: newTotalSum,
-                        reviewsCount: newReviewsCount
-                    }
-                }
-            );
-
             res.json({
                 success: true,
-                message: 'Rating submitted successfully',
+                message: 'Rating submitted for approval',
                 review
             });
         }

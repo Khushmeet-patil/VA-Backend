@@ -2068,3 +2068,66 @@ export const getGstStats = async (req: Request, res: Response) => {
         return res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
+
+// --- Review Management ---
+
+/**
+ * Get all pending reviews for admin approval
+ */
+export const getPendingReviews = async (req: Request, res: Response) => {
+    try {
+        const reviews = await ChatReview.find({ status: 'pending' })
+            .populate('userId', 'name mobile')
+            .populate('astrologerId', 'firstName lastName profilePhoto')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ success: true, data: reviews });
+    } catch (error: any) {
+        console.error('getPendingReviews error:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+/**
+ * Approve a review and trigger rating recalculation
+ */
+export const approveReview = async (req: Request, res: Response) => {
+    try {
+        const { reviewId } = req.params;
+        const review = await ChatReview.findByIdAndUpdate(reviewId, { status: 'approved' }, { new: true });
+
+        if (!review) {
+            return res.status(404).json({ success: false, message: 'Review not found' });
+        }
+
+        // Trigger average rating recalculation to keep Astrologer document in sync
+        await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+
+        res.status(200).json({ success: true, message: 'Review approved and rating updated', data: review });
+    } catch (error: any) {
+        console.error('approveReview error:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+/**
+ * Reject a review
+ */
+export const rejectReview = async (req: Request, res: Response) => {
+    try {
+        const { reviewId } = req.params;
+        const review = await ChatReview.findByIdAndUpdate(reviewId, { status: 'rejected' }, { new: true });
+
+        if (!review) {
+            return res.status(404).json({ success: false, message: 'Review not found' });
+        }
+
+        // Trigger update in case it was previously approved
+        await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+
+        res.status(200).json({ success: true, message: 'Review rejected', data: review });
+    } catch (error: any) {
+        console.error('rejectReview error:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};

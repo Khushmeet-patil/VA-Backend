@@ -10,6 +10,7 @@ export interface IChatReview extends Document {
     astrologerId: mongoose.Types.ObjectId;  // Reference to Astrologer being reviewed
     rating: 1 | 2 | 3 | 4 | 5;
     reviewText?: string;
+    status: 'pending' | 'approved' | 'rejected';
     createdAt: Date;
 }
 
@@ -39,6 +40,12 @@ const ChatReviewSchema: Schema = new Schema({
     reviewText: {
         type: String,
         maxlength: 500
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+        index: true
     }
 }, { timestamps: true });
 

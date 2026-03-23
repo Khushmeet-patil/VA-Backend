@@ -52,7 +52,10 @@ import {
     deleteAstrologer,
     resetAstrologerWarnings,
     getChatStats,
-    getGstStats
+    getGstStats,
+    getPendingReviews,
+    approveReview,
+    rejectReview
 } from '../controllers/adminController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -98,6 +101,9 @@ router.get('/astrologers/:astrologerId/withdrawals', getAstrologerWithdrawals);
 router.get('/astrologers/:astrologerId/chats', getAstrologerChats);
 
 // Reviews
+router.get('/reviews/pending', getPendingReviews);
+router.put('/reviews/:reviewId/approve', approveReview);
+router.put('/reviews/:reviewId/reject', rejectReview);
 router.delete('/reviews/:reviewId', deleteReview);
 
 // Notifications
