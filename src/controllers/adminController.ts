@@ -1209,6 +1209,12 @@ export const getBanners = async (req: Request, res: Response) => {
 export const getActiveBanners = async (req: Request, res: Response) => {
     try {
         const banners = await Banner.find({ isActive: true }).sort({ createdAt: -1 });
+        
+        // Prevent caching for real-time banners
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.status(200).json({ success: true, data: banners });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -2236,6 +2242,12 @@ export const getStartPopups = async (req: Request, res: Response) => {
 export const getActiveStartPopups = async (req: Request, res: Response) => {
     try {
         const popups = await StartPopup.find({ isActive: true }).sort({ createdAt: -1 });
+
+        // Prevent caching for real-time pop-ups
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         res.status(200).json({ success: true, data: popups });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
