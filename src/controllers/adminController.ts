@@ -133,14 +133,18 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             trend: trend
         };
 
+        // Today Start (Midnight)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
         const newUsers = {
-            daily: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+            daily: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: todayStart } }),
             weekly: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
             monthly: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
         };
 
         const newAstrologers = {
-            daily: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+            daily: await Astrologer.countDocuments({ createdAt: { $gte: todayStart } }),
             weekly: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
             monthly: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
         };
