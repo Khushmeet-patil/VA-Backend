@@ -486,13 +486,8 @@ class ChatService {
             const user = await User.findById(session.userId);
             const userName = user ? `${user.name || 'User'}` : 'a user';
             
-            // FIX: Use astrologer.userId (the underlying User document ID) 
-            // instead of session.astrologerId so it appears in the Notification screen.
-            const astrologerDoc = await Astrologer.findById(session.astrologerId);
-            const recipientId = astrologerDoc ? astrologerDoc.userId.toString() : session.astrologerId.toString();
-
             await notificationService.createAndSendNotification(
-                recipientId,
+                session.astrologerId.toString(),
                 'astrologer',
                 {
                     title: 'Missed Chat Request',

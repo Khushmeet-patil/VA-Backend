@@ -416,7 +416,8 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
             const unratedSession = await ChatSession.findOne({
                 userId,
                 astrologerId: id,
-                status: 'ENDED'
+                status: 'ENDED',
+                startTime: { $ne: null }
             }).sort({ createdAt: -1 });
 
             let unratedSessionId = null;
@@ -431,8 +432,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
                 userRating = {
                     rating: existingRating.rating,
                     reviewText: existingRating.reviewText || '',
-                    status: existingRating.status,
-                    unratedSessionId // Include if user wants to update their review linked to a session
+                    status: existingRating.status
                 };
             } else if (unratedSessionId) {
                 userRating = {
@@ -629,8 +629,7 @@ export const rateAstrologer = async (req: Request, res: Response) => {
         // Check if user already rated this astrologer (allow updating existing rating)
         const existingReview = await ChatReview.findOne({
             userId,
-            astrologerId,
-            sessionId: { $regex: /^direct-/ }  // Direct ratings have sessionId starting with 'direct-'
+            astrologerId
         });
 
         if (existingReview) {
