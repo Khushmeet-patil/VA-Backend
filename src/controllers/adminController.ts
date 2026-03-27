@@ -25,21 +25,35 @@ import DeletionRequest from '../models/DeletionRequest';
 // 1. Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
+        // --- DATE NORMALIZATION TO IST (Asia/Kolkata) ---
+        const getISTDate = () => new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+        
+        const nowIST = getISTDate();
+        const todayStartIST = new Date(nowIST);
+        todayStartIST.setUTCHours(0, 0, 0, 0);
+        const todayStart = new Date(todayStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+
+        const thisMonthStartIST = new Date(nowIST);
+        thisMonthStartIST.setUTCDate(1);
+        thisMonthStartIST.setUTCHours(0, 0, 0, 0);
+        const thisMonthStart = new Date(thisMonthStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+
+        const lastMonthStartIST = new Date(thisMonthStartIST);
+        lastMonthStartIST.setUTCMonth(lastMonthStartIST.getUTCMonth() - 1);
+        const lastMonthStart = new Date(lastMonthStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+
+        const sevenDaysAgo = new Date(new Date().getTime() - (7 * 24 * 60 * 60 * 1000));
+        const thirtyDaysAgo = new Date(new Date().getTime() - (30 * 24 * 60 * 60 * 1000));
+
+        // 2. Earnings Trend (Last 6 Months Start Date)
+        const sixMonthsAgo = new Date(thisMonthStart);
+        sixMonthsAgo.setUTCMonth(sixMonthsAgo.getUTCMonth() - 5);
+        sixMonthsAgo.setUTCDate(1);
+        sixMonthsAgo.setUTCHours(0, 0, 0, 0);
+
+        // ------------------------------------------------
+
         const totalUsers = await User.countDocuments({ role: 'user' });
-        const totalAstrologers = await Astrologer.countDocuments();
-
-        // 1. Total Earnings (Net Company Earnings - defined as Total Transaction Volume for now as comm is 0%)
-        const totalEarningsAgg = await Transaction.aggregate([
-            { $match: { type: 'debit', status: 'success' } },
-            { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        const totalEarnings = totalEarningsAgg[0]?.total || 0;
-
-        // 2. Earnings Trend (Last 6 Months)
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-        sixMonthsAgo.setDate(1);
-        sixMonthsAgo.setHours(0, 0, 0, 0);
 
         const earningsTrendAgg = await Transaction.aggregate([
             {
@@ -66,27 +80,29 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         const trend = [];
         // Fill in last 6 months even if empty
         for (let i = 0; i < 6; i++) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - (5 - i));
-            const m = d.getMonth() + 1;
-            const y = d.getFullYear();
+            const d = new Date(thisMonthStartIST);
+            d.setUTCMonth(d.getUTCMonth() - (5 - i));
+            const m = d.getUTCMonth() + 1;
+            const y = d.getUTCFullYear();
 
             const found = earningsTrendAgg.find(item => item._id.month === m && item._id.year === y);
             trend.push({
-                name: monthNames[m - 1],
+                name: monthNames[m - 1] + (y % 100), // e.g., MAR26
                 earning: found ? found.total : 0
             });
         }
 
-        // 3. Last Month Earnings (For Growth Calc)
-        const lastMonthStart = new Date();
-        lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
-        lastMonthStart.setDate(1);
-        lastMonthStart.setHours(0, 0, 0, 0);
 
-        const thisMonthStart = new Date();
-        thisMonthStart.setDate(1);
-        thisMonthStart.setHours(0, 0, 0, 0);
+        const totalAstrologers = await Astrologer.countDocuments();
+
+        // 1. Total Earnings
+        const totalEarningsAgg = await Transaction.aggregate([
+            { $match: { type: 'debit', status: 'success' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalEarnings = totalEarningsAgg[0]?.total || 0;
+
+        // Total Earnings
 
         const lastMonthEarningsAgg = await Transaction.aggregate([
             {
@@ -134,15 +150,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             trend: trend
         };
 
-        // Today Start (Midnight)
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-
-        // User stats (Strictly role: user)
+        // Statistics for dashboard (Calculated above)
         const newUsers = {
             daily: await User.countDocuments({ role: 'user', createdAt: { $gte: todayStart } }),
-            weekly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
-            monthly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
+            weekly: await User.countDocuments({ role: 'user', createdAt: { $gte: sevenDaysAgo } }),
+            monthly: await User.countDocuments({ role: 'user', createdAt: { $gte: thirtyDaysAgo } })
         };
 
         // Astrologer stats
@@ -218,15 +230,24 @@ export const getAllUsers = async (req: Request, res: Response) => {
     try {
         const users = await User.find({ role: 'user' }).sort({ createdAt: -1 });
         
-        // Return some basic stats for the header cards
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const newToday = users.filter(u => u.createdAt && new Date(u.createdAt) >= todayStart).length;
+        // --- DATE NORMALIZATION TO IST (Asia/Kolkata) ---
+        const getISTDate = () => new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+        const nowIST = getISTDate();
+        const todayStartIST = new Date(nowIST);
+        todayStartIST.setUTCHours(0, 0, 0, 0);
+        const todayStart = new Date(todayStartIST.getTime() - (5.5 * 60 * 60 * 1000));
 
-        // Simple growth calc (current month vs last month)
-        const now = new Date();
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const firstDayOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const thisMonthStartIST = new Date(nowIST);
+        thisMonthStartIST.setUTCDate(1);
+        thisMonthStartIST.setUTCHours(0, 0, 0, 0);
+        const firstDayOfMonth = new Date(thisMonthStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+
+        const lastMonthStartIST = new Date(thisMonthStartIST);
+        lastMonthStartIST.setUTCMonth(lastMonthStartIST.getUTCMonth() - 1);
+        const firstDayOfLastMonth = new Date(lastMonthStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+        // ------------------------------------------------
+
+        const newToday = users.filter(u => u.createdAt && new Date(u.createdAt) >= todayStart).length;
         
         const thisMonth = users.filter(u => u.createdAt && new Date(u.createdAt) >= firstDayOfMonth).length;
         const lastMonth = users.filter(u => u.createdAt && new Date(u.createdAt) >= firstDayOfLastMonth && new Date(u.createdAt) < firstDayOfMonth).length;
@@ -372,11 +393,39 @@ export const getUserDetails = async (req: Request, res: Response) => {
         ]);
         const totalSpent = totalSpentAgg[0]?.total || 0;
 
+        // --- IST Date Normalization ---
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const nowIST = new Date(new Date().getTime() + istOffset);
+        const thisMonthStartIST = new Date(nowIST);
+        thisMonthStartIST.setUTCDate(1);
+        thisMonthStartIST.setUTCHours(0, 0, 0, 0);
+        const thisMonthStart = new Date(thisMonthStartIST.getTime() - istOffset);
+
+        const lastMonthStartIST = new Date(thisMonthStartIST);
+        lastMonthStartIST.setUTCMonth(lastMonthStartIST.getUTCMonth() - 1);
+        const lastMonthStart = new Date(lastMonthStartIST.getTime() - istOffset);
+
+        // Calculate Spent Growth (%)
+        const thisMonthSpentAgg = await Transaction.aggregate([
+            { $match: { fromUser: new mongoose.Types.ObjectId(userId), type: 'debit', status: 'success', createdAt: { $gte: thisMonthStart } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const lastMonthSpentAgg = await Transaction.aggregate([
+            { $match: { fromUser: new mongoose.Types.ObjectId(userId), type: 'debit', status: 'success', createdAt: { $gte: lastMonthStart, $lt: thisMonthStart } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+
+        const thisMonthSpent = thisMonthSpentAgg[0]?.total || 0;
+        const lastMonthSpent = lastMonthSpentAgg[0]?.total || 0;
+        let spentGrowth = 0;
+        if (lastMonthSpent > 0) spentGrowth = Math.round(((thisMonthSpent - lastMonthSpent) / lastMonthSpent) * 100);
+        else if (thisMonthSpent > 0) spentGrowth = 100;
+
         // 3. Last Active (Most recent activity)
         const lastTransaction = await Transaction.findOne({ fromUser: userId }).sort({ createdAt: -1 });
         const lastChat = await ChatSession.findOne({ userId: userId }).sort({ createdAt: -1 });
         
-        let lastActive: Date | null = user.createdAt;
+        let lastActive = user.createdAt;
         if (lastTransaction && lastChat) {
             lastActive = lastTransaction.createdAt > lastChat.createdAt ? lastTransaction.createdAt : lastChat.createdAt;
         } else if (lastTransaction) {
@@ -392,6 +441,7 @@ export const getUserDetails = async (req: Request, res: Response) => {
                 stats: {
                     totalChatTime,
                     totalSpent,
+                    spentGrowth,
                     lastActive
                 }
             }
