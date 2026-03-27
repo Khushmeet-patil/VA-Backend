@@ -1276,9 +1276,44 @@ class ChatService {
             ? ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
             : ChatSession.findOne({ userId, status: 'ACTIVE' });
 
-        findSession.then(session => {
+        findSession.then(async session => {
             if (!session) return;
             this.clearGracePeriod(session.sessionId);
+
+            // Re-deliver missed messages on reconnect
+            try {
+                // Get messages from the last 2 minutes that might have been missed
+                const twoMinutesAgo = new Date(Date.now() - 120000);
+                const missedMessages = await ChatMessage.find({
+                    sessionId: session.sessionId,
+                    timestamp: { $gte: twoMinutesAgo },
+                    senderType: { $ne: userType } // Only messages from the OTHER party
+                }).sort({ timestamp: 1 }).limit(50);
+
+                if (missedMessages.length > 0 && this.io) {
+                    const roomName = `${userType}:${userId}`;
+                    console.log(`[ChatService] Re-delivering ${missedMessages.length} missed messages to ${roomName}`);
+
+                    for (const msg of missedMessages) {
+                        this.io.to(roomName).emit('RECEIVE_MESSAGE', {
+                            sessionId: session.sessionId,
+                            messageId: msg._id.toString(),
+                            senderId: msg.senderId?.toString(),
+                            senderType: msg.senderType,
+                            text: msg.text,
+                            type: msg.type,
+                            fileUrl: msg.fileUrl,
+                            fileName: msg.fileName,
+                            fileSize: msg.fileSize,
+                            timestamp: msg.timestamp.toISOString(),
+                            status: msg.status || 'sent',
+                            isRedelivered: true // Flag so frontend can deduplicate
+                        });
+                    }
+                }
+            } catch (redeliveryError) {
+                console.error(`[ChatService] Error re-delivering messages:`, redeliveryError);
+            }
         });
     }
 

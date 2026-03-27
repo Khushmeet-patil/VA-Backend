@@ -118,8 +118,6 @@ export const sendOtp = async (req: Request, res: Response) => {
             const existingUser = await User.findOne({ mobile });
             if (existingUser && existingUser.activeDeviceId && existingUser.activeDeviceId !== deviceId) {
                 // MIGRATION LOGIC:
-                // If existing ID is legacy (starts with 'dev_') and new ID is NOT (persistent ID),
-                // we allow this request. The ID will be updated upon successful verification.
                 const isLegacyId = existingUser.activeDeviceId.startsWith('dev_');
                 const isNewIdPersistent = !deviceId.startsWith('dev_');
 
@@ -127,10 +125,18 @@ export const sendOtp = async (req: Request, res: Response) => {
                     console.log(`[Auth] Allowing device migration for ${mobile} from ${existingUser.activeDeviceId} to ${deviceId}`);
                     // Proceed with OTP sending
                 } else {
-                    return res.status(409).json({
-                        success: false,
-                        message: 'This number is already logged in on another device. Please logout from there to login here.'
+                    // Allow if user has no active chat session (handles reinstall)
+                    const hasActiveSession = await ChatSession.findOne({
+                        userId: existingUser._id,
+                        status: { $in: ['ACTIVE', 'PENDING'] }
                     });
+                    if (hasActiveSession) {
+                        return res.status(409).json({
+                            success: false,
+                            message: 'This number is already logged in on another device. Please logout from there to login here.'
+                        });
+                    }
+                    console.log(`[Auth] Allowing device switch for ${mobile} (no active session)`);
                 }
             }
         }
@@ -164,9 +170,14 @@ export const sendOtp = async (req: Request, res: Response) => {
 export const verifyOtp = async (req: Request, res: Response) => {
     try {
         const { mobile, otp, deviceId } = req.body;
+
+        if (!mobile || !otp) {
+            return res.status(400).json({ success: false, message: 'Mobile and OTP are required' });
+        }
+
         const user = await User.findOne({ mobile });
 
-        if (!user || user.otp !== otp) {
+        if (!user || !user.otp || user.otp !== otp) {
             return res.status(400).json({ success: false, message: 'Invalid OTP' });
         }
 
@@ -184,10 +195,18 @@ export const verifyOtp = async (req: Request, res: Response) => {
                 console.log(`[Auth] Migrating device ID for ${mobile} on verification`);
                 // Allow proceeding
             } else {
-                return res.status(409).json({
-                    success: false,
-                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                // Allow if user has no active chat session (handles reinstall)
+                const hasActiveSession = await ChatSession.findOne({
+                    userId: user._id,
+                    status: { $in: ['ACTIVE', 'PENDING'] }
                 });
+                if (hasActiveSession) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'This number is already logged in on another device. Please logout from there to login here.'
+                    });
+                }
+                console.log(`[Auth] Allowing device switch for ${mobile} (no active session)`);
             }
         }
 

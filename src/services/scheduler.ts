@@ -61,38 +61,45 @@ const scheduleAutoOnline = () => {
 
                 // CASE 1: Boundary crossing — expectedScheduleState changed
                 if (currentExpected !== newExpected) {
-                    console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Force-setting isOnline=${shouldBeOnline}`);
-                    
-                    astro.isOnline = shouldBeOnline;
-                    astro.isManualOverride = false;
-                    (astro as any).expectedScheduleState = newExpected;
-                    await astro.save();
-                    
-                    console.log(`[Scheduler] >>> SAVED ${astro.firstName}: isOnline=${astro.isOnline}`);
-
-                    // Emit socket event
-                    if (ioInstance) {
-                        const room = `astrologer:${astro._id.toString()}`;
-                        ioInstance.to(room).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: shouldBeOnline });
-                        console.log(`[Scheduler] >>> Emitted ASTROLOGER_STATUS_UPDATED to room ${room}`);
+                    // Only force-set if NOT manually overridden
+                    // If manual override is active, just update expectedScheduleState for tracking
+                    if (astro.isManualOverride) {
+                        console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Manual override active, clearing override but respecting current state.`);
+                        astro.isManualOverride = false;
+                        (astro as any).expectedScheduleState = newExpected;
+                        await astro.save();
                     } else {
-                        console.warn(`[Scheduler] >>> IO instance not available, cannot emit socket event!`);
-                    }
+                        console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Setting isOnline=${shouldBeOnline}`);
+                        astro.isOnline = shouldBeOnline;
+                        astro.isManualOverride = false;
+                        (astro as any).expectedScheduleState = newExpected;
+                        await astro.save();
+                        console.log(`[Scheduler] >>> SAVED ${astro.firstName}: isOnline=${astro.isOnline}`);
 
-                    // Send notification to users when astrologer goes online
-                    if (shouldBeOnline) {
-                        try {
-                            const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
-                            const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
-                            await notificationService.broadcast('users', {
-                                title: 'Astrologer Online!',
-                                body: `${firstName} ${lastName} is now available for consultation.`
-                            }, {
-                                type: 'astrologer_online',
-                                astrologerId: astro._id.toString()
-                            });
-                        } catch (notifyError) {
-                            console.error(`[Scheduler] Failed to send notification:`, notifyError);
+                        // Emit socket event
+                        if (ioInstance) {
+                            const room = `astrologer:${astro._id.toString()}`;
+                            ioInstance.to(room).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: shouldBeOnline });
+                            console.log(`[Scheduler] >>> Emitted ASTROLOGER_STATUS_UPDATED to room ${room}`);
+                        } else {
+                            console.warn(`[Scheduler] >>> IO instance not available, cannot emit socket event!`);
+                        }
+
+                        // Send notification to users when astrologer goes online
+                        if (shouldBeOnline) {
+                            try {
+                                const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
+                                const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
+                                await notificationService.broadcast('users', {
+                                    title: 'Astrologer Online!',
+                                    body: `${firstName} ${lastName} is now available for consultation.`
+                                }, {
+                                    type: 'astrologer_online',
+                                    astrologerId: astro._id.toString()
+                                });
+                            } catch (notifyError) {
+                                console.error(`[Scheduler] Failed to send notification:`, notifyError);
+                            }
                         }
                     }
                 }
@@ -137,7 +144,7 @@ export const scheduleDailyReset = () => {
         try {
             const result = await Astrologer.updateMany(
                 {},
-                { $set: { freeChatsToday: 0, isManualOverride: false } }
+                { $set: { freeChatsToday: 0, isManualOverride: false, expectedScheduleState: 'none' } }
             );
             console.log(`[Scheduler] Reset freeChatsToday & isManualOverride for ${result.modifiedCount} astrologers.`);
         } catch (error) {

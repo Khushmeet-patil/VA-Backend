@@ -68,10 +68,18 @@ export const sendAstrologerOtp = async (req: Request, res: Response) => {
                 console.log(`[AstrologerPanel] Allowing device migration for ${mobile}`);
                 // Proceed
             } else {
-                return res.status(409).json({
-                    success: false,
-                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                // Allow if astrologer has no active chat session (handles reinstall)
+                const hasActiveSession = await ChatSession.findOne({
+                    astrologerId: astrologer._id,
+                    status: { $in: ['ACTIVE', 'PENDING'] }
                 });
+                if (hasActiveSession) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'This number is already logged in on another device. Please logout from there to login here.'
+                    });
+                }
+                console.log(`[AstrologerPanel] Allowing device switch for ${mobile} (no active session)`);
             }
         }
 
@@ -167,10 +175,18 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
                 console.log(`[verifyAstrologerOtp] Migrating device ID for ${mobile}`);
                 // Proceed
             } else {
-                return res.status(409).json({
-                    success: false,
-                    message: 'This number is already logged in on another device. Please logout from there to login here.'
+                // Allow if no active chat session (handles reinstall gracefully)
+                const hasActiveSession = await ChatSession.findOne({
+                    astrologerId: astrologer._id,
+                    status: { $in: ['ACTIVE', 'PENDING'] }
                 });
+                if (hasActiveSession) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'This number is already logged in on another device. Please logout from there to login here.'
+                    });
+                }
+                console.log(`[verifyAstrologerOtp] Allowing device switch for ${mobile} (no active session)`);
             }
         }
 
@@ -183,7 +199,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
         // Generate token
         const token = jwt.sign(
             { id: astrologer._id, role: 'astrologer' },
-            process.env.JWT_SECRET || 'your-secret-key',
+            process.env.JWT_SECRET || 'secret',
             { expiresIn: '30d' }
         );
 
@@ -375,9 +391,9 @@ export const toggleStatus = async (req: Request, res: Response) => {
             astrologerId,
             { 
                isOnline,
-               isManualOverride: true,
-               isAutoOnlineEnabled: false,
-               expectedScheduleState: 'none'
+               isManualOverride: true
+               // Note: intentionally NOT setting isAutoOnlineEnabled:false
+               // so the scheduler can resume at the next boundary crossing
             },
             { new: true }
         );

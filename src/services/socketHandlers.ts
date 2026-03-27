@@ -423,15 +423,14 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
-        // Handle SHARE_PROFILE (uppercase alias)
+        // Handle SHARE_PROFILE (uppercase alias) — delegates to share_profile handler
         socket.on('SHARE_PROFILE', async (data: { sessionId: string, profile: any }) => {
             try {
                 const { sessionId, profile } = data;
                 if (!sessionId || !profile) return;
 
-                // Re-use the same logic by triggering the lowercase event or duplicating
-                // Best to duplicate/refactor but for speed let's just make sure it enriches too
-                socket.emit('share_profile', data);
+                // Directly call chatService instead of emitting back to client
+                await chatService.shareProfile(sessionId, profile);
             } catch (error) {
                 console.error('[Socket] SHARE_PROFILE error:', error);
             }
