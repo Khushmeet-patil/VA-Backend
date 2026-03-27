@@ -494,7 +494,7 @@ class ChatService {
                     body: `You missed a chat request from ${userName}. Please try to stay online for next requests.`
                 },
                 {
-                    navigateType: 'notifications',
+                    navigateType: 'screen',
                     navigateTarget: 'NotificationList'
                 },
                 'alert'
