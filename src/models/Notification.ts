@@ -7,6 +7,7 @@ export interface INotification extends Document {
     audience: 'all' | 'user' | 'users' | 'astrologers';
     userId?: mongoose.Types.ObjectId; // If audience is user
     isRead: boolean;
+    readBy: mongoose.Types.ObjectId[];
     isScheduled: boolean;
     scheduledTime?: string; // HH:mm format for daily
     isActive: boolean;
@@ -22,6 +23,7 @@ const NotificationSchema: Schema = new Schema({
     audience: { type: String, enum: ['all', 'user', 'users', 'astrologers'], default: 'all' },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
     isRead: { type: Boolean, default: false },
+    readBy: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     isScheduled: { type: Boolean, default: false },
     scheduledTime: { type: String },
     isActive: { type: Boolean, default: true },

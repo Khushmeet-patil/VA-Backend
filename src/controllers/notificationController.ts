@@ -62,20 +62,20 @@ export const markRead = async (req: Request, res: Response) => {
         const { notificationId, all } = req.body;
 
         if (all) {
-            // Mark all notifications for this user as read
-            // This is tricky because some notifications are broadcast ('all', 'users', 'astrologers')
-            // and don't have a specific userId. 
-            // For now, let's just mark the ones specifically for this user.
-            // A better way would be a separate 'NotificationRead' collection to track reads for broadcast messages.
-            // But to keep it simple as per current schema:
+            // Update personal notifications
             await Notification.updateMany(
                 { userId: userId, isRead: false },
-                { $set: { isRead: true } }
+                { $set: { isRead: true }, $addToSet: { readBy: userId } }
+            );
+            // Update broadcast notifications
+            await Notification.updateMany(
+                { audience: { $in: ['all', 'users', 'astrologers'] }, readBy: { $ne: userId } },
+                { $addToSet: { readBy: userId } }
             );
         } else if (notificationId) {
             await Notification.findOneAndUpdate(
-                { _id: notificationId, userId: userId },
-                { $set: { isRead: true } }
+                { _id: notificationId },
+                { $set: { isRead: true }, $addToSet: { readBy: userId } }
             );
         }
 
@@ -106,6 +106,7 @@ export const getUnreadCount = async (req: Request, res: Response) => {
         const query = {
             isActive: true,
             isRead: false,
+            readBy: { $ne: userId },
             $or: audienceFilters
         };
 
