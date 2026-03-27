@@ -93,15 +93,58 @@ app.use('/api/panchang', panchangRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/policies', policyRoutes);
 
-// Root route
+// Root route - Redirection for Facebook Ads and App Installs
 app.get('/', (req, res) => {
-    res.json({
-        status: 'ok',
-        message: 'VedicAstro Backend Running',
-        version: '1.0.0',
-        features: ['REST API', 'Socket.IO Chat'],
-        timestamp: new Date().toISOString()
-    });
+    const userAgent = (req.headers['user-agent'] || '').toLowerCase();
+    const isAndroid = /android/i.test(userAgent);
+    const isIOS = /iphone|ipad|ipod/i.test(userAgent);
+
+    if (isAndroid) {
+        return res.redirect('https://play.google.com/store/apps/details?id=com.vedicastro.vedicpatel');
+    }
+
+    // Default response with HTML for better Facebook integration and manual links
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VedicAstro - Install Our App</title>
+    
+    <!-- Facebook App Links Meta Tags -->
+    <meta property="al:android:url" content="vedicastro://">
+    <meta property="al:android:package" content="com.vedicastro.vedicpatel">
+    <meta property="al:android:app_name" content="VedicAstro">
+    <meta property="og:title" content="VedicAstro">
+    <meta property="og:description" content="Download VedicAstro app from Play Store.">
+    <meta property="og:type" content="website">
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; text-align: center; padding: 50px; background: #fdf2e9; }
+        .card { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { color: #FF6700; }
+        .btn { display: inline-block; background: #FF6700; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>VedicAstro</h1>
+        <p>Get the best astrological insights right on your phone.</p>
+        <a href="https://play.google.com/store/apps/details?id=com.vedicastro.vedicpatel" class="btn">Install from Play Store</a>
+        ${isIOS ? '<p style="margin-top: 20px;">iOS Version Coming Soon!</p>' : ''}
+    </div>
+    <script>
+        // Automatic redirect for Android
+        if (/android/i.test(navigator.userAgent)) {
+            setTimeout(function() {
+                window.location.href = "https://play.google.com/store/apps/details?id=com.vedicastro.vedicpatel";
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
+    `);
 });
 
 // Railway uses PORT environment variable
