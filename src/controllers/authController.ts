@@ -257,7 +257,7 @@ export const deleteUser = async (req: Request, res: Response) => {
         const originalMobile = user.mobile;
 
         user.mobile = `deleted_${timestamp}_${originalMobile}`;
-        user.name = 'Deleted User';
+        // user.name = 'Deleted User'; // Preserve name for admin records as per user request
         user.profilePhoto = '';
         user.fcmToken = '';
         user.activeDeviceId = '';
