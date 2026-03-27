@@ -21,6 +21,7 @@ import {
     getUserReviews,
     deleteReview,
     getUserFollows,
+    getUserDetails,
     createBanner,
     getBanners,
     getActiveBanners,
@@ -78,6 +79,7 @@ router.get('/finances/gst', getGstStats);
 
 // Users
 router.get('/users', getAllUsers);
+router.get('/users/:userId', getUserDetails);
 router.put('/users/:userId', updateUser);
 router.put('/users/:userId/clear-device', clearUserDevice);
 router.get('/users/:userId/active-chats', getUserActivity); // Kept for reference but likely unused if combined

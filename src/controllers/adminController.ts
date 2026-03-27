@@ -1,5 +1,6 @@
 
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
@@ -24,8 +25,8 @@ import DeletionRequest from '../models/DeletionRequest';
 // 1. Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        const totalUsers = await User.countDocuments({ role: { $in: ['user', 'astrologer'] } });
-        const totalAstrologers = await Astrologer.countDocuments({ status: 'approved' });
+        const totalUsers = await User.countDocuments({ role: 'user' });
+        const totalAstrologers = await Astrologer.countDocuments();
 
         // 1. Total Earnings (Net Company Earnings - defined as Total Transaction Volume for now as comm is 0%)
         const totalEarningsAgg = await Transaction.aggregate([
@@ -137,17 +138,33 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
+        // User stats (Strictly role: user)
         const newUsers = {
-            daily: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: todayStart } }),
-            weekly: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
-            monthly: await User.countDocuments({ role: { $in: ['user', 'astrologer'] }, createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
+            daily: await User.countDocuments({ role: 'user', createdAt: { $gte: todayStart } }),
+            weekly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+            monthly: await User.countDocuments({ role: 'user', createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
         };
 
+        // Astrologer stats
         const newAstrologers = {
             daily: await Astrologer.countDocuments({ createdAt: { $gte: todayStart } }),
             weekly: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
             monthly: await Astrologer.countDocuments({ createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } })
         };
+
+        // Calculate User Growth (%) - This month vs Last Month
+        const thisMonthUsers = await User.countDocuments({ role: 'user', createdAt: { $gte: thisMonthStart } });
+        const lastMonthUsers = await User.countDocuments({ role: 'user', createdAt: { $gte: lastMonthStart, $lt: thisMonthStart } });
+        let userGrowth = 0;
+        if (lastMonthUsers > 0) userGrowth = Math.round(((thisMonthUsers - lastMonthUsers) / lastMonthUsers) * 100);
+        else if (thisMonthUsers > 0) userGrowth = 100;
+
+        // Calculate Astrologer Growth (%)
+        const thisMonthAstros = await Astrologer.countDocuments({ createdAt: { $gte: thisMonthStart } });
+        const lastMonthAstros = await Astrologer.countDocuments({ createdAt: { $gte: lastMonthStart, $lt: thisMonthStart } });
+        let astroGrowth = 0;
+        if (lastMonthAstros > 0) astroGrowth = Math.round(((thisMonthAstros - lastMonthAstros) / lastMonthAstros) * 100);
+        else if (thisMonthAstros > 0) astroGrowth = 100;
 
         // Financials
         // Total amount added by users (Credits to wallet)
@@ -179,9 +196,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             data: {
                 totalUsers,
                 totalAstrologers,
-                earnings, // Now contains { total, lastMonth, growth, trend }
+                earnings,
                 newUsers,
                 newAstrologers,
+                userGrowth,
+                astroGrowth,
                 financials: {
                     totalAddedByUser: totalAddedByUser[0]?.total || 0,
                     totalPaidToAstrologers: totalPaidToAstrologers[0]?.total || 0,
@@ -197,8 +216,34 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 // 2. User Management
 export const getAllUsers = async (req: Request, res: Response) => {
     try {
-        const users = await User.find({ role: { $in: ['user', 'astrologer'] } }).sort({ createdAt: -1 });
-        res.status(200).json({ success: true, data: users });
+        const users = await User.find({ role: 'user' }).sort({ createdAt: -1 });
+        
+        // Return some basic stats for the header cards
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const newToday = users.filter(u => u.createdAt && new Date(u.createdAt) >= todayStart).length;
+
+        // Simple growth calc (current month vs last month)
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const firstDayOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        
+        const thisMonth = users.filter(u => u.createdAt && new Date(u.createdAt) >= firstDayOfMonth).length;
+        const lastMonth = users.filter(u => u.createdAt && new Date(u.createdAt) >= firstDayOfLastMonth && new Date(u.createdAt) < firstDayOfMonth).length;
+        
+        let growth = 0;
+        if (lastMonth > 0) growth = Math.round(((thisMonth - lastMonth) / lastMonth) * 100);
+        else if (thisMonth > 0) growth = 100;
+
+        res.status(200).json({ 
+            success: true, 
+            data: users,
+            stats: {
+                total: users.length,
+                newToday,
+                growth
+            }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
@@ -305,6 +350,54 @@ export const getUserActivity = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, data: activity });
     } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const getUserDetails = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const user = await User.findById(userId).lean();
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        // Calculate Stats
+        // 1. Total Chat Time
+        const chatSessions = await ChatSession.find({ userId: userId, status: 'ENDED' });
+        const totalChatTime = chatSessions.reduce((sum, session) => sum + (session.totalMinutes || 0), 0);
+
+        // 2. Total Spent (Sum of all successful debit transactions including chats)
+        const totalSpentAgg = await Transaction.aggregate([
+            { $match: { fromUser: new mongoose.Types.ObjectId(userId), type: 'debit', status: 'success' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalSpent = totalSpentAgg[0]?.total || 0;
+
+        // 3. Last Active (Most recent activity)
+        const lastTransaction = await Transaction.findOne({ fromUser: userId }).sort({ createdAt: -1 });
+        const lastChat = await ChatSession.findOne({ userId: userId }).sort({ createdAt: -1 });
+        
+        let lastActive: Date | null = user.createdAt;
+        if (lastTransaction && lastChat) {
+            lastActive = lastTransaction.createdAt > lastChat.createdAt ? lastTransaction.createdAt : lastChat.createdAt;
+        } else if (lastTransaction) {
+            lastActive = lastTransaction.createdAt;
+        } else if (lastChat) {
+            lastActive = lastChat.createdAt;
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                ...user,
+                stats: {
+                    totalChatTime,
+                    totalSpent,
+                    lastActive
+                }
+            }
+        });
+    } catch (error) {
+        console.error('getUserDetails error:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };
