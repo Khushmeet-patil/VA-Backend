@@ -12,6 +12,8 @@ const router = Router();
  * Fetch notifications for the authenticated user
  */
 router.get('/', authMiddleware, notificationController.getUserNotifications);
+router.get('/unread-count', authMiddleware, notificationController.getUnreadCount);
+router.put('/mark-read', authMiddleware, notificationController.markRead);
 
 /**
  * POST /api/notifications/register-token

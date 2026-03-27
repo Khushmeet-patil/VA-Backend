@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
+import Notification from '../models/Notification';
 
 /**
  * NotificationService - Firebase Cloud Messaging handler
@@ -186,6 +187,43 @@ class NotificationService {
             return await this.sendNotification(astrologer.fcmToken, notification, data);
         } catch (error) {
             console.error('[NotificationService] Error sending to astrologer:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Create a notification in database and send via FCM
+     */
+    async createAndSendNotification(
+        recipientId: string,
+        recipientType: 'user' | 'astrologer',
+        notification: { title: string; body: string },
+        data?: Record<string, string>,
+        type: 'info' | 'promo' | 'alert' = 'info'
+    ): Promise<boolean> {
+        try {
+            // 1. Save to Database
+            const newNotif = new Notification({
+                title: notification.title,
+                message: notification.body,
+                type: type,
+                audience: 'user', // Specific user
+                userId: recipientId,
+                isRead: false,
+                isActive: true,
+                navigateType: data?.navigateType || 'none',
+                navigateTarget: data?.navigateTarget
+            });
+            await newNotif.save();
+
+            // 2. Send via FCM
+            if (recipientType === 'user') {
+                return await this.sendToUser(recipientId, notification, data);
+            } else {
+                return await this.sendToAstrologer(recipientId, notification, data);
+            }
+        } catch (error) {
+            console.error('[NotificationService] Error in createAndSendNotification:', error);
             return false;
         }
     }

@@ -481,6 +481,28 @@ class ChatService {
             'timeout'
         ).catch(err => console.error('[ChatService] FCM timeout push failed:', err));
 
+        // NEW: Send "Missed Chat" notification to astrologer
+        try {
+            const user = await User.findById(session.userId);
+            const userName = user ? `${user.name || 'User'}` : 'a user';
+            
+            await notificationService.createAndSendNotification(
+                session.astrologerId.toString(),
+                'astrologer',
+                {
+                    title: 'Missed Chat Request',
+                    body: `You missed a chat request from ${userName}. Please try to stay online for next requests.`
+                },
+                {
+                    navigateType: 'notifications',
+                    navigateTarget: 'NotificationList'
+                },
+                'alert'
+            );
+        } catch (notifErr) {
+            console.error('[ChatService] Failed to send missed chat notification:', notifErr);
+        }
+
         // Increment missedChats for astrologer and handle auto-blocking
         const astrologer = await Astrologer.findById(session.astrologerId);
         if (astrologer) {
