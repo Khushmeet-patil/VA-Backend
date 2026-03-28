@@ -345,6 +345,168 @@ class NotificationService {
     }
 
     /**
+     * Send a data-only FCM push to the USER when astrologer accepts (CHAT_STARTED)
+     * Ensures user receives the event even if the app is killed/background
+     */
+    async sendChatStartedNotification(
+        userId: string,
+        data: {
+            sessionId: string;
+            astrologerId: string;
+            astrologerName: string;
+            ratePerMinute: number;
+            startTime: string;
+            isFreeTrialSession?: boolean;
+            freeTrialDurationSeconds?: number;
+        }
+    ): Promise<boolean> {
+        if (!this.initialized) {
+            console.warn('[NotificationService] Not initialized, skipping chat_started notification');
+            return false;
+        }
+
+        try {
+            const user = await User.findById(userId);
+            if (!user?.fcmToken) {
+                console.log(`[NotificationService] User ${userId} has no FCM token for chat_started`);
+                return false;
+            }
+
+            const message: admin.messaging.Message = {
+                token: user.fcmToken,
+                // Data-only: background handler processes it reliably
+                data: {
+                    type: 'chat_started',
+                    sessionId: data.sessionId,
+                    astrologerId: data.astrologerId,
+                    astrologerName: data.astrologerName,
+                    ratePerMinute: String(data.ratePerMinute),
+                    startTime: data.startTime,
+                    isFreeTrialSession: String(!!data.isFreeTrialSession),
+                    freeTrialDurationSeconds: String(data.freeTrialDurationSeconds || 0),
+                },
+                android: {
+                    priority: 'high',
+                    ttl: 60 * 1000, // 60s TTL
+                },
+            };
+
+            const response = await admin.messaging().send(message);
+            console.log(`[NotificationService] chat_started FCM sent to user ${userId}: ${response}`);
+            return true;
+        } catch (error: any) {
+            console.error('[NotificationService] Error sending chat_started notification:', error);
+            if (error.code === 'messaging/invalid-registration-token' ||
+                error.code === 'messaging/registration-token-not-registered') {
+                const user = await User.findById(userId);
+                if (user?.fcmToken) await this.cleanupToken(user.fcmToken);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Send a data-only FCM push to the USER when astrologer rejects (CHAT_REJECTED)
+     * Ensures user receives the rejection even if socket is disconnected
+     */
+    async sendChatRejectedNotification(
+        userId: string,
+        sessionId: string,
+        reason: string
+    ): Promise<boolean> {
+        if (!this.initialized) {
+            console.warn('[NotificationService] Not initialized, skipping chat_rejected notification');
+            return false;
+        }
+
+        try {
+            const user = await User.findById(userId);
+            if (!user?.fcmToken) {
+                console.log(`[NotificationService] User ${userId} has no FCM token for chat_rejected`);
+                return false;
+            }
+
+            const message: admin.messaging.Message = {
+                token: user.fcmToken,
+                data: {
+                    type: 'chat_rejected',
+                    sessionId,
+                    reason,
+                },
+                android: {
+                    priority: 'high',
+                    ttl: 30 * 1000,
+                },
+            };
+
+            const response = await admin.messaging().send(message);
+            console.log(`[NotificationService] chat_rejected FCM sent to user ${userId}: ${response}`);
+            return true;
+        } catch (error: any) {
+            console.error('[NotificationService] Error sending chat_rejected notification:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Send a data-only FCM push to BOTH parties when chat ends (CHAT_ENDED)
+     * Ensures both parties are notified even if socket is disconnected
+     */
+    async sendChatEndedNotification(
+        userId: string,
+        astrologerId: string,
+        data: {
+            sessionId: string;
+            endReason: string;
+            totalMinutes: number;
+            totalAmount: number;
+        }
+    ): Promise<void> {
+        if (!this.initialized) return;
+
+        const payload: Record<string, string> = {
+            type: 'chat_ended',
+            sessionId: data.sessionId,
+            endReason: data.endReason,
+            totalMinutes: String(data.totalMinutes),
+            totalAmount: String(data.totalAmount),
+        };
+
+        // Send to user
+        try {
+            const user = await User.findById(userId);
+            if (user?.fcmToken) {
+                const userMsg: admin.messaging.Message = {
+                    token: user.fcmToken,
+                    data: payload,
+                    android: { priority: 'high', ttl: 60 * 1000 },
+                };
+                await admin.messaging().send(userMsg);
+                console.log(`[NotificationService] chat_ended FCM sent to user ${userId}`);
+            }
+        } catch (err) {
+            console.error('[NotificationService] Failed to send chat_ended to user:', err);
+        }
+
+        // Send to astrologer
+        try {
+            let astrologer = await Astrologer.findById(astrologerId);
+            if (!astrologer) astrologer = await Astrologer.findOne({ userId: astrologerId });
+            if (astrologer?.fcmToken) {
+                const astroMsg: admin.messaging.Message = {
+                    token: astrologer.fcmToken,
+                    data: payload,
+                    android: { priority: 'high', ttl: 60 * 1000 },
+                };
+                await admin.messaging().send(astroMsg);
+                console.log(`[NotificationService] chat_ended FCM sent to astrologer ${astrologerId}`);
+            }
+        } catch (err) {
+            console.error('[NotificationService] Failed to send chat_ended to astrologer:', err);
+        }
+    }
+
+    /**
      * Send a data-only FCM push to cancel the incoming call notification
      * This ensures the astrologer's background handler cancels the notification
      * even when the socket is disconnected (app killed or in background)

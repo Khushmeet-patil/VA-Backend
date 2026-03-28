@@ -352,6 +352,18 @@ class ChatService {
             });
         }
 
+        // FCM BACKUP: Send data-only push to USER so they receive CHAT_STARTED
+        // even if their socket connection died (background/killed state)
+        notificationService.sendChatStartedNotification(session.userId.toString(), {
+            sessionId,
+            astrologerId: session.astrologerId.toString(),
+            astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
+            ratePerMinute: session.ratePerMinute,
+            startTime: session.startTime?.toISOString() || new Date().toISOString(),
+            isFreeTrialSession: session.isFreeTrialSession || false,
+            freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
+        }).catch(err => console.error('[ChatService] FCM chat_started push failed:', err));
+
         return session;
     }
 
@@ -440,6 +452,13 @@ class ChatService {
                 reason: 'Astrologer declined the request'
             });
         }
+
+        // FCM BACKUP: Send to user in case socket is dead
+        notificationService.sendChatRejectedNotification(
+            session.userId.toString(),
+            sessionId,
+            'Astrologer declined the request'
+        ).catch(err => console.error('[ChatService] FCM chat_rejected push failed:', err));
     }
 
     /**
@@ -744,6 +763,18 @@ class ChatService {
             // Send to astrologer (standard payload)
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_ENDED', endPayload);
         }
+
+        // FCM BACKUP: Send to both parties in case their socket is dead
+        notificationService.sendChatEndedNotification(
+            session.userId.toString(),
+            session.astrologerId.toString(),
+            {
+                sessionId,
+                endReason,
+                totalMinutes: session.totalMinutes,
+                totalAmount: session.totalAmount,
+            }
+        ).catch(err => console.error('[ChatService] FCM chat_ended push failed:', err));
 
         return session;
     }
