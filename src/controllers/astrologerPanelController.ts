@@ -409,7 +409,8 @@ export const toggleStatus = async (req: Request, res: Response) => {
                 body: `${astrologer.firstName} ${astrologer.lastName} is now available for consultation.`
             }, {
                 type: 'astrologer_online',
-                astrologerId: astrologer._id.toString()
+                astrologerId: astrologer._id.toString(),
+                id: astrologer._id.toString()
             }).catch(err => console.error('[toggleStatus] Broadcast error:', err));
         }
 
