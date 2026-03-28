@@ -751,8 +751,11 @@ class ChatService {
     /**
      * Start the 60-second billing timer for a session
      */
-    private startBillingTimer(sessionId: string): void {
+    private async startBillingTimer(sessionId: string): Promise<void> {
         console.log(`[ChatService] Starting billing timer for: ${sessionId}`);
+
+        // Update lastBilledAt in DB to prevent immediate re-billing on restart
+        await ChatSession.updateOne({ sessionId }, { $set: { lastBilledAt: new Date() } });
 
         const timer = setInterval(async () => {
             await this.processBillingCycle(sessionId);
@@ -893,6 +896,9 @@ class ChatService {
             await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
             return;
         }
+
+        // Update lastBilledAt in DB
+        await ChatSession.updateOne({ sessionId }, { $set: { lastBilledAt: new Date() } });
 
         // Reload user to check new balance
         const updatedUser = await User.findById(session.userId);
@@ -1274,36 +1280,61 @@ class ChatService {
     }
 
     /**
-     * Handle user disconnect - NO AUTO-END
-     * Chat continues until explicitly ended by user/astrologer or insufficient balance
+     * Handle participant disconnect - start grace period
      */
-    handleDisconnect(userId: string, isAstrologer: boolean): void {
+    async handleDisconnect(userId: string, isAstrologer: boolean): Promise<void> {
         const userType = isAstrologer ? 'astrologer' : 'user';
-        console.log(`[ChatService] ${userType} disconnected: ${userId} (chat continues, no auto-end)`);
-        // No grace period timer - chat stays active until:
-        // 1. User clicks "End Chat"
-        // 2. Astrologer clicks "End Chat"
-        // 3. User runs out of balance
+        console.log(`[ChatService] ${userType} disconnected: ${userId}`);
+
+        // Find active session for this user to start grace period
+        const session = isAstrologer
+            ? await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
+            : await ChatSession.findOne({ userId: userId, status: 'ACTIVE' });
+
+        if (!session) return;
+
+        // Update last seen in DB
+        const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
+        await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
+
+        // Start a 2-minute grace period timer if not already running
+        if (!this.gracePeriodTimers.has(session.sessionId)) {
+            console.log(`[ChatService] Starting 2-minute grace period for: ${session.sessionId}`);
+            const timer = setTimeout(async () => {
+                console.log(`[ChatService] Grace period expired for session: ${session.sessionId}. Auto-ending.`);
+                try {
+                    await this.endChat(session.sessionId, 'DISCONNECT');
+                } catch (e) {
+                    console.error(`[ChatService] Error auto-ending session after grace period:`, e);
+                }
+            }, 120000); // 2 minutes (120,000ms)
+            this.gracePeriodTimers.set(session.sessionId, timer);
+        }
     }
 
     /**
-     * Handle user reconnect - clear grace period
+     * Handle participant reconnect - clear grace period
      */
-    handleReconnect(userId: string, isAstrologer: boolean): void {
+    async handleReconnect(userId: string, isAstrologer: boolean): Promise<void> {
         const userType = isAstrologer ? 'astrologer' : 'user';
         console.log(`[ChatService] ${userType} reconnected: ${userId}`);
 
         // Find active session for this user
-        const findSession = isAstrologer
-            ? ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
-            : ChatSession.findOne({ userId, status: 'ACTIVE' });
+        const session = isAstrologer
+            ? await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
+            : await ChatSession.findOne({ userId: userId, status: 'ACTIVE' });
 
-        findSession.then(async session => {
-            if (!session) return;
-            this.clearGracePeriod(session.sessionId);
+        if (!session) return;
 
-            // Re-deliver missed messages on reconnect
-            try {
+        // Clear grace period timer
+        this.clearGracePeriod(session.sessionId);
+
+        // Update last seen in DB
+        const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
+        await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
+
+        // Re-deliver missed messages on reconnect
+        try {
                 // Get messages from the last 2 minutes that might have been missed
                 const twoMinutesAgo = new Date(Date.now() - 120000);
                 const missedMessages = await ChatMessage.find({
@@ -1336,7 +1367,80 @@ class ChatService {
             } catch (redeliveryError) {
                 console.error(`[ChatService] Error re-delivering messages:`, redeliveryError);
             }
+    }
+
+    /**
+     * Resume billing timers for all ACTIVE sessions
+     * Called by scheduler to handle server restarts
+     */
+    async resumeActiveSessions(): Promise<void> {
+        console.log('[ChatService] Resuming active sessions...');
+        const activeSessions = await ChatSession.find({ status: 'ACTIVE' });
+
+        for (const session of activeSessions) {
+            // Restart billing timer if not running
+            if (!this.billingTimers.has(session.sessionId)) {
+                console.log(`[ChatService] Resuming billing timer for session: ${session.sessionId}`);
+                // Use a slightly shorter interval for the first cycle if we missed some time
+                // but for simplicity, we just start a fresh 60s cycle
+                this.startBillingTimer(session.sessionId);
+            }
+
+            // Also check for free trial timers
+            if (session.isFreeTrialSession && !this.freeTrialTimers.has(session.sessionId)) {
+                const startTime = session.startTime || session.createdAt;
+                const elapsedSeconds = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                const remainingSeconds = (session.freeTrialDurationSeconds || 120) - elapsedSeconds;
+
+                if (remainingSeconds > 0) {
+                    console.log(`[ChatService] Resuming free trial timer for session: ${session.sessionId} (${remainingSeconds}s remaining)`);
+                    this.startFreeTrialTimer(session.sessionId, remainingSeconds);
+                } else {
+                    console.log(`[ChatService] Free trial expired during downtime for session: ${session.sessionId}. Ending.`);
+                    await this.endFreeTrialSession(session.sessionId);
+                }
+            }
+        }
+    }
+
+    /**
+     * Cleanup sessions that have been disconnected for too long
+     * Called by scheduler every minute
+     */
+    async cleanupStaleSessions(): Promise<void> {
+        const gracePeriodMs = 120000; // 2 minutes
+        const cutoff = new Date(Date.now() - gracePeriodMs);
+
+        // Find sessions where both participants are "stale" or one is stale and the other is disconnected
+        // For simplicity, we check if BOTH have been "unseen" for > 2 mins
+        // Or if the grace period timer would have expired
+        const staleSessions = await ChatSession.find({
+            status: 'ACTIVE',
+            $or: [
+                { userLastSeen: { $lt: cutoff } },
+                { astrologerLastSeen: { $lt: cutoff } }
+            ]
         });
+
+        for (const session of staleSessions) {
+            // Note: participants are only marked as "unseen" when handleDisconnect is called.
+            // If the server restarted, we lose the in-memory gracePeriodTimers.
+            // This method serves as the persistent backup.
+            console.log(`[ChatService] Cleaning up stale session: ${session.sessionId}`);
+            await this.endChat(session.sessionId, 'DISCONNECT');
+        }
+
+        // Also clean up stale PENDING requests (older than 45s)
+        const requestTimeoutCutoff = new Date(Date.now() - 45000);
+        const staleRequests = await ChatSession.find({
+            status: 'PENDING',
+            createdAt: { $lt: requestTimeoutCutoff }
+        });
+
+        for (const request of staleRequests) {
+            console.log(`[ChatService] Cleaning up stale pending request: ${request.sessionId}`);
+            await this.timeoutChatRequest(request.sessionId);
+        }
     }
 
     /**

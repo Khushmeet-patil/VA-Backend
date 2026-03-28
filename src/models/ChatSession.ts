@@ -28,6 +28,9 @@ export interface IChatSession extends Document {
     };
     userJoined: boolean;
     astrologerJoined: boolean;
+    lastBilledAt?: Date;                // Time of last billing cycle completion
+    userLastSeen?: Date;                // Time user was last seen connected
+    astrologerLastSeen?: Date;          // Time astrologer was last seen connected
     // Continue Chat fields
     isContinuation?: boolean;           // True if this is a continuation of a previous session
     previousSessionId?: string;         // Reference to the previous session's sessionId
@@ -88,6 +91,9 @@ const ChatSessionSchema: Schema = new Schema({
     },
     userJoined: { type: Boolean, default: false },
     astrologerJoined: { type: Boolean, default: false },
+    lastBilledAt: { type: Date },
+    userLastSeen: { type: Date, default: Date.now },
+    astrologerLastSeen: { type: Date, default: Date.now },
     // Continue Chat fields
     isContinuation: { type: Boolean, default: false },
     previousSessionId: { type: String },
