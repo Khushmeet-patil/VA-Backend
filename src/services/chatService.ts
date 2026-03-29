@@ -6,7 +6,6 @@ import ChatReview from '../models/ChatReview';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
-import SystemSetting from '../models/SystemSetting';
 import notificationService from './notificationService';
 
 /**
@@ -126,12 +125,14 @@ class ChatService {
         const ratePerMinute = astrologer.pricePerMin;
 
         // Check if user is eligible for free trial (first-time user)
-        // CRITICAL FIX: Also check if the ASTROLOGER allows free trials.
-        // And don't force free trial if user has sufficient balance (recharged)
-        // as they likely want a longer session than the 2-min trial.
-        const isEligibleForFreeTrial = !user.hasUsedFreeTrial && 
-                                      astrologer.isFreeChatAvailable && 
-                                      user.walletBalance < ratePerMinute * 5;
+        // FREE TRIAL RULES:
+        //   1. User must never have used a free trial before (hasUsedFreeTrial = false)
+        //   2. User must NOT have sufficient paid balance for a proper session.
+        //      If the user recharged, they get a PAID session (not wasted as a 2-min trial).
+        //      Threshold: Less than 5 minutes of paid time = still eligible for free trial.
+        // NOTE: Free trial is a PLATFORM USER benefit, NOT controlled per-astrologer.
+        const isEligibleForFreeTrial = !user.hasUsedFreeTrial &&
+                                      (user.walletBalance < ratePerMinute);
 
         // Check if user has enough balance for at least 1 minute (skip for free trial users)
         if (!isEligibleForFreeTrial && user.walletBalance < ratePerMinute) {
@@ -713,11 +714,13 @@ class ChatService {
                 finalDuration = parseFloat((durationMs / 60000).toFixed(2));
             }
 
-            if (session.isFreeTrialSession && session.startTime) {
-                console.log(`[ChatService] Ended FREE TRIAL session ${sessionId}. Duration: ${finalDuration}m. Marking free trial as used for user ${session.userId}.`);
+            if (session.isFreeTrialSession) {
+                // ALWAYS mark free trial as used — even if session ended before chat started.
+                // This prevents users from exploiting disconnect-reconnect loops for infinite trials.
+                console.log(`[ChatService] Ended FREE TRIAL session ${sessionId}. Duration: ${finalDuration}m. Marking free trial as USED for user ${session.userId}.`);
                 await User.findByIdAndUpdate(session.userId, { hasUsedFreeTrial: true });
             } else {
-                console.log(`[ChatService] Ended session ${sessionId} before billing started.`);
+                console.log(`[ChatService] Ended session ${sessionId} (non-trial), duration: ${finalDuration}m.`);
             }
 
             await ChatSession.findOneAndUpdate(
@@ -790,13 +793,6 @@ class ChatService {
      */
     private async startBillingTimer(sessionId: string): Promise<void> {
         console.log(`[ChatService] Starting billing timer for: ${sessionId}`);
-
-        // CRITICAL: Deduplicate timers if one already exists
-        const existingTimer = this.billingTimers.get(sessionId);
-        if (existingTimer) {
-            console.log(`[ChatService] Clearing existing timer before starting new one for: ${sessionId}`);
-            clearInterval(existingTimer);
-        }
 
         // Update lastBilledAt in DB to prevent immediate re-billing on restart
         await ChatSession.updateOne({ sessionId }, { $set: { lastBilledAt: new Date() } });
@@ -1002,9 +998,10 @@ class ChatService {
         descriptionOverride?: string
     ): Promise<{ success: boolean; realDeducted?: number; bonusDeducted?: number }> {
         try {
-            // 1. Fetch system settings
-            const bonusUsageSetting = await SystemSetting.findOne({ key: 'bonusUsagePercent' });
-            const commissionSetting = await SystemSetting.findOne({ key: 'astrologerCommission' });
+            // Fetch settings for bonus usage and commission
+            const systemSettingModel = mongoose.model('SystemSetting');
+            const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
+            const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
 
             const bonusUsagePercent = bonusUsageSetting?.value ?? 20; // Default 20%
             const astrologerCommission = commissionSetting?.value ?? 40; // Default 40%
@@ -1031,15 +1028,32 @@ class ChatService {
                     bonusBalance: -bonusDeduction
                 }
             };
-            // Only proceed if user has enough balance (safety filter)
+
+            // CRITICAL FIX: Build a safe atomic query that handles null/undefined bonusBalance.
+            // Old MongoDB documents may not have bonusBalance set (it would be null/undefined).
+            // If bonusDeduction == 0 (user has no bonus), we must NOT require bonusBalance >= 0
+            // because MongoDB won't match null values with $gte: 0.
+            // Solution: Only add the bonusBalance constraint if we are actually deducting from it.
+            const atomicQuery: any = {
+                _id: user._id,
+                walletBalance: { $gte: realDeduction },
+            };
+            if (bonusDeduction > 0) {
+                // Only enforce bonus balance constraint when we're actually deducting from it
+                atomicQuery.bonusBalance = { $gte: bonusDeduction };
+            }
+
             const updatedUserDoc = await User.findOneAndUpdate(
-                { _id: user._id, walletBalance: { $gte: realDeduction }, bonusBalance: { $gte: bonusDeduction } },
+                atomicQuery,
                 userUpdate,
                 { new: true }
             );
 
             if (!updatedUserDoc) {
-                console.warn(`[ChatService] User ${user._id} could not afford deduction in atomic update`);
+                // Re-check real balance to give a proper error message
+                const freshUser = await User.findById(user._id);
+                const freshBalance = (freshUser?.walletBalance || 0) + (freshUser?.bonusBalance || 0);
+                console.warn(`[ChatService] Atomic deduction failed for user ${user._id}. Fresh combined balance: ${freshBalance}, required: ${totalToDeduct}`);
                 return { success: false };
             }
 
@@ -1047,8 +1061,8 @@ class ChatService {
             const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
 
             // ============ TDS CALCULATION LOGIC ============
-            const tdsThresholdSetting = await SystemSetting.findOne({ key: 'tdsThreshold' });
-            const tdsRateSetting = await SystemSetting.findOne({ key: 'tdsRate' });
+            const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
+            const tdsRateSetting = await systemSettingModel.findOne({ key: 'tdsRate' });
             const tdsThreshold = tdsThresholdSetting?.value ?? 50000;
             const tdsRate = tdsRateSetting?.value ?? 10;
 
@@ -1140,8 +1154,7 @@ class ChatService {
             return { success: true, realDeducted: realDeduction, bonusDeducted: bonusDeduction };
 
         } catch (error: any) {
-            console.error(`[ChatService] Payment process failed for session ${session.sessionId}:`, error?.message || error);
-            if (error.stack) console.error(error.stack);
+            console.error('[ChatService] Payment process failed:', error?.message || error);
             return { success: false };
         }
     }
