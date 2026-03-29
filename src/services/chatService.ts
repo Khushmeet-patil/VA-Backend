@@ -6,6 +6,7 @@ import ChatReview from '../models/ChatReview';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
+import SystemSetting from '../models/SystemSetting';
 import notificationService from './notificationService';
 
 /**
@@ -125,7 +126,12 @@ class ChatService {
         const ratePerMinute = astrologer.pricePerMin;
 
         // Check if user is eligible for free trial (first-time user)
-        const isEligibleForFreeTrial = !user.hasUsedFreeTrial;
+        // CRITICAL FIX: Also check if the ASTROLOGER allows free trials.
+        // And don't force free trial if user has sufficient balance (recharged)
+        // as they likely want a longer session than the 2-min trial.
+        const isEligibleForFreeTrial = !user.hasUsedFreeTrial && 
+                                      astrologer.isFreeChatAvailable && 
+                                      user.walletBalance < ratePerMinute * 5;
 
         // Check if user has enough balance for at least 1 minute (skip for free trial users)
         if (!isEligibleForFreeTrial && user.walletBalance < ratePerMinute) {
@@ -785,6 +791,13 @@ class ChatService {
     private async startBillingTimer(sessionId: string): Promise<void> {
         console.log(`[ChatService] Starting billing timer for: ${sessionId}`);
 
+        // CRITICAL: Deduplicate timers if one already exists
+        const existingTimer = this.billingTimers.get(sessionId);
+        if (existingTimer) {
+            console.log(`[ChatService] Clearing existing timer before starting new one for: ${sessionId}`);
+            clearInterval(existingTimer);
+        }
+
         // Update lastBilledAt in DB to prevent immediate re-billing on restart
         await ChatSession.updateOne({ sessionId }, { $set: { lastBilledAt: new Date() } });
 
@@ -989,10 +1002,9 @@ class ChatService {
         descriptionOverride?: string
     ): Promise<{ success: boolean; realDeducted?: number; bonusDeducted?: number }> {
         try {
-            // Fetch settings for bonus usage and commission
-            const systemSettingModel = mongoose.model('SystemSetting');
-            const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
-            const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
+            // 1. Fetch system settings
+            const bonusUsageSetting = await SystemSetting.findOne({ key: 'bonusUsagePercent' });
+            const commissionSetting = await SystemSetting.findOne({ key: 'astrologerCommission' });
 
             const bonusUsagePercent = bonusUsageSetting?.value ?? 20; // Default 20%
             const astrologerCommission = commissionSetting?.value ?? 40; // Default 40%
@@ -1035,8 +1047,8 @@ class ChatService {
             const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
 
             // ============ TDS CALCULATION LOGIC ============
-            const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
-            const tdsRateSetting = await systemSettingModel.findOne({ key: 'tdsRate' });
+            const tdsThresholdSetting = await SystemSetting.findOne({ key: 'tdsThreshold' });
+            const tdsRateSetting = await SystemSetting.findOne({ key: 'tdsRate' });
             const tdsThreshold = tdsThresholdSetting?.value ?? 50000;
             const tdsRate = tdsRateSetting?.value ?? 10;
 
@@ -1128,7 +1140,8 @@ class ChatService {
             return { success: true, realDeducted: realDeduction, bonusDeducted: bonusDeduction };
 
         } catch (error: any) {
-            console.error('[ChatService] Payment process failed:', error?.message || error);
+            console.error(`[ChatService] Payment process failed for session ${session.sessionId}:`, error?.message || error);
+            if (error.stack) console.error(error.stack);
             return { success: false };
         }
     }
