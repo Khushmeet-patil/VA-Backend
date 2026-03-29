@@ -1215,14 +1215,14 @@ class ChatService {
         try {
             const systemSettingModel = mongoose.model('SystemSetting');
             const freeChatRateSetting = await systemSettingModel.findOne({ key: 'freeChatRate' });
-            const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
+            const freeChatCommissionSetting = await systemSettingModel.findOne({ key: 'freeChatCommission' });
 
             const freeChatRate = Number(freeChatRateSetting?.value ?? 4); // Default ₹4 gross flat rate
-            const astrologerCommission = Number(commissionSetting?.value ?? 40);
+            const freeChatCommission = Number(freeChatCommissionSetting?.value ?? 50);
 
             if (freeChatRate <= 0) return; // No payout configured
 
-            const astrologerShare = Math.round((freeChatRate * astrologerCommission / 100) * 100) / 100;
+            const astrologerShare = Math.round((freeChatRate * freeChatCommission / 100) * 100) / 100;
             const astrologer = await Astrologer.findById(session.astrologerId);
             if (!astrologer) return;
 
