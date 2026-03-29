@@ -1075,11 +1075,11 @@ class ChatService {
             // Solution: Only add the bonusBalance constraint if we are actually deducting from it.
             const atomicQuery: any = {
                 _id: user._id,
-                walletBalance: { $gte: realDeduction },
+                walletBalance: { $gte: realDeduction - 0.005 },
             };
             if (bonusDeduction > 0) {
                 // Only enforce bonus balance constraint when we're actually deducting from it
-                atomicQuery.bonusBalance = { $gte: bonusDeduction };
+                atomicQuery.bonusBalance = { $gte: bonusDeduction - 0.005 };
             }
 
             const updatedUserDoc = await User.findOneAndUpdate(
