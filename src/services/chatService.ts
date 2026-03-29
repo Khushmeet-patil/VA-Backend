@@ -324,7 +324,7 @@ class ChatService {
         // Fetch bonus usage setting for timer calculation
         const systemSettingModel = mongoose.model('SystemSetting');
         const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
-        const bonusUsagePercent = bonusUsageSetting?.value ?? 20;
+        const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20);
 
         // Emit CHAT_STARTED to both user and astrologer
         if (this.io) {
@@ -421,13 +421,9 @@ class ChatService {
             await session.save();
 
             if (session.isFreeTrialSession) {
-                // Free trial - start countdown timer
-                this.startFreeTrialTimer(sessionId, session.freeTrialDurationSeconds || 120);
-                console.log(`[ChatService] Both participants joined. FREE TRIAL TIMER STARTED for: ${sessionId}`);
+                console.log(`[ChatService] Both participants joined for session: ${sessionId}. (Free trial timer should already be running)`);
             } else {
-                // Regular paid session - start billing timer
-                this.startBillingTimer(sessionId);
-                console.log(`[ChatService] Both participants joined. STARTING BILLING for: ${sessionId}`);
+                console.log(`[ChatService] Both participants joined for session: ${sessionId}. (Billing timer should already be running)`);
             }
 
             // Notify clients that timer has started
@@ -809,6 +805,10 @@ class ChatService {
      * Start the 60-second billing timer for a session
      */
     private async startBillingTimer(sessionId: string): Promise<void> {
+        if (this.billingTimers.has(sessionId)) {
+            console.log(`[ChatService] Billing timer ALREADY RUNNING for: ${sessionId}. Skipping duplicate start.`);
+            return;
+        }
         console.log(`[ChatService] Starting billing timer for: ${sessionId}`);
 
         // Update lastBilledAt in DB to prevent immediate re-billing on restart
@@ -838,6 +838,10 @@ class ChatService {
      * Auto-ends the session after the trial duration
      */
     private async startFreeTrialTimer(sessionId: string, durationSeconds: number): Promise<void> {
+        if (this.freeTrialTimers.has(sessionId)) {
+            console.log(`[ChatService] Free trial timer ALREADY RUNNING for: ${sessionId}. Skipping duplicate start.`);
+            return;
+        }
         console.log(`[ChatService] Starting FREE TRIAL timer for: ${sessionId}, duration: ${durationSeconds}s`);
 
         const session = await ChatSession.findOne({ sessionId });
@@ -940,7 +944,7 @@ class ChatService {
         // Fetch bonus usage setting
         const systemSettingModel = mongoose.model('SystemSetting');
         const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
-        const bonusUsagePercent = bonusUsageSetting?.value ?? 20;
+        const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20);
 
         const realBalance = user.walletBalance || 0;
         const bonusBalance = user.bonusBalance || 0;
@@ -950,6 +954,11 @@ class ChatService {
             ? bonusBalance 
             : realBalance * (bonusUsagePercent / (100 - bonusUsagePercent));
         const effectiveBalance = realBalance + Math.min(bonusBalance, maxBonusUsage);
+
+        console.log(`[ChatService] Billing Cycle Diagnostic [${sessionId}]: ` +
+                    `Real:₹${realBalance.toFixed(2)}, Bonus:₹${bonusBalance.toFixed(2)}, ` +
+                    `BonusUsage%: ${bonusUsagePercent}%, MaxBonus:₹${maxBonusUsage.toFixed(2)}, ` +
+                    `Effective:₹${effectiveBalance.toFixed(2)}, Rate:₹${ratePerMinute}/min`);
 
         // Terminate if user can no longer afford even 1 minute
         if (effectiveBalance < ratePerMinute) {
@@ -1033,8 +1042,8 @@ class ChatService {
             const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
             const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
 
-            const bonusUsagePercent = bonusUsageSetting?.value ?? 20; // Default 20%
-            const astrologerCommission = commissionSetting?.value ?? 40; // Default 40%
+            const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20); // Default 20%
+            const astrologerCommission = Number(commissionSetting?.value ?? 40); // Default 40%
 
             const ratePerMinute = session.ratePerMinute;
             const rawAmount = amountOverride !== undefined ? amountOverride : ratePerMinute;
@@ -1082,8 +1091,13 @@ class ChatService {
             if (!updatedUserDoc) {
                 // Re-check real balance to give a proper error message
                 const freshUser = await User.findById(user._id);
-                const freshBalance = (freshUser?.walletBalance || 0) + (freshUser?.bonusBalance || 0);
-                console.warn(`[ChatService] Atomic deduction failed for user ${user._id}. Fresh combined balance: ${freshBalance}, required: ${totalToDeduct}`);
+                const freshCombined = (freshUser?.walletBalance || 0) + (freshUser?.bonusBalance || 0);
+                
+                console.warn(`[ChatService] Atomic deduction FAILED for user ${user._id}: ` +
+                             `Target: Real>=₹${realDeduction}, Bonus>=₹${bonusDeduction}. ` +
+                             `Fresh: Wallet:₹${freshUser?.walletBalance}, Bonus:₹${freshUser?.bonusBalance}, Combined:₹${freshCombined.toFixed(2)}. ` +
+                             `Total required for cycle: ₹${totalToDeduct}`);
+                
                 return { success: false };
             }
 
