@@ -5,6 +5,7 @@ export interface IStartPopup extends Document {
     imageUrl: string;          // Cloudflare R2 URL
     navigationType: 'app_route' | 'external_url' | 'none';
     navigationValue?: string;  // Route name or URL
+    targetApp: 'user' | 'astrologer'; // Target application
     isActive: boolean;         // Enable/disable pop-up
     showOnStart: boolean;      // Show pop-up when app starts
     dailyLimit: number;        // Max times to show per user per day
@@ -20,6 +21,11 @@ const StartPopupSchema: Schema = new Schema({
         default: 'none'
     },
     navigationValue: { type: String },
+    targetApp: {
+        type: String,
+        enum: ['user', 'astrologer'],
+        default: 'user'
+    },
     isActive: { type: Boolean, default: true },
     showOnStart: { type: Boolean, default: false },
     dailyLimit: { type: Number, default: 1 },

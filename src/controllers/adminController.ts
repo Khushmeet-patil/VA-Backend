@@ -2388,7 +2388,18 @@ export const getStartPopups = async (req: Request, res: Response) => {
 
 export const getActiveStartPopups = async (req: Request, res: Response) => {
     try {
-        const popups = await StartPopup.find({ isActive: true }).sort({ createdAt: -1 });
+        const { app } = req.query; // e.g., ?app=astrologer
+        
+        let query: any = { isActive: true };
+        
+        if (app) {
+            query.targetApp = app;
+        } else {
+            // Default backward compatibility: show popups meant for users
+            query.targetApp = { $in: ['user', null, undefined] };
+        }
+
+        const popups = await StartPopup.find(query).sort({ createdAt: -1 });
 
         // Prevent caching for real-time pop-ups
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -2403,7 +2414,7 @@ export const getActiveStartPopups = async (req: Request, res: Response) => {
 
 export const createStartPopup = async (req: Request, res: Response) => {
     try {
-        const { imageBase64, navigationType, navigationValue, isActive, showOnStart, dailyLimit } = req.body;
+        const { imageBase64, navigationType, navigationValue, targetApp, isActive, showOnStart, dailyLimit } = req.body;
 
         if (!imageBase64) {
             return res.status(400).json({ success: false, message: 'Image is required' });
@@ -2418,6 +2429,7 @@ export const createStartPopup = async (req: Request, res: Response) => {
             imageUrl,
             navigationType,
             navigationValue,
+            targetApp: targetApp || 'user',
             isActive: isActive !== undefined ? isActive : true,
             showOnStart: showOnStart !== undefined ? showOnStart : false,
             dailyLimit: dailyLimit !== undefined ? dailyLimit : 1
@@ -2434,7 +2446,7 @@ export const createStartPopup = async (req: Request, res: Response) => {
 export const updateStartPopup = async (req: Request, res: Response) => {
     try {
         const { popupId } = req.params;
-        const { imageBase64, navigationType, navigationValue, isActive, showOnStart, dailyLimit } = req.body;
+        const { imageBase64, navigationType, navigationValue, targetApp, isActive, showOnStart, dailyLimit } = req.body;
 
         const popup = await StartPopup.findById(popupId);
         if (!popup) {
@@ -2448,6 +2460,10 @@ export const updateStartPopup = async (req: Request, res: Response) => {
             showOnStart: showOnStart !== undefined ? showOnStart : false,
             dailyLimit: dailyLimit !== undefined ? dailyLimit : 1
         };
+
+        if (targetApp) {
+            updateData.targetApp = targetApp;
+        }
 
         if (imageBase64) {
             // Delete old image if new one is provided
