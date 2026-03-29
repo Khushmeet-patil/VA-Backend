@@ -732,6 +732,11 @@ class ChatService {
                 // This prevents users from exploiting disconnect-reconnect loops for infinite trials.
                 console.log(`[ChatService] Ended FREE TRIAL session ${sessionId}. Duration: ${finalDuration}m. Marking free trial as USED for user ${session.userId}.`);
                 await User.findByIdAndUpdate(session.userId, { hasUsedFreeTrial: true });
+
+                // Process free chat system payout to astrologer if the chat actually started
+                if (session.startTime) {
+                    await this.processFreeChatPayout(session);
+                }
             } else {
                 console.log(`[ChatService] Ended session ${sessionId} (non-trial), duration: ${finalDuration}m.`);
             }
@@ -1200,6 +1205,107 @@ class ChatService {
         } catch (error: any) {
             console.error('[ChatService] Payment process failed:', error?.message || error);
             return { success: false };
+        }
+    }
+
+    /**
+     * Process system payout to astrologer for a completed free chat
+     */
+    private async processFreeChatPayout(session: IChatSession): Promise<void> {
+        try {
+            const systemSettingModel = mongoose.model('SystemSetting');
+            const freeChatRateSetting = await systemSettingModel.findOne({ key: 'freeChatRate' });
+            const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
+
+            const freeChatRate = Number(freeChatRateSetting?.value ?? 4); // Default ₹4 gross flat rate
+            const astrologerCommission = Number(commissionSetting?.value ?? 40);
+
+            if (freeChatRate <= 0) return; // No payout configured
+
+            const astrologerShare = Math.round((freeChatRate * astrologerCommission / 100) * 100) / 100;
+            const astrologer = await Astrologer.findById(session.astrologerId);
+            if (!astrologer) return;
+
+            // ============ TDS CALCULATION LOGIC ============
+            const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
+            const tdsRateSetting = await systemSettingModel.findOne({ key: 'tdsRate' });
+            const tdsThreshold = tdsThresholdSetting?.value ?? 50000;
+            const tdsRate = tdsRateSetting?.value ?? 10;
+
+            const now = new Date();
+            const currentFYStart = new Date(now.getFullYear(), 3, 1);
+            if (now.getMonth() < 3) currentFYStart.setFullYear(now.getFullYear() - 1);
+
+            let fyResetUpdate: any = {};
+            if (!astrologer.yearlyEarningsStartDate || new Date(astrologer.yearlyEarningsStartDate) < currentFYStart) {
+                fyResetUpdate = {
+                    yearlyEarningsStartDate: currentFYStart,
+                    yearlyGrossEarnings: 0,
+                    yearlyTdsDeducted: 0
+                };
+            }
+
+            const previousYearlyEarnings = fyResetUpdate.yearlyGrossEarnings ?? (astrologer.yearlyGrossEarnings || 0);
+            const newYearlyEarnings = previousYearlyEarnings + astrologerShare;
+
+            let tdsDeduction = 0;
+            let netAstrologerShare = astrologerShare;
+
+            if (newYearlyEarnings > tdsThreshold) {
+                if (previousYearlyEarnings <= tdsThreshold) {
+                    tdsDeduction = Math.round((newYearlyEarnings * tdsRate / 100) * 100) / 100;
+                } else {
+                    tdsDeduction = Math.round((astrologerShare * tdsRate / 100) * 100) / 100;
+                }
+                netAstrologerShare = Math.round((astrologerShare - tdsDeduction) * 100) / 100;
+            }
+
+            // Atomic update for Astrologer earnings and FY tracking
+            await Astrologer.updateOne(
+                { _id: astrologer._id },
+                {
+                    $inc: {
+                        earnings: netAstrologerShare,
+                        yearlyGrossEarnings: astrologerShare,
+                        yearlyTdsDeducted: tdsDeduction
+                    },
+                    $set: {
+                        yearlyEarningsStartDate: fyResetUpdate.yearlyEarningsStartDate || astrologer.yearlyEarningsStartDate
+                    }
+                }
+            );
+
+            // ATOMIC STEP: Update Session Totals
+            const updatedSessionDoc = await ChatSession.findOneAndUpdate(
+                { sessionId: session.sessionId },
+                {
+                    $inc: {
+                        astrologerEarnings: astrologerShare,
+                        astrologerNetEarnings: netAstrologerShare
+                    }
+                },
+                { new: true }
+            );
+
+            if (updatedSessionDoc) {
+                session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
+                (session as any).astrologerNetEarnings = (updatedSessionDoc as any).astrologerNetEarnings;
+            }
+
+            // ATOMIC STEP: Create Transaction Record
+            const transaction = new Transaction({
+                fromUser: session.userId,
+                toAstrologer: astrologer._id,
+                amount: freeChatRate, // Gross amount mapping
+                type: 'credit', // Mark as credit so it doesn't appear as a debit to the user, or it appears as a payout
+                status: 'success',
+                description: `Free Chat System Payment: ${session.sessionId} (Base: ₹${freeChatRate}, Astro: ₹${astrologerShare})`
+            });
+            await transaction.save();
+
+            console.log(`[ChatService] Free Chat Payout processed: Base=₹${freeChatRate}, AstroEarns=₹${astrologerShare}`);
+        } catch (error: any) {
+            console.error('[ChatService] Free Chat Payout failed:', error?.message || error);
         }
     }
 
