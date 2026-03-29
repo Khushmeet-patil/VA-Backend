@@ -123,20 +123,20 @@ class ChatService {
         }
 
         const ratePerMinute = astrologer.pricePerMin;
+        const minRealBalanceRequired = ratePerMinute * 5;
 
         // Check if user is eligible for free trial (first-time user)
         // FREE TRIAL RULES:
         //   1. User must never have used a free trial before (hasUsedFreeTrial = false)
-        //   2. User must NOT have sufficient paid balance for a proper session.
-        //      If the user recharged, they get a PAID session (not wasted as a 2-min trial).
-        //      Threshold: Less than 5 minutes of paid time = still eligible for free trial.
+        //   2. User must NOT have sufficient REAL paid balance for a 5-minute session.
+        //      If the user has enough money, they get a PAID session.
         // NOTE: Free trial is a PLATFORM USER benefit, NOT controlled per-astrologer.
         const isEligibleForFreeTrial = !user.hasUsedFreeTrial &&
-                                      (user.walletBalance < ratePerMinute);
+                                      (user.walletBalance < minRealBalanceRequired);
 
-        // Check if user has enough balance for at least 1 minute (skip for free trial users)
-        if (!isEligibleForFreeTrial && user.walletBalance < ratePerMinute) {
-            throw new Error(`Insufficient balance. Minimum ₹${ratePerMinute} required.`);
+        // Check if user has enough REAL balance for at least 5 mins (skip for free trial users)
+        if (!isEligibleForFreeTrial && user.walletBalance < minRealBalanceRequired) {
+            throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes of chat.`);
         }
 
         // Check for existing pending request from this user
@@ -249,13 +249,14 @@ class ChatService {
             throw new Error('User not found');
         }
 
-        if (!session.isFreeTrialSession && user.walletBalance < session.ratePerMinute) {
+        const minRealBalanceRequired = session.ratePerMinute * 5;
+        if (!session.isFreeTrialSession && user.walletBalance < minRealBalanceRequired) {
             // Atomic update to fail
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
                 { status: 'ENDED', endReason: 'INSUFFICIENT_BALANCE' }
             );
-            throw new Error('User has insufficient balance');
+            throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes.`);
         }
 
         // Lock astrologer (prevent concurrent chats)
@@ -320,42 +321,58 @@ class ChatService {
             console.log(`[ChatService] Chat accepted and BILLING STARTED: ${sessionId}`);
         }
 
-        // Emit CHAT_STARTED to both user and astrologer with startTime
+        // Fetch bonus usage setting for timer calculation
+        const systemSettingModel = mongoose.model('SystemSetting');
+        const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
+        const bonusUsagePercent = bonusUsageSetting?.value ?? 20;
+
+        // Emit CHAT_STARTED to both user and astrologer
         if (this.io) {
-            this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
+            const chatStartedData = {
                 sessionId,
                 startTime: session.startTime,
                 ratePerMinute: session.ratePerMinute,
-                astrologerId: session.astrologerId,
-                astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
                 status: 'ACTIVE',
-                intakeDetails: session.intakeDetails, // Pass for auto-message
-                sharedProfiles: session.sharedProfiles, // Pass shared profiles to frontend
-                // Free trial info
                 isFreeTrialSession: session.isFreeTrialSession || false,
                 freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
+            };
+
+            this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
+                ...chatStartedData,
+                astrologerId: session.astrologerId,
+                astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
+                intakeDetails: session.intakeDetails,
+                sharedProfiles: session.sharedProfiles,
             });
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
-                sessionId,
-                startTime: session.startTime,
-                ratePerMinute: session.ratePerMinute,
+                ...chatStartedData,
                 userId: session.userId,
                 userName: user.name || 'User',
-                status: 'ACTIVE',
-                // Free trial info for astrologer
-                isFreeTrialSession: session.isFreeTrialSession || false,
-                freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
             });
 
-            // Also emit TIMER_STARTED immediately
+            // Also emit TIMER_STARTED immediately with duration
+            const realBalance = user.walletBalance || 0;
+            const bonusBalance = user.bonusBalance || 0;
+            
+            const maxBonusUsage = bonusUsagePercent >= 100 
+                ? bonusBalance 
+                : realBalance * (bonusUsagePercent / (100 - bonusUsagePercent));
+            
+            const effectiveBalance = realBalance + Math.min(bonusBalance, maxBonusUsage);
+            const remainingSeconds = session.isFreeTrialSession 
+                ? (session.freeTrialDurationSeconds || 120) 
+                : Math.floor((effectiveBalance / session.ratePerMinute) * 60);
+
             this.io.to(`user:${session.userId}`).emit('TIMER_STARTED', {
                 sessionId,
-                startTime: session.startTime
+                remainingSeconds,
+                isFreeTrial: session.isFreeTrialSession || false
             });
             this.io.to(`astrologer:${session.astrologerId}`).emit('TIMER_STARTED', {
                 sessionId,
-                startTime: session.startTime
+                remainingSeconds,
+                isFreeTrial: session.isFreeTrialSession || false
             });
         }
 
@@ -920,10 +937,23 @@ class ChatService {
 
         const ratePerMinute = session.ratePerMinute;
 
-        // CRITICAL: Check if user can afford BEFORE deducting (combined wallets)
-        const combinedBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
-        if (combinedBalance < ratePerMinute) {
-            console.log(`[ChatService] Insufficient combined balance, ending chat: ${sessionId}`);
+        // Fetch bonus usage setting
+        const systemSettingModel = mongoose.model('SystemSetting');
+        const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
+        const bonusUsagePercent = bonusUsageSetting?.value ?? 20;
+
+        const realBalance = user.walletBalance || 0;
+        const bonusBalance = user.bonusBalance || 0;
+
+        // Duration calculation
+        const maxBonusUsage = bonusUsagePercent >= 100 
+            ? bonusBalance 
+            : realBalance * (bonusUsagePercent / (100 - bonusUsagePercent));
+        const effectiveBalance = realBalance + Math.min(bonusBalance, maxBonusUsage);
+
+        // Terminate if user can no longer afford even 1 minute
+        if (effectiveBalance < ratePerMinute) {
+            console.log(`[ChatService] Effective balance depleted (${effectiveBalance}), ending chat: ${sessionId}`);
             await this.endChat(sessionId, 'INSUFFICIENT_BALANCE');
             return;
         }
@@ -1480,6 +1510,18 @@ class ChatService {
         });
 
         for (const session of staleSessions) {
+            // 1. Fetch participants (User and Astrologer)
+            const user = await User.findById(session.userId);
+            if (!user) {
+                throw new Error('User not found during chat termination');
+            }
+
+            // NEW: Mark user as having used their free trial if the session was ACTIVE
+            // This prevents users from getting multiple trials or using a trial after a paid session
+            if (session.status === 'ACTIVE') {
+                await User.findByIdAndUpdate(session.userId, { hasUsedFreeTrial: true });
+                console.log(`[ChatService] Marking user ${session.userId} as hasUsedFreeTrial = true`);
+            }
             // Note: participants are only marked as "unseen" when handleDisconnect is called.
             // If the server restarted, we lose the in-memory gracePeriodTimers.
             // This method serves as the persistent backup.
