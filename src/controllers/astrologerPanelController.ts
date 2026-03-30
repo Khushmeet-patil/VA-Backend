@@ -433,12 +433,19 @@ export const getStats = async (req: Request, res: Response) => {
 
         // Calculate real earnings from ended chat sessions
         const sessionsStats = await ChatSession.aggregate([
-            { $match: { astrologerId: astrologer._id, status: 'ENDED', astrologerEarnings: { $gt: 0 } } },
+            { $match: { astrologerId: astrologer._id, status: 'ENDED' } },
             {
                 $group: {
                     _id: null,
-                    lifetimeEarnings: { $sum: { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] } },
-                    totalChats: { $sum: 1 },
+                    lifetimeEarnings: { 
+                        $sum: { 
+                            $subtract: [
+                                { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] }, 
+                                { $ifNull: ['$penaltyAmount', 0] }
+                            ] 
+                        } 
+                    },
+                    totalChats: { $sum: { $cond: [{ $gt: ['$astrologerEarnings', 0] }, 1, 0] } },
                     totalDuration: { $sum: '$totalMinutes' }
                 }
             }

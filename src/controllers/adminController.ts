@@ -1129,7 +1129,9 @@ export const getAstrologerDetails = async (req: Request, res: Response) => {
 export const getAstrologerEarnings = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
-        const sessions = await ChatSession.find({ astrologerId, status: 'ENDED' }).sort({ createdAt: -1 });
+        const sessions = await ChatSession.find({ astrologerId, status: 'ENDED' })
+            .populate('userId', 'name mobile')
+            .sort({ createdAt: -1 });
         res.json({ success: true, data: sessions });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });

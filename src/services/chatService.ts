@@ -562,6 +562,10 @@ class ChatService {
                             description: `Penalty for missed free chat session: ${session.sessionId} (Base: ₹${freeChatRate}, Penalty: ₹${penaltyAmount})`
                         });
                         await transaction.save();
+                        
+                        // Update session with penalty amount for history display
+                        session.penaltyAmount = penaltyAmount;
+                        await session.save();
                     }
                 } else {
                     console.log(`[ChatService] Free chat penalty is DISABLED globally. Skipping deduction for astrologer ${astrologer._id}.`);

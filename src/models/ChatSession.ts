@@ -41,6 +41,7 @@ export interface IChatSession extends Document {
     updatedAt: Date;
     sharedProfiles?: any[];             // List of profiles shared in this session
     profileId?: string;                 // ID of the profile used for this chat
+    penaltyAmount?: number;             // Amount deducted if session was missed/timed out
 }
 
 const ChatSessionSchema: Schema = new Schema({
@@ -78,6 +79,7 @@ const ChatSessionSchema: Schema = new Schema({
     totalAmount: { type: Number, default: 0 },
     astrologerEarnings: { type: Number, default: 0 },
     astrologerNetEarnings: { type: Number, default: 0 },
+    penaltyAmount: { type: Number, default: 0 },
     endReason: {
         type: String,
         enum: ['USER_END', 'ASTROLOGER_END', 'INSUFFICIENT_BALANCE', 'DISCONNECT', 'TIMEOUT', 'FREE_TRIAL_ENDED']
