@@ -520,17 +520,71 @@ class ChatService {
             'timeout'
         ).catch(err => console.error('[ChatService] FCM timeout push failed:', err));
 
-        // NEW: Send "Missed Chat" notification to astrologer
+        // NEW: Send "Missed Chat" notification to astrologer with penalty info if applicable
+        let penaltyAmount = 0;
+        const astrologer = await Astrologer.findById(session.astrologerId);
+
+        if (session.isFreeTrialSession && astrologer) {
+            try {
+                const systemSettingModel = mongoose.model('SystemSetting');
+                const freeChatRateSetting = await systemSettingModel.findOne({ key: 'freeChatRate' });
+                const penaltyEnabledSetting = await systemSettingModel.findOne({ key: 'isFreeChatPenaltyEnabled' });
+                const penaltyRateSetting = await systemSettingModel.findOne({ key: 'freeChatPenaltyRate' });
+
+                // Check if penalty is enabled (defaulting to true if not set)
+                const isPenaltyEnabled = penaltyEnabledSetting ? (penaltyEnabledSetting.value === true || penaltyEnabledSetting.value === 'true') : true;
+
+                if (isPenaltyEnabled) {
+                    const freeChatRate = Number(freeChatRateSetting?.value ?? 4);
+                    // Use custom penalty rate or fallback to commission rate (original behavior)
+                    let freeChatPenaltyRate = penaltyRateSetting?.value;
+                    if (freeChatPenaltyRate === undefined || freeChatPenaltyRate === null) {
+                        const freeChatCommissionSetting = await systemSettingModel.findOne({ key: 'freeChatCommission' });
+                        freeChatPenaltyRate = Number(freeChatCommissionSetting?.value ?? 50);
+                    } else {
+                        freeChatPenaltyRate = Number(freeChatPenaltyRate);
+                    }
+
+                    penaltyAmount = Math.round((freeChatRate * freeChatPenaltyRate / 100) * 100) / 100;
+
+                    if (penaltyAmount > 0) {
+                        // Update earnings atomically in memory (will be saved below)
+                        astrologer.earnings = Math.round(((astrologer.earnings || 0) - penaltyAmount) * 100) / 100;
+                        console.log(`[ChatService] Deducting penalty of ₹${penaltyAmount} from astrologer ${astrologer._id} for missed free chat (Rate: ${freeChatPenaltyRate}%).`);
+
+                        // Create transaction for penalty
+                        const transaction = new Transaction({
+                            fromUser: session.userId,
+                            toAstrologer: astrologer._id,
+                            amount: penaltyAmount,
+                            type: 'debit',
+                            status: 'success',
+                            description: `Penalty for missed free chat session: ${session.sessionId} (Base: ₹${freeChatRate}, Penalty: ₹${penaltyAmount})`
+                        });
+                        await transaction.save();
+                    }
+                } else {
+                    console.log(`[ChatService] Free chat penalty is DISABLED globally. Skipping deduction for astrologer ${astrologer._id}.`);
+                }
+            } catch (penaltyErr) {
+                console.error('[ChatService] Error processing missed free chat penalty:', penaltyErr);
+            }
+        }
+
         try {
             const user = await User.findById(session.userId);
             const userName = user ? `${user.name || 'User'}` : 'a user';
             
+            const notificationBody = penaltyAmount > 0
+                ? `You missed a free chat request from ${userName}. A penalty of ₹${penaltyAmount} has been deducted from your wallet balance.`
+                : `You missed a chat request from ${userName}. Please try to stay online for next requests.`;
+
             await notificationService.createAndSendNotification(
                 session.astrologerId.toString(),
                 'astrologer',
                 {
                     title: 'Missed Chat Request',
-                    body: `You missed a chat request from ${userName}. Please try to stay online for next requests.`
+                    body: notificationBody
                 },
                 {
                     navigateType: 'screen',
@@ -543,7 +597,6 @@ class ChatService {
         }
 
         // Increment missedChats for astrologer and handle auto-blocking
-        const astrologer = await Astrologer.findById(session.astrologerId);
         if (astrologer) {
             astrologer.missedChats = (astrologer.missedChats || 0) + 1;
 
@@ -1216,6 +1269,15 @@ class ChatService {
             const systemSettingModel = mongoose.model('SystemSetting');
             const freeChatRateSetting = await systemSettingModel.findOne({ key: 'freeChatRate' });
             const freeChatCommissionSetting = await systemSettingModel.findOne({ key: 'freeChatCommission' });
+            const payoutEnabledSetting = await systemSettingModel.findOne({ key: 'isFreeChatPayoutEnabled' });
+
+            // Check if payout is enabled (defaulting to true if not set)
+            const isPayoutEnabled = payoutEnabledSetting ? (payoutEnabledSetting.value === true || payoutEnabledSetting.value === 'true') : true;
+
+            if (!isPayoutEnabled) {
+                console.log(`[ChatService] Free chat payout is DISABLED. Skipping payout for session: ${session.sessionId}`);
+                return;
+            }
 
             const freeChatRate = Number(freeChatRateSetting?.value ?? 4); // Default ₹4 gross flat rate
             const freeChatCommission = Number(freeChatCommissionSetting?.value ?? 50);
