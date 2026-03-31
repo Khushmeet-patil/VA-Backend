@@ -55,6 +55,7 @@ export interface IUser extends Document {
     fcmTokenUpdatedAt?: Date;  // When FCM token was last updated
     zodiacSign?: string; // User's preferred Zodiac Sign
     activeDeviceId?: string;  // Device ID of the currently logged-in device
+    facebookId?: string; // Facebook unique ID
     createdAt: Date;
 }
 
@@ -109,6 +110,7 @@ const UserSchema: Schema = new Schema({
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated
     zodiacSign: { type: String }, // User's preferred Zodiac Sign
     activeDeviceId: { type: String },  // Device ID of the currently logged-in device
+    facebookId: { type: String, unique: true, sparse: true }, // Facebook unique ID
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);

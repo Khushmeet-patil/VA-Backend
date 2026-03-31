@@ -1,7 +1,7 @@
-
 import { Request, Response } from 'express';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
+import axios from 'axios';
 import { sendSmsOtp } from '../services/smsService';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -814,5 +814,84 @@ export const verifyPayment = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('[Auth] Verify Payment Error:', error);
         res.status(500).json({ success: false, message: 'Payment verification failed', error: error.message });
+    }
+};
+
+// Facebook Social Login
+export const facebookLogin = async (req: Request, res: Response) => {
+    try {
+        const { accessToken, deviceId } = req.body;
+
+        if (!accessToken) {
+            return res.status(400).json({ success: false, message: 'Facebook access token is required' });
+        }
+
+        // 1. Verify token with Facebook Graph API
+        const fbResponse = await axios.get(`https://graph.facebook.com/me?fields=id,name,email&access_token=${accessToken}`);
+        const { id: facebookId, name, email } = fbResponse.data;
+
+        if (!facebookId) {
+            return res.status(401).json({ success: false, message: 'Invalid Facebook token' });
+        }
+
+        // 2. Find existing user by facebookId
+        let user = await User.findOne({ facebookId });
+
+        if (!user) {
+            // 3. Fallback: Find by email if available
+            if (email) {
+                user = await User.findOne({ email });
+                if (user) {
+                    // Link Facebook to existing account
+                    user.facebookId = facebookId;
+                }
+            }
+        }
+
+        if (!user) {
+            // 4. Create new user if not found
+            // Since 'mobile' is required and unique, we generate a placeholder
+            // Users can update their mobile number later in profile
+            const placeholderMobile = `fb_${facebookId}`;
+            user = new User({
+                facebookId,
+                name,
+                email,
+                mobile: placeholderMobile,
+                isVerified: true,
+                role: 'user'
+            });
+        }
+
+        // Device-based login restriction (same as verifyOtp)
+        if (deviceId && user.activeDeviceId && user.activeDeviceId !== deviceId) {
+            const hasActiveSession = await ChatSession.findOne({
+                userId: user._id,
+                status: { $in: ['ACTIVE', 'PENDING'] }
+            });
+            if (hasActiveSession) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'This account is already logged in on another device.'
+                });
+            }
+        }
+
+        if (deviceId) user.activeDeviceId = deviceId;
+        await user.save();
+
+        // 5. Generate JWT Token
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Facebook login successful',
+            token,
+            user
+        });
+
+    } catch (error: any) {
+        console.error('[Auth] Facebook login error:', error.response?.data || error.message);
+        return res.status(500).json({ success: false, message: 'Facebook authentication failed', error: error.message });
     }
 };

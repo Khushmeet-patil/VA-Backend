@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { checkUser, sendOtp, verifyOtp, updateProfile, getWalletBalance, getWalletTransactions, registerFcmToken, processRecharge, createOrder, verifyPayment, adminLogin, logoutUser, deleteUser } from '../controllers/authController';
+import { checkUser, sendOtp, verifyOtp, facebookLogin, updateProfile, getWalletBalance, getWalletTransactions, registerFcmToken, processRecharge, createOrder, verifyPayment, adminLogin, logoutUser, deleteUser } from '../controllers/authController';
 import notificationService from '../services/notificationService';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
@@ -11,6 +11,7 @@ router.post('/check-user', checkUser);
 router.post('/admin/login', adminLogin); // Admin Login
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
+router.post('/facebook-login', facebookLogin);
 router.post('/logout', authMiddleware, logoutUser); // Logout (clear device ID)
 router.delete('/delete-account', authMiddleware, deleteUser); // Delete Account
 router.post('/update-profile', authMiddleware, updateProfile);
