@@ -254,7 +254,7 @@ class ChatService {
             // Atomic update to fail
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
-                { status: 'ENDED', endReason: 'INSUFFICIENT_BALANCE' }
+                { status: 'ENDED', endReason: 'INSUFFICIENT_BALANCE_AT_ACCEPT' }
             );
             throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes.`);
         }
@@ -462,6 +462,7 @@ class ChatService {
         }
 
         session.status = 'REJECTED';
+        session.endReason = 'ASTROLOGER_REJECTED';
         await session.save();
 
         console.log(`[ChatService] Chat rejected: ${sessionId}`);
@@ -489,7 +490,7 @@ class ChatService {
         // Use atomic operation to handle race condition
         const session = await ChatSession.findOneAndUpdate(
             { sessionId, status: 'PENDING' },
-            { status: 'ENDED', endReason: 'TIMEOUT' },
+            { status: 'ENDED', endReason: 'ASTROLOGER_TIMEOUT' },
             { new: true }
         );
 
@@ -639,7 +640,7 @@ class ChatService {
             },
             {
                 status: 'ENDED',
-                endReason: 'USER_END'
+                endReason: 'USER_CANCEL_WHILE_PENDING'
             },
             { new: false } // Return the old document to check original status
         );
@@ -1560,29 +1561,59 @@ class ChatService {
         const userType = isAstrologer ? 'astrologer' : 'user';
         console.log(`[ChatService] ${userType} disconnected: ${userId}`);
 
-        // Find active session for this user to start grace period
+        // Case 1: Active session (Start grace period)
         const session = isAstrologer
             ? await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
             : await ChatSession.findOne({ userId: userId, status: 'ACTIVE' });
 
-        if (!session) return;
+        if (session) {
+            // Update last seen in DB
+            const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
+            await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
 
-        // Update last seen in DB
-        const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
-        await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
+            // Start a 2-minute grace period timer if not already running
+            if (!this.gracePeriodTimers.has(session.sessionId)) {
+                console.log(`[ChatService] Starting 2-minute grace period for: ${session.sessionId}`);
+                const timer = setTimeout(async () => {
+                    console.log(`[ChatService] Grace period expired for session: ${session.sessionId}. Auto-ending.`);
+                    try {
+                        await this.endChat(session.sessionId, 'DISCONNECT');
+                    } catch (e) {
+                        console.error(`[ChatService] Error auto-ending session after grace period:`, e);
+                    }
+                }, 120000); // 2 minutes (120,000ms)
+                this.gracePeriodTimers.set(session.sessionId, timer);
+            }
+            return;
+        }
 
-        // Start a 2-minute grace period timer if not already running
-        if (!this.gracePeriodTimers.has(session.sessionId)) {
-            console.log(`[ChatService] Starting 2-minute grace period for: ${session.sessionId}`);
-            const timer = setTimeout(async () => {
-                console.log(`[ChatService] Grace period expired for session: ${session.sessionId}. Auto-ending.`);
-                try {
-                    await this.endChat(session.sessionId, 'DISCONNECT');
-                } catch (e) {
-                    console.error(`[ChatService] Error auto-ending session after grace period:`, e);
+        // Case 2: PENDING session for astrologer (They went offline while ringing)
+        if (isAstrologer) {
+            const pendingSession = await ChatSession.findOne({ astrologerId: userId, status: 'PENDING' });
+            if (pendingSession) {
+                console.log(`[ChatService] Astrologer ${userId} disconnected while chat request ${pendingSession.sessionId} was ringing. Marking as missed.`);
+                
+                // Clear request timeout
+                const timeout = this.requestTimeouts.get(pendingSession.sessionId);
+                if (timeout) {
+                    clearTimeout(timeout);
+                    this.requestTimeouts.delete(pendingSession.sessionId);
                 }
-            }, 120000); // 2 minutes (120,000ms)
-            this.gracePeriodTimers.set(session.sessionId, timer);
+
+                // Atomic update to missed
+                await ChatSession.updateOne(
+                    { sessionId: pendingSession.sessionId, status: 'PENDING' },
+                    { $set: { status: 'ENDED', endReason: 'ASTROLOGER_OFFLINE_DURING_REQUEST' } }
+                );
+
+                // Notify User
+                if (this.io) {
+                    this.io.to(`user:${pendingSession.userId}`).emit('CHAT_REJECTED', {
+                        sessionId: pendingSession.sessionId,
+                        reason: 'Astrologer went offline'
+                    });
+                }
+            }
         }
     }
 

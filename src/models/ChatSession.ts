@@ -18,7 +18,7 @@ export interface IChatSession extends Document {
     totalAmount: number;                // Total amount deducted from user
     astrologerEarnings: number;         // Gross earnings (after commission, before TDS)
     astrologerNetEarnings: number;      // Net earnings (after commission and TDS)
-    endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT' | 'FREE_TRIAL_ENDED';
+    endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT' | 'FREE_TRIAL_ENDED' | 'ASTROLOGER_REJECTED' | 'ASTROLOGER_TIMEOUT' | 'USER_CANCEL_WHILE_PENDING' | 'ASTROLOGER_OFFLINE_DURING_REQUEST' | 'INSUFFICIENT_BALANCE_AT_ACCEPT';
     intakeDetails?: {                   // User's intake form data
         name?: string;
         gender?: string;
@@ -82,7 +82,19 @@ const ChatSessionSchema: Schema = new Schema({
     penaltyAmount: { type: Number, default: 0 },
     endReason: {
         type: String,
-        enum: ['USER_END', 'ASTROLOGER_END', 'INSUFFICIENT_BALANCE', 'DISCONNECT', 'TIMEOUT', 'FREE_TRIAL_ENDED']
+        enum: [
+            'USER_END', 
+            'ASTROLOGER_END', 
+            'INSUFFICIENT_BALANCE', 
+            'DISCONNECT', 
+            'TIMEOUT', 
+            'FREE_TRIAL_ENDED',
+            'ASTROLOGER_REJECTED',
+            'ASTROLOGER_TIMEOUT',
+            'USER_CANCEL_WHILE_PENDING',
+            'ASTROLOGER_OFFLINE_DURING_REQUEST',
+            'INSUFFICIENT_BALANCE_AT_ACCEPT'
+        ]
     },
     intakeDetails: {
         name: { type: String },
