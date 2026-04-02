@@ -449,13 +449,15 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         });
 
         // Handle end chat request
-        socket.on('end_chat', async (data: { sessionId: string }) => {
+        socket.on('end_chat', async (data: { sessionId: string }, callback?: (res: any) => void) => {
             try {
                 const { sessionId } = data;
 
                 const session = await chatService.getSession(sessionId);
                 if (!session || session.status !== 'ACTIVE') {
-                    socket.emit('error', { message: 'Invalid or inactive session' });
+                    const err = { success: false, message: 'Invalid or inactive session' };
+                    if (callback) callback(err);
+                    else socket.emit('error', err);
                     return;
                 }
 
@@ -464,58 +466,81 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const isAstrologer = userType === 'astrologer' && session.astrologerId.toString() === userId;
 
                 if (!isUser && !isAstrologer) {
-                    socket.emit('error', { message: 'Not a participant in this session' });
+                    const err = { success: false, message: 'Not a participant in this session' };
+                    if (callback) callback(err);
+                    else socket.emit('error', err);
                     return;
                 }
 
                 const endReason = isUser ? 'USER_END' : 'ASTROLOGER_END';
                 await chatService.endChat(sessionId, endReason);
+                
+                if (callback) callback({ success: true });
 
-            } catch (error) {
+            } catch (error: any) {
                 console.error('[Socket] End chat error:', error);
-                socket.emit('error', { message: 'Failed to end chat' });
+                const err = { success: false, message: error.message || 'Failed to end chat' };
+                if (callback) callback(err);
+                else socket.emit('error', err);
             }
         });
 
         // Handle accept chat (for astrologers)
-        socket.on('accept_chat', async (data: { sessionId: string }) => {
+        socket.on('accept_chat', async (data: { sessionId: string }, callback?: (res: any) => void) => {
             try {
                 if (userType !== 'astrologer') {
-                    socket.emit('error', { message: 'Only astrologers can accept chats' });
+                    const err = { success: false, message: 'Only astrologers can accept chats' };
+                    if (callback) callback(err);
+                    else socket.emit('error', err);
                     return;
                 }
 
-                await chatService.acceptChatRequest(data.sessionId);
+                const session = await chatService.acceptChatRequest(data.sessionId);
+                if (callback) callback({ success: true, session });
 
             } catch (error: any) {
                 console.error('[Socket] Accept chat error:', error);
 
                 // Check if this is a "cancelled or expired" error - handle gracefully
                 if (error.message && error.message.includes('cancelled or expired')) {
-                    // Emit a specific event so the astrologer app can show a proper notification
+                    const res = { 
+                        success: false, 
+                        code: 'CANCELLED',
+                        message: 'User cancelled the request before you could accept' 
+                    };
+                    if (callback) callback(res);
+                    
+                    // Still emit CHAT_ACCEPT_FAILED for legacy compatibility if needed
                     socket.emit('CHAT_ACCEPT_FAILED', {
                         sessionId: data.sessionId,
-                        reason: 'User cancelled the request before you could accept'
+                        reason: res.message
                     });
                 } else {
-                    socket.emit('error', { message: error.message || 'Failed to accept chat' });
+                    const err = { success: false, message: error.message || 'Failed to accept chat' };
+                    if (callback) callback(err);
+                    else socket.emit('error', err);
                 }
             }
         });
 
         // Handle reject chat (for astrologers)
-        socket.on('reject_chat', async (data: { sessionId: string }) => {
+        socket.on('reject_chat', async (data: { sessionId: string }, callback?: (res: any) => void) => {
             try {
                 if (userType !== 'astrologer') {
-                    socket.emit('error', { message: 'Only astrologers can reject chats' });
+                    const err = { success: false, message: 'Only astrologers can reject chats' };
+                    if (callback) callback(err);
+                    else socket.emit('error', err);
                     return;
                 }
 
                 await chatService.rejectChatRequest(data.sessionId);
+                if (callback) callback({ success: true });
 
             } catch (error: any) {
                 console.error('[Socket] Reject chat error:', error);
-                socket.emit('error', { message: error.message || 'Failed to reject chat' });
+                const err = { success: false, message: error.message || 'Failed to reject chat' };
+                if (callback) callback(err);
+                else socket.emit('error', err);
             }
         });
 

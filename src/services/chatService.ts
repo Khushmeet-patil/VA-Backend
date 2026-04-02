@@ -293,10 +293,11 @@ class ChatService {
         if (!updatedSession) {
             // RACE CONDITION LOST!
             // The session is no longer PENDING (likely cancelled by user).
-            // Revert astrologer state
-            astrologer.isBusy = false;
-            astrologer.activeSessionId = undefined;
-            await astrologer.save();
+            // Revert astrologer state ONLY IF it still points to this session
+            await Astrologer.findOneAndUpdate(
+                { _id: session.astrologerId, activeSessionId: sessionId },
+                { $set: { isBusy: false, activeSessionId: undefined } }
+            );
 
             throw new Error('Chat request was cancelled or expired');
         }
@@ -1652,11 +1653,33 @@ class ChatService {
 
         for (const session of activeSessions) {
             // Restart billing timer if not running
-            if (!this.billingTimers.has(session.sessionId)) {
+            if (!session.isFreeTrialSession && !this.billingTimers.has(session.sessionId)) {
                 console.log(`[ChatService] Resuming billing timer for session: ${session.sessionId}`);
-                // Use a slightly shorter interval for the first cycle if we missed some time
-                // but for simplicity, we just start a fresh 60s cycle
-                this.startBillingTimer(session.sessionId);
+                
+                // Calculate elapsed time since last bill (or start)
+                const lastBillTime = session.lastBilledAt || session.startTime || session.createdAt;
+                const elapsedMs = Date.now() - lastBillTime.getTime();
+                
+                if (elapsedMs >= 60000) {
+                    const missedCycles = Math.floor(elapsedMs / 60000);
+                    console.log(`[ChatService] Missed ${missedCycles} billing cycles for session: ${session.sessionId} during delay/restart.`);
+                    
+                    // Immediately process one cycle and schedule the next one correctly
+                    // For massive gaps, we just process one and reset the timer to prevent instant depletion
+                    this.processBillingCycle(session.sessionId);
+                    this.startBillingTimer(session.sessionId);
+                } else {
+                    // Start timer for the remaining time of the current cycle
+                    const remainingMs = 60000 - elapsedMs;
+                    console.log(`[ChatService] Starting resumed billing timer in ${remainingMs}ms for session: ${session.sessionId}`);
+                    
+                    const timeout = setTimeout(() => {
+                        this.processBillingCycle(session.sessionId);
+                        this.startBillingTimer(session.sessionId);
+                    }, remainingMs);
+                    
+                    this.billingTimers.set(session.sessionId, timeout);
+                }
             }
 
             // Also check for free trial timers
@@ -1670,8 +1693,31 @@ class ChatService {
                     this.startFreeTrialTimer(session.sessionId, remainingSeconds);
                 } else {
                     console.log(`[ChatService] Free trial expired during downtime for session: ${session.sessionId}. Ending.`);
-                    await this.endFreeTrialSession(session.sessionId);
+                    await this.endChat(session.sessionId, 'FREE_TRIAL_ENDED'); // Accurate reason
                 }
+            }
+        }
+    }
+
+    /**
+     * Periodic verification of all active sessions to ensure billing continuity.
+     * Prevents cases where a timer might have been silently dropped.
+     */
+    async verifyBillingConsistency(): Promise<void> {
+        const activeSessions = await ChatSession.find({ 
+            status: 'ACTIVE', 
+            isFreeTrialSession: { $ne: true } 
+        });
+
+        for (const session of activeSessions) {
+            const lastBillTime = session.lastBilledAt || session.startTime || session.createdAt;
+            const elapsedMs = Date.now() - lastBillTime.getTime();
+
+            // If it's been more than 75 seconds (60s + 15s buffer), the timer is likely dead
+            if (elapsedMs > 75000 && !this.billingTimers.has(session.sessionId)) {
+                console.warn(`[ChatService] !! Billing Drift Alert !! Session ${session.sessionId} is active but has no timer. Manually triggering cycle.`);
+                this.processBillingCycle(session.sessionId);
+                this.startBillingTimer(session.sessionId);
             }
         }
     }
@@ -1725,6 +1771,34 @@ class ChatService {
         for (const request of staleRequests) {
             console.log(`[ChatService] Cleaning up stale pending request: ${request.sessionId}`);
             await this.timeoutChatRequest(request.sessionId);
+        }
+
+        // NEW: Self-healing for "stuck" busy state
+        // Find astrologers who are isBusy=true but have no ACTIVE session pointing to them
+        try {
+            const busyAstrologers = await Astrologer.find({ isBusy: true });
+            for (const astro of busyAstrologers) {
+                if (astro.activeSessionId) {
+                    const activeSessionCount = await ChatSession.countDocuments({
+                        sessionId: astro.activeSessionId,
+                        status: 'ACTIVE'
+                    });
+                    if (activeSessionCount === 0) {
+                        console.log(`[ChatService] Self-healing stuck busy state for astrologer ${astro._id} (Session: ${astro.activeSessionId} is NOT active)`);
+                        await Astrologer.findByIdAndUpdate(astro._id, {
+                            $set: { isBusy: false, activeSessionId: undefined }
+                        });
+                    }
+                } else {
+                    // isBusy is true but no activeSessionId? Inconsistent state.
+                    console.log(`[ChatService] Self-healing inconsistent busy state for astrologer ${astro._id} (isBusy but no activeSessionId)`);
+                    await Astrologer.findByIdAndUpdate(astro._id, {
+                        $set: { isBusy: false, activeSessionId: undefined }
+                    });
+                }
+            }
+        } catch (healError) {
+            console.error('[ChatService] Error during busy-state self-healing:', healError);
         }
     }
 

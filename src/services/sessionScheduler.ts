@@ -17,6 +17,9 @@ export const startSessionScheduler = () => {
             
             // 2. Cleanup sessions where participants have been offline for > 2 mins
             await chatService.cleanupStaleSessions();
+
+            // 3. Verify billing consistency (self-healing for lost timers)
+            await chatService.verifyBillingConsistency();
             
         } catch (error) {
             console.error('[SessionScheduler] Error in maintenance tick:', error);
