@@ -315,8 +315,8 @@ class NotificationService {
                     },
                     android: {
                         priority: 'high',
-                        // TTL of 30 seconds (matches incoming call timeout)
-                        ttl: 30 * 1000,
+                        // TTL of 60 seconds (matches incoming call timeout)
+                        ttl: 60 * 1000,
                     },
                 };
 

@@ -34,8 +34,8 @@ class ChatService {
     // Billing cycle interval (60 seconds)
     private readonly BILLING_INTERVAL_MS = 60000;
 
-    // Request timeout (30 seconds - auto-reject if not accepted)
-    private readonly REQUEST_TIMEOUT_MS = 30000;
+    // Request timeout (60 seconds - auto-reject if not accepted)
+    private readonly REQUEST_TIMEOUT_MS = 60000;
 
     // Map of request timeout timers: sessionId -> NodeJS.Timeout
     private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
