@@ -1739,41 +1739,11 @@ class ChatService {
      * Called by scheduler every minute
      */
     async cleanupStaleSessions(): Promise<void> {
-        const gracePeriodMs = 120000; // 2 minutes
-        const cutoff = new Date(Date.now() - gracePeriodMs);
+        // NOTE: ACTIVE sessions should NEVER be force-ended on disconnect per requirements.
+        // We only clean up stale PENDING requests here.
+        // Billing timers handle wallet depletion and explicit session endings.
 
-        // Find sessions where both participants are "stale" or one is stale and the other is disconnected
-        // For simplicity, we check if BOTH have been "unseen" for > 2 mins
-        // Or if the grace period timer would have expired
-        const staleSessions = await ChatSession.find({
-            status: 'ACTIVE',
-            $or: [
-                { userLastSeen: { $lt: cutoff } },
-                { astrologerLastSeen: { $lt: cutoff } }
-            ]
-        });
-
-        for (const session of staleSessions) {
-            // 1. Fetch participants (User and Astrologer)
-            const user = await User.findById(session.userId);
-            if (!user) {
-                throw new Error('User not found during chat termination');
-            }
-
-            // NEW: Mark user as having used their free trial if the session was ACTIVE
-            // This prevents users from getting multiple trials or using a trial after a paid session
-            if (session.status === 'ACTIVE') {
-                await User.findByIdAndUpdate(session.userId, { hasUsedFreeTrial: true });
-                console.log(`[ChatService] Marking user ${session.userId} as hasUsedFreeTrial = true`);
-            }
-            // Note: participants are only marked as "unseen" when handleDisconnect is called.
-            // If the server restarted, we lose the in-memory gracePeriodTimers.
-            // This method serves as the persistent backup.
-            console.log(`[ChatService] Cleaning up stale session: ${session.sessionId}`);
-            await this.endChat(session.sessionId, 'DISCONNECT');
-        }
-
-        // Also clean up stale PENDING requests (older than 45s)
+        // Clean up stale PENDING requests (older than 45s)
         const requestTimeoutCutoff = new Date(Date.now() - 45000);
         const staleRequests = await ChatSession.find({
             status: 'PENDING',
