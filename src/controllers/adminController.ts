@@ -2131,9 +2131,22 @@ export const getChatStats = async (req: Request, res: Response) => {
             }
         }
 
+        // Completed Chats: Only sessions that actually started (have startTime)
+        // Exclude sessions that are missed/failed (never had a real conversation)
+        const missedEndReasons = [
+            'ASTROLOGER_TIMEOUT',
+            'TIMEOUT',
+            'ASTROLOGER_REJECTED',
+            'ASTROLOGER_OFFLINE_DURING_REQUEST',
+            'USER_CANCEL_WHILE_PENDING',
+            'INSUFFICIENT_BALANCE_AT_ACCEPT'
+        ];
+
         const completedChats = await ChatSession.find({
             createdAt: { $gte: startDate, $lte: endDate },
-            status: 'ENDED'
+            status: 'ENDED',
+            startTime: { $exists: true, $ne: null },
+            endReason: { $nin: missedEndReasons }
         })
         .populate('userId', 'name mobile')
         .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
@@ -2145,12 +2158,13 @@ export const getChatStats = async (req: Request, res: Response) => {
             .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
             .sort({ createdAt: -1 });
 
-        // Missed Chats (Rejected by astrologer or Timed out)
+        // Missed Chats: Sessions where chat never actually happened
+        // Includes: astrologer missed/rejected/went offline, user cancelled, balance error at accept
         const missedChats = await ChatSession.find({
             createdAt: { $gte: startDate, $lte: endDate },
             $or: [
                 { status: 'REJECTED' },
-                { status: 'ENDED', endReason: 'TIMEOUT' }
+                { status: 'ENDED', endReason: { $in: missedEndReasons } }
             ]
         })
         .populate('userId', 'name mobile')
