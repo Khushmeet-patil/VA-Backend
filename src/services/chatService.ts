@@ -25,11 +25,8 @@ class ChatService {
     // Map of active billing timers: sessionId -> NodeJS.Timeout
     private billingTimers: Map<string, NodeJS.Timeout> = new Map();
 
-    // Map of disconnect grace timers: sessionId -> NodeJS.Timeout
-    private gracePeriodTimers: Map<string, NodeJS.Timeout> = new Map();
-
-    // Grace period for disconnections (15 seconds)
-    private readonly GRACE_PERIOD_MS = 15000;
+    // NOTE: No grace period timers — chats are NEVER force-ended on disconnect.
+    // Sessions only end via: wallet depletion, free trial expiry, or explicit user/astrologer end.
 
     // Billing cycle interval (60 seconds)
     private readonly BILLING_INTERVAL_MS = 60000;
@@ -709,7 +706,6 @@ class ChatService {
         // Stop billing timer and free trial timer
         this.stopBillingTimer(sessionId);
         this.stopFreeTrialTimer(sessionId);
-        this.clearGracePeriod(sessionId);
 
         // --- PARTIAL BILLING LOGIC ---
         // Only if billing actually started AND not a free trial session
@@ -1555,44 +1551,32 @@ class ChatService {
     }
 
     /**
-     * Handle participant disconnect - start grace period
+     * Handle participant disconnect
+     * Chats are NEVER force-ended on disconnect — only wallet depletion, free trial expiry,
+     * or explicit user/astrologer end can terminate a session.
      */
     async handleDisconnect(userId: string, isAstrologer: boolean): Promise<void> {
         const userType = isAstrologer ? 'astrologer' : 'user';
         console.log(`[ChatService] ${userType} disconnected: ${userId}`);
 
-        // Case 1: Active session (Start grace period)
+        // Update lastSeen on any ACTIVE session so we have an audit trail
         const session = isAstrologer
             ? await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
             : await ChatSession.findOne({ userId: userId, status: 'ACTIVE' });
 
         if (session) {
-            // Update last seen in DB
             const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
             await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
-
-            // Start a 2-minute grace period timer if not already running
-            if (!this.gracePeriodTimers.has(session.sessionId)) {
-                console.log(`[ChatService] Starting 2-minute grace period for: ${session.sessionId}`);
-                const timer = setTimeout(async () => {
-                    console.log(`[ChatService] Grace period expired for session: ${session.sessionId}. Auto-ending.`);
-                    try {
-                        await this.endChat(session.sessionId, 'DISCONNECT');
-                    } catch (e) {
-                        console.error(`[ChatService] Error auto-ending session after grace period:`, e);
-                    }
-                }, 120000); // 2 minutes (120,000ms)
-                this.gracePeriodTimers.set(session.sessionId, timer);
-            }
+            console.log(`[ChatService] Updated lastSeen for ${userType} in session: ${session.sessionId}. Chat continues (wallet-only ending).`);
             return;
         }
 
-        // Case 2: PENDING session for astrologer (They went offline while ringing)
+        // PENDING session: astrologer went offline while request was ringing — cancel the request
         if (isAstrologer) {
             const pendingSession = await ChatSession.findOne({ astrologerId: userId, status: 'PENDING' });
             if (pendingSession) {
                 console.log(`[ChatService] Astrologer ${userId} disconnected while chat request ${pendingSession.sessionId} was ringing. Marking as missed.`);
-                
+
                 // Clear request timeout
                 const timeout = this.requestTimeouts.get(pendingSession.sessionId);
                 if (timeout) {
@@ -1618,7 +1602,7 @@ class ChatService {
     }
 
     /**
-     * Handle participant reconnect - clear grace period
+     * Handle participant reconnect — update lastSeen and re-deliver missed messages
      */
     async handleReconnect(userId: string, isAstrologer: boolean): Promise<void> {
         const userType = isAstrologer ? 'astrologer' : 'user';
@@ -1631,47 +1615,44 @@ class ChatService {
 
         if (!session) return;
 
-        // Clear grace period timer
-        this.clearGracePeriod(session.sessionId);
-
         // Update last seen in DB
         const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
         await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
 
         // Re-deliver missed messages on reconnect
         try {
-                // Get messages from the last 2 minutes that might have been missed
-                const twoMinutesAgo = new Date(Date.now() - 120000);
-                const missedMessages = await ChatMessage.find({
-                    sessionId: session.sessionId,
-                    timestamp: { $gte: twoMinutesAgo },
-                    senderType: { $ne: userType } // Only messages from the OTHER party
-                }).sort({ timestamp: 1 }).limit(50);
+            // Get messages from the last 10 minutes that might have been missed
+            const tenMinutesAgo = new Date(Date.now() - 600000);
+            const missedMessages = await ChatMessage.find({
+                sessionId: session.sessionId,
+                timestamp: { $gte: tenMinutesAgo },
+                senderType: { $ne: userType } // Only messages from the OTHER party
+            }).sort({ timestamp: 1 }).limit(50);
 
-                if (missedMessages.length > 0 && this.io) {
-                    const roomName = `${userType}:${userId}`;
-                    console.log(`[ChatService] Re-delivering ${missedMessages.length} missed messages to ${roomName}`);
+            if (missedMessages.length > 0 && this.io) {
+                const roomName = `${userType}:${userId}`;
+                console.log(`[ChatService] Re-delivering ${missedMessages.length} missed messages to ${roomName}`);
 
-                    for (const msg of missedMessages) {
-                        this.io.to(roomName).emit('RECEIVE_MESSAGE', {
-                            sessionId: session.sessionId,
-                            messageId: msg._id.toString(),
-                            senderId: msg.senderId?.toString(),
-                            senderType: msg.senderType,
-                            text: msg.text,
-                            type: msg.type,
-                            fileUrl: msg.fileUrl,
-                            fileName: msg.fileName,
-                            fileSize: msg.fileSize,
-                            timestamp: msg.timestamp.toISOString(),
-                            status: msg.status || 'sent',
-                            isRedelivered: true // Flag so frontend can deduplicate
-                        });
-                    }
+                for (const msg of missedMessages) {
+                    this.io.to(roomName).emit('RECEIVE_MESSAGE', {
+                        sessionId: session.sessionId,
+                        messageId: msg._id.toString(),
+                        senderId: msg.senderId?.toString(),
+                        senderType: msg.senderType,
+                        text: msg.text,
+                        type: msg.type,
+                        fileUrl: msg.fileUrl,
+                        fileName: msg.fileName,
+                        fileSize: msg.fileSize,
+                        timestamp: msg.timestamp.toISOString(),
+                        status: msg.status || 'sent',
+                        isRedelivered: true // Flag so frontend can deduplicate
+                    });
                 }
-            } catch (redeliveryError) {
-                console.error(`[ChatService] Error re-delivering messages:`, redeliveryError);
             }
+        } catch (redeliveryError) {
+            console.error(`[ChatService] Error re-delivering messages:`, redeliveryError);
+        }
     }
 
     /**
@@ -1830,18 +1811,6 @@ class ChatService {
             }
         } catch (healError) {
             console.error('[ChatService] Error during busy-state self-healing:', healError);
-        }
-    }
-
-    /**
-     * Clear grace period timer for a session
-     */
-    private clearGracePeriod(sessionId: string): void {
-        const timer = this.gracePeriodTimers.get(sessionId);
-        if (timer) {
-            clearTimeout(timer);
-            this.gracePeriodTimers.delete(sessionId);
-            console.log(`[ChatService] Cleared grace period for: ${sessionId}`);
         }
     }
 
