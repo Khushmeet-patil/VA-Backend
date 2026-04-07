@@ -42,6 +42,7 @@ export interface IChatSession extends Document {
     sharedProfiles?: any[];             // List of profiles shared in this session
     profileId?: string;                 // ID of the profile used for this chat
     penaltyAmount?: number;             // Amount deducted if session was missed/timed out
+    errorDescription?: string;         // Captures unexpected error details
 }
 
 const ChatSessionSchema: Schema = new Schema({
@@ -117,7 +118,8 @@ const ChatSessionSchema: Schema = new Schema({
     // Shared Profiles
     sharedProfiles: { type: [Object], default: [] },
     // Profile Reference
-    profileId: { type: String } // 'default' or specific profile ID
+    profileId: { type: String }, // 'default' or specific profile ID
+    errorDescription: { type: String } // Details for system errors
 }, { timestamps: true });
 
 // Compound index for finding active sessions

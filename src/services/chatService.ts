@@ -248,12 +248,17 @@ class ChatService {
 
         const minRealBalanceRequired = session.ratePerMinute * 5;
         if (!session.isFreeTrialSession && user.walletBalance < minRealBalanceRequired) {
+            const errorMsg = `Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes. User has ₹${user.walletBalance}.`;
             // Atomic update to fail
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
-                { status: 'ENDED', endReason: 'INSUFFICIENT_BALANCE_AT_ACCEPT' }
+                { 
+                    status: 'ENDED', 
+                    endReason: 'INSUFFICIENT_BALANCE_AT_ACCEPT',
+                    errorDescription: errorMsg
+                }
             );
-            throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes.`);
+            throw new Error(errorMsg);
         }
 
         // Lock astrologer (prevent concurrent chats)
@@ -263,11 +268,15 @@ class ChatService {
         }
 
         if (astrologer.isBusy) {
+            const errorMsg = `Astrologer is already busy with another chat (Session: ${astrologer.activeSessionId})`;
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
-                { status: 'REJECTED' }
+                { 
+                    status: 'REJECTED',
+                    errorDescription: errorMsg
+                }
             );
-            throw new Error('Already in another chat');
+            throw new Error(errorMsg);
         }
 
         // Update astrologer status first
@@ -487,7 +496,11 @@ class ChatService {
         // Use atomic operation to handle race condition
         const session = await ChatSession.findOneAndUpdate(
             { sessionId, status: 'PENDING' },
-            { status: 'ENDED', endReason: 'ASTROLOGER_TIMEOUT' },
+            { 
+                status: 'ENDED', 
+                endReason: 'ASTROLOGER_TIMEOUT',
+                errorDescription: 'request timeout, astrologer hasn\'t picked up, request missed'
+            },
             { new: true }
         );
 
