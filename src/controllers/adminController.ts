@@ -2097,37 +2097,52 @@ export const getChatStats = async (req: Request, res: Response) => {
         const { timeframe, month, year, startDate: qStartDate, endDate: qEndDate } = req.query; 
         
         const now = new Date();
+        // India Standard Time (UTC + 5:30)
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const nowIST = new Date(now.getTime() + istOffset);
+
         let startDate = new Date();
         let endDate = new Date();
         
         if (timeframe === 'custom' && qStartDate) {
             startDate = new Date(qStartDate as string);
             startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(qStartDate as string);
+            endDate = new Date(qEndDate as string || qStartDate as string);
             endDate.setHours(23, 59, 59, 999);
         } else {
             switch(timeframe) {
             case 'today':
-                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-                endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                // Boundary of Today in IST, then convert back to UTC for DB query
+                startDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
                 break;
             case 'yesterday':
-                const yesterday = new Date(now);
-                yesterday.setDate(now.getDate() - 1);
-                startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
-                endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+                const yesterdayIST = new Date(nowIST);
+                yesterdayIST.setDate(nowIST.getDate() - 1);
+                startDate = new Date(yesterdayIST.getFullYear(), yesterdayIST.getMonth(), yesterdayIST.getDate(), 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(yesterdayIST.getFullYear(), yesterdayIST.getMonth(), yesterdayIST.getDate(), 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
                 break;
             case 'monthly':
-                startDate = new Date(Number(year), Number(month), 1);
+                startDate = new Date(Number(year), Number(month), 1, 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
                 endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
                 break;
             case 'yearly':
-                startDate = new Date(Number(year), 0, 1);
+                startDate = new Date(Number(year), 0, 1, 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
                 endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
                 break;
             default:
-                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-                endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                startDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
             }
         }
 
