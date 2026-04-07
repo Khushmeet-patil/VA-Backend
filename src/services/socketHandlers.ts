@@ -341,7 +341,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         });
 
         // Handle share profile logic
-        socket.on('share_profile', async (data: { sessionId: string, profile: any }) => {
+        socket.on('share_profile', async (data: { sessionId: string, profile: any, text?: string }) => {
             console.log('[Socket] share_profile event received:', data);
             try {
                 const { sessionId, profile } = data;
@@ -417,20 +417,19 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 }
 
                 // Save to DB and broadcast SHARE_PROFILE
-                await chatService.shareProfile(sessionId, enrichedProfile);
+                await chatService.shareProfile(sessionId, enrichedProfile, data.text);
             } catch (error) {
                 console.error('[Socket] Share profile error:', error);
             }
         });
-
         // Handle SHARE_PROFILE (uppercase alias) — delegates to share_profile handler
-        socket.on('SHARE_PROFILE', async (data: { sessionId: string, profile: any }) => {
+        socket.on('SHARE_PROFILE', async (data: { sessionId: string, profile: any, text?: string }) => {
             try {
                 const { sessionId, profile } = data;
                 if (!sessionId || !profile) return;
 
                 // Directly call chatService instead of emitting back to client
-                await chatService.shareProfile(sessionId, profile);
+                await chatService.shareProfile(sessionId, profile, data.text);
             } catch (error) {
                 console.error('[Socket] SHARE_PROFILE error:', error);
             }

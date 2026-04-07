@@ -1956,7 +1956,7 @@ class ChatService {
     /**
      * Share a profile in the chat session
      */
-    async shareProfile(sessionId: string, profile: any): Promise<void> {
+    async shareProfile(sessionId: string, profile: any, text?: string): Promise<void> {
         const session = await ChatSession.findOne({ sessionId });
         if (!session) return;
 
@@ -1967,9 +1967,36 @@ class ChatService {
         );
         console.log(`[ChatService] Profile shared in session ${sessionId}`);
 
+        // Create a ChatMessage in DB so it's persisted in history and allows status updates
+        const ChatMessageModel = mongoose.model('ChatMessage');
+        const chatMsg = new ChatMessageModel({
+            sessionId,
+            senderId: session.userId,
+            senderType: 'user',
+            text: text || (profile.name ? `Shared Profile: ${profile.name}` : 'Shared Profile'),
+            type: 'profile_data',
+            status: 'sent',
+            timestamp: new Date()
+        });
+        await chatMsg.save();
+
         // Broadcast to both parties so they receive it in real-time
-        // Emitting 'SHARE_PROFILE' as expected by frontend
+        // Emitting 'RECEIVE_MESSAGE' ensures the sender's UI updates from 'pending' to 'sent'
         if (this.io) {
+            const payload = {
+                messageId: chatMsg._id,
+                sessionId,
+                text: chatMsg.text,
+                senderType: 'user',
+                type: 'profile_data',
+                timestamp: chatMsg.timestamp,
+                profile: profile // Attach profile data for rich rendering
+            };
+
+            this.io.to(`user:${session.userId}`).emit('RECEIVE_MESSAGE', payload);
+            this.io.to(`astrologer:${session.astrologerId}`).emit('RECEIVE_MESSAGE', payload);
+            
+            // Still emit legacy 'SHARE_PROFILE' for compatibility with any state listeners
             this.io.to(`user:${session.userId}`).emit('SHARE_PROFILE', profile);
             this.io.to(`astrologer:${session.astrologerId}`).emit('SHARE_PROFILE', profile);
         }
