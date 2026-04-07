@@ -10,7 +10,7 @@ export interface IChatMessage extends Document {
     senderId: mongoose.Types.ObjectId;  // User or Astrologer ID
     senderType: 'user' | 'astrologer';
     text: string;
-    type: 'text' | 'image' | 'file';
+    type: 'text' | 'image' | 'file' | 'profile_request';
     fileUrl?: string;
     fileName?: string;
     fileSize?: number;
@@ -42,7 +42,7 @@ const ChatMessageSchema: Schema = new Schema({
     },
     type: {
         type: String,
-        enum: ['text', 'image', 'file'],
+        enum: ['text', 'image', 'file', 'profile_request'],
         default: 'text'
     },
     fileUrl: { type: String },
