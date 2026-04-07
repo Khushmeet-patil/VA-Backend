@@ -2138,7 +2138,6 @@ export const getChatStats = async (req: Request, res: Response) => {
             'TIMEOUT',
             'ASTROLOGER_REJECTED',
             'ASTROLOGER_OFFLINE_DURING_REQUEST',
-            'USER_CANCEL_WHILE_PENDING',
             'INSUFFICIENT_BALANCE_AT_ACCEPT'
         ];
 
