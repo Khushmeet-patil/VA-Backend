@@ -79,7 +79,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         socket.on('send_message', async (data: {
             sessionId: string;
             text: string;
-            type?: 'text' | 'image' | 'file';
+            type?: 'text' | 'image' | 'file' | 'profile_data';
             fileData?: { url: string; name?: string; size?: number };
             replyToId?: string;
         }) => {

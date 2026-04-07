@@ -1394,7 +1394,7 @@ class ChatService {
         senderId: string,
         senderType: 'user' | 'astrologer',
         text: string,
-        type: 'text' | 'image' | 'file' = 'text',
+        type: 'text' | 'image' | 'file' | 'profile_data' = 'text',
         fileData?: { url: string; name?: string; size?: number },
         replyToId?: string
     ): Promise<any> {
