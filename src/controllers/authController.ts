@@ -117,26 +117,19 @@ export const sendOtp = async (req: Request, res: Response) => {
         if (deviceId) {
             const existingUser = await User.findOne({ mobile });
             if (existingUser && existingUser.activeDeviceId && existingUser.activeDeviceId !== deviceId) {
-                // MIGRATION LOGIC:
+                // MIGRATION LOGIC: Allow existing users to 'upgrade' to hardware IDs
                 const isLegacyId = existingUser.activeDeviceId.startsWith('dev_');
                 const isNewIdPersistent = !deviceId.startsWith('dev_');
 
                 if (isLegacyId && isNewIdPersistent) {
                     console.log(`[Auth] Allowing device migration for ${mobile} from ${existingUser.activeDeviceId} to ${deviceId}`);
-                    // Proceed with OTP sending
+                    // Proceed to send OTP
                 } else {
-                    // Allow if user has no active chat session (handles reinstall)
-                    const hasActiveSession = await ChatSession.findOne({
-                        userId: existingUser._id,
-                        status: { $in: ['ACTIVE', 'PENDING'] }
+                    // STRICT ENFORCEMENT: Block login if it's a different physical device
+                    return res.status(409).json({
+                        success: false,
+                        message: 'This number is already logged in on another device. Please logout from there to login here.'
                     });
-                    if (hasActiveSession) {
-                        return res.status(409).json({
-                            success: false,
-                            message: 'This number is already logged in on another device. Please logout from there to login here.'
-                        });
-                    }
-                    console.log(`[Auth] Allowing device switch for ${mobile} (no active session)`);
                 }
             }
         }
@@ -187,26 +180,19 @@ export const verifyOtp = async (req: Request, res: Response) => {
 
         // Device-based login restriction
         if (deviceId && user.activeDeviceId && user.activeDeviceId !== deviceId) {
-            // MIGRATION LOGIC:
+            // MIGRATION LOGIC: Allow migration during verification
             const isLegacyId = user.activeDeviceId.startsWith('dev_');
             const isNewIdPersistent = !deviceId.startsWith('dev_');
 
             if (isLegacyId && isNewIdPersistent) {
                 console.log(`[Auth] Migrating device ID for ${mobile} on verification`);
-                // Allow proceeding
+                // Proceed
             } else {
-                // Allow if user has no active chat session (handles reinstall)
-                const hasActiveSession = await ChatSession.findOne({
-                    userId: user._id,
-                    status: { $in: ['ACTIVE', 'PENDING'] }
+                // STRICT ENFORCEMENT
+                return res.status(409).json({
+                    success: false,
+                    message: 'This number is already logged in on another device. Please logout from there to login here.'
                 });
-                if (hasActiveSession) {
-                    return res.status(409).json({
-                        success: false,
-                        message: 'This number is already logged in on another device. Please logout from there to login here.'
-                    });
-                }
-                console.log(`[Auth] Allowing device switch for ${mobile} (no active session)`);
             }
         }
 
