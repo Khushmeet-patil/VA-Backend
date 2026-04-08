@@ -145,18 +145,6 @@ class ChatService {
             throw new Error('You already have a pending chat request');
         }
 
-        // Check if astrologer is actively connected via sockets before proceeding
-        if (this.io) {
-            const roomName = `astrologer:${astrologerId}`;
-            const room = this.io.sockets.adapter.rooms.get(roomName);
-            if (!room || room.size === 0) {
-                console.warn(`[ChatService] Astrologer ${astrologerId} has no active socket connection. Instantly rejecting request.`);
-                
-                // Throw error so request isn't created as pending
-                // We do NOT save a ChatSession here, so it won't appear as a "Missed Chat" in the admin panel
-                throw new Error('Astrologer is currently unreachable or offline. Please try again later.');
-            }
-        }
 
         // Create new chat session
         const session = new ChatSession({
@@ -194,85 +182,78 @@ class ChatService {
 
             const requestPayload = {
                 sessionId: session.sessionId,
-                userId: user._id,
+                userId: user._id.toString(),
                 userName: user.name || 'User',
                 intakeDetails,
                 ratePerMinute,
                 userMobile: user.mobile
             };
 
-            // Attempt Delivery with ACK & Retry
-            const attemptDelivery = async (retries = 2): Promise<boolean> => {
+            // Attempt Delivery with ACK & Resilient Retry Queue
+            const attemptDelivery = async (retries = 3): Promise<boolean> => {
+                // 1. Send high-priority FCM immediately - triggering "Wake Up" during the socket hunt
+                try {
+                    await notificationService.sendHighPriorityChatRequest(astrologerId, {
+                        sessionId: session.sessionId,
+                        userId: user._id.toString(),
+                        userName: user.name || 'User',
+                        userMobile: user.mobile,
+                        ratePerMinute,
+                        intakeDetails,
+                    });
+                    console.log(`[ChatService] Resilient Hunt: FCM wake-up sent to ${astrologerId}`);
+                } catch (fcmError) {
+                    console.error(`[ChatService] Resilient Hunt: Initial FCM wake-up failed:`, fcmError);
+                }
+
                 for (let attempt = 1; attempt <= retries + 1; attempt++) {
                     const sockets = await this.io!.in(roomName).fetchSockets();
-                    if (sockets.length === 0) {
-                        return false;
-                    }
+                    
+                    if (sockets.length > 0) {
+                        const ackPromises = sockets.map(socket => {
+                            return new Promise<boolean>((resolve) => {
+                                let isResolved = false;
+                                const fallbackTimeout = setTimeout(() => {
+                                    if (!isResolved) {
+                                        isResolved = true;
+                                        resolve(false);
+                                    }
+                                }, 5000); // 5 sec timeout
 
-                    const ackPromises = sockets.map(socket => {
-                        return new Promise<boolean>((resolve) => {
-                            let isResolved = false;
-                            const fallbackTimeout = setTimeout(() => {
-                                if (!isResolved) {
-                                    isResolved = true;
-                                    resolve(false);
-                                }
-                            }, 5000); // 5 sec timeout
-
-                            socket.emit('CHAT_REQUEST', requestPayload, (ack: any) => {
-                                if (!isResolved) {
-                                    isResolved = true;
-                                    clearTimeout(fallbackTimeout);
-                                    resolve(ack?.success === true);
-                                }
+                                socket.emit('CHAT_REQUEST', requestPayload, (ack: any) => {
+                                    if (!isResolved) {
+                                        isResolved = true;
+                                        clearTimeout(fallbackTimeout);
+                                        resolve(ack?.success === true);
+                                    }
+                                });
                             });
                         });
-                    });
 
-                    const acks = await Promise.all(ackPromises);
-                    if (acks.some(ack => ack === true)) {
-                        return true;
+                        const acks = await Promise.all(ackPromises);
+                        if (acks.some(ack => ack === true)) {
+                            return true;
+                        }
                     }
-                    console.warn(`[ChatService] CHAT_REQUEST ACK missing (Attempt ${attempt}/${retries + 1})`);
+
+                    console.warn(`[ChatService] CHAT_REQUEST delivery hunt (Attempt ${attempt}/${retries + 1}). Sockets found: ${sockets.length}`);
                     if (attempt <= retries) {
-                        await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+                        await new Promise(r => setTimeout(r, 3000)); // wait 3s before retry
                     }
                 }
                 return false;
             };
 
-            attemptDelivery(2).then(async (success) => {
+            attemptDelivery(3).then(async (success) => {
                 if (success) {
-                    console.log(`[ChatService] CHAT_REQUEST delivery acknowledged successfully.`);
+                    console.log(`[ChatService] CHAT_REQUEST delivered and ACK'd after resilient hunt.`);
                 } else {
-                    console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed to receive ACK after retries. Relying on FCM/API fallback.`);
+                    console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed socket delivery after full resilient hunt. Session remains PENDING.`);
                 }
-            }).catch(e => console.error('[ChatService] Error in delivery attempt:', e));
+            }).catch(e => console.error('[ChatService] Error in resilient delivery attempt:', e));
 
         } else {
             console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
-        }
-
-        // Send high-priority FCM notification to astrologer
-        // This ensures the astrologer receives the request even if app is killed/background
-        try {
-            const fcmSuccess = await notificationService.sendHighPriorityChatRequest(astrologerId, {
-                sessionId: session.sessionId,
-                userId: userId,
-                userName: user.name || 'User',
-                userMobile: user.mobile,
-                ratePerMinute,
-                intakeDetails,
-            });
-
-            if (fcmSuccess) {
-                console.log(`[ChatService] High-priority FCM sent to astrologer ${astrologerId}`);
-            } else {
-                console.warn(`[ChatService] Failed to send high-priority FCM to astrologer ${astrologerId}`);
-            }
-        } catch (fcmError) {
-            // Don't fail the request if FCM fails - socket might still work
-            console.error(`[ChatService] FCM notification error:`, fcmError);
         }
 
         return session;
@@ -1983,7 +1964,7 @@ class ChatService {
 
             const requestPayload = {
                 sessionId: session.sessionId,
-                userId: user._id,
+                userId: user._id.toString(),
                 userName: user.name || 'User',
                 previousSessionId,
                 ratePerMinute,
@@ -1991,70 +1972,68 @@ class ChatService {
                 intakeDetails: previousSession.intakeDetails // Include intake details for the modal
             };
 
-            // Attempt Delivery with ACK & Retry
-            const attemptDelivery = async (retries = 2): Promise<boolean> => {
+            // Attempt Delivery with ACK & Resilient Retry Queue (Hunt)
+            const attemptDelivery = async (retries = 3): Promise<boolean> => {
+                // 1. Send high-priority FCM immediately
+                try {
+                    await notificationService.sendHighPriorityChatRequest(astrologerId, {
+                        sessionId: session.sessionId,
+                        userId: user._id.toString(),
+                        userName: user.name || 'User',
+                        userMobile: user.mobile,
+                        ratePerMinute,
+                        intakeDetails: previousSession.intakeDetails,
+                    });
+                    console.log(`[ChatService] Resilient Hunt (Continue): FCM wake-up sent to ${astrologerId}`);
+                } catch (fcmError) {
+                    console.error(`[ChatService] Resilient Hunt (Continue): FCM wake-up failed:`, fcmError);
+                }
+
                 for (let attempt = 1; attempt <= retries + 1; attempt++) {
                     const sockets = await this.io!.in(roomName).fetchSockets();
-                    if (sockets.length === 0) {
-                        return false;
-                    }
+                    
+                    if (sockets.length > 0) {
+                        const ackPromises = sockets.map(socket => {
+                            return new Promise<boolean>((resolve) => {
+                                let isResolved = false;
+                                const fallbackTimeout = setTimeout(() => {
+                                    if (!isResolved) {
+                                        isResolved = true;
+                                        resolve(false);
+                                    }
+                                }, 5000); // 5 sec timeout
 
-                    const ackPromises = sockets.map(socket => {
-                        return new Promise<boolean>((resolve) => {
-                            let isResolved = false;
-                            const fallbackTimeout = setTimeout(() => {
-                                if (!isResolved) {
-                                    isResolved = true;
-                                    resolve(false);
-                                }
-                            }, 5000); // 5 sec timeout
-
-                            socket.emit('CONTINUE_CHAT_REQUEST', requestPayload, (ack: any) => {
-                                if (!isResolved) {
-                                    isResolved = true;
-                                    clearTimeout(fallbackTimeout);
-                                    resolve(ack?.success === true);
-                                }
+                                socket.emit('CONTINUE_CHAT_REQUEST', requestPayload, (ack: any) => {
+                                    if (!isResolved) {
+                                        isResolved = true;
+                                        clearTimeout(fallbackTimeout);
+                                        resolve(ack?.success === true);
+                                    }
+                                });
                             });
                         });
-                    });
 
-                    const acks = await Promise.all(ackPromises);
-                    if (acks.some(ack => ack === true)) {
-                        return true;
+                        const acks = await Promise.all(ackPromises);
+                        if (acks.some(ack => ack === true)) {
+                            return true;
+                        }
                     }
-                    console.warn(`[ChatService] CONTINUE_CHAT_REQUEST ACK missing (Attempt ${attempt}/${retries + 1})`);
+
+                    console.warn(`[ChatService] CONTINUE_CHAT_REQUEST delivery hunt (Attempt ${attempt}/${retries + 1}). Sockets found: ${sockets.length}`);
                     if (attempt <= retries) {
-                        await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+                        await new Promise(r => setTimeout(r, 3000)); // wait 3s before retry
                     }
                 }
                 return false;
             };
 
-            attemptDelivery(2).then(async (success) => {
+            attemptDelivery(3).then(async (success) => {
                 if (success) {
-                    console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivery acknowledged successfully.`);
+                    console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivered and ACK'd after resilient hunt.`);
                 } else {
-                    console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed to receive ACK after retries. Relying on FCM/API fallback.`);
+                    console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed socket delivery after resilient hunt.`);
                 }
-            }).catch(e => console.error('[ChatService] Error in continue delivery attempt:', e));
-        }
-
-        // Send high-priority FCM notification to astrologer
-        // This ensures the astrologer receives the request even if app is killed/background
-        try {
-            await notificationService.sendHighPriorityChatRequest(astrologerId, {
-                sessionId: session.sessionId,
-                userId: userId,
-                userName: user.name || 'User',
-                userMobile: user.mobile,
-                ratePerMinute,
-                intakeDetails: previousSession.intakeDetails,
-            });
-            console.log(`[ChatService] High-priority FCM sent for continue chat to astrologer ${astrologerId}`);
-        } catch (fcmError) {
-            // Don't fail the request if FCM fails - socket might still work
-            console.error(`[ChatService] FCM notification error for continue chat:`, fcmError);
+            }).catch(e => console.error('[ChatService] Error in continue delivery resilient hunt:', e));
         }
 
         return session;
