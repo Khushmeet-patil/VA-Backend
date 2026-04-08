@@ -345,6 +345,27 @@ export const clearUserDevice = async (req: Request, res: Response) => {
     }
 };
 
+export const clearAstrologerDevice = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+
+        const astrologer = await Astrologer.findByIdAndUpdate(
+            astrologerId,
+            { $unset: { activeDeviceId: 1 } },
+            { new: true }
+        );
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        res.status(200).json({ success: true, message: 'Astrologer device cleared successfully', data: astrologer });
+    } catch (error) {
+        console.error('Clear Astrologer Device error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
 export const getUserActivity = async (req: Request, res: Response) => {
     try {
         const { userId } = req.params;

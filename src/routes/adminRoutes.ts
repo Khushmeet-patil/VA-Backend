@@ -16,6 +16,7 @@ import {
     deleteNotification,
     deleteUser,
     clearUserDevice,
+    clearAstrologerDevice,
     addUser,
     adminAddAstrologer,
     getUserReviews,
@@ -99,8 +100,9 @@ router.get('/astrologers', getAstrologers);
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
-router.delete('/astrologers/:astrologerId', deleteAstrologer);
-router.put('/astrologers/:astrologerId/reset-warnings', resetAstrologerWarnings);
+    router.delete('/astrologers/:astrologerId', deleteAstrologer);
+    router.put('/astrologers/:astrologerId/clear-device', clearAstrologerDevice);
+    router.put('/astrologers/:astrologerId/reset-warnings', resetAstrologerWarnings);
 router.put('/astrologers/:astrologerId/verification', verifyAstrologer);
 router.post('/astrologers/:astrologerId/verification/upload', uploadVerificationDocument);
 router.post('/astrologers/:astrologerId/warn', warnAstrologer); // Add warning route
