@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import Astrologer from '../models/Astrologer';
 import { notificationService } from './notificationService';
+import availabilityService from './availabilityService';
+import mongoose from 'mongoose';
 
 // We need io but it's created AFTER this module loads in index.ts.
 // So we store a reference that gets set later.
@@ -74,6 +76,14 @@ const scheduleAutoOnline = () => {
                         astro.isManualOverride = false;
                         (astro as any).expectedScheduleState = newExpected;
                         await astro.save();
+
+                        // Record in availability log
+                        if (shouldBeOnline) {
+                            await availabilityService.recordOnline(astro._id as any);
+                        } else {
+                            await availabilityService.recordOffline(astro._id as any);
+                        }
+
                         console.log(`[Scheduler] >>> SAVED ${astro.firstName}: isOnline=${astro.isOnline}`);
 
                         // Emit socket event
@@ -108,6 +118,7 @@ const scheduleAutoOnline = () => {
                     console.log(`[Scheduler] Enforcing ONLINE for ${astro.firstName} (override cleared, schedule active)`);
                     astro.isOnline = true;
                     await astro.save();
+                    await availabilityService.recordOnline(astro._id as any);
                     if (ioInstance) {
                         ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
                     }
@@ -116,6 +127,7 @@ const scheduleAutoOnline = () => {
                     console.log(`[Scheduler] Enforcing OFFLINE for ${astro.firstName} (override cleared, outside schedule)`);
                     astro.isOnline = false;
                     await astro.save();
+                    await availabilityService.recordOffline(astro._id as any);
                     if (ioInstance) {
                         ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                     }

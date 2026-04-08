@@ -14,6 +14,8 @@ import { getSettingValue } from './systemSettingController';
 import { notificationService } from '../services/notificationService';
 import { sendSmsOtp } from '../services/smsService';
 import DeletionRequest from '../models/DeletionRequest';
+import availabilityService from '../services/availabilityService';
+import AstrologerAvailabilityLog from '../models/AstrologerAvailabilityLog';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -206,6 +208,10 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
 export const logoutAstrologer = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (astrologer && astrologer.isOnline) {
+            await availabilityService.recordOffline(astrologerId);
+        }
         await Astrologer.findByIdAndUpdate(astrologerId, {
             $unset: { activeDeviceId: 1 },
             $set: { isOnline: false }
@@ -372,6 +378,7 @@ export const toggleStatus = async (req: Request, res: Response) => {
 
         // Send notification to all users if astrologer becomes online
         if (isOnline) {
+            await availabilityService.recordOnline(astrologerId);
             notificationService.broadcast('users', {
                 title: 'Astrologer Online!',
                 body: `${astrologer.firstName} ${astrologer.lastName} is now available for consultation.`
@@ -380,6 +387,8 @@ export const toggleStatus = async (req: Request, res: Response) => {
                 astrologerId: astrologer._id.toString(),
                 id: astrologer._id.toString()
             }).catch(err => console.error('[toggleStatus] Broadcast error:', err));
+        } else {
+            await availabilityService.recordOffline(astrologerId);
         }
 
         res.json({ success: true, message: `Status updated to ${isOnline ? 'online' : 'offline'}` });
@@ -495,6 +504,43 @@ export const getStats = async (req: Request, res: Response) => {
         });
 
 
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Get Today's Online Hours (for astrologer panel)
+export const getTodayHours = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        const totalHours = await availabilityService.getTodayTotalHours(astrologerId);
+        res.json({ success: true, totalHours });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+// Get Availability Logs (for admin panel)
+export const getAvailabilityLogs = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { startDate, endDate } = req.query;
+
+        console.log(`[getAvailabilityLogs] Fetching logs for ${astrologerId}, range: ${startDate} to ${endDate}`);
+
+        const query: any = { astrologerId };
+        
+        if (startDate || endDate) {
+            query.startTime = {};
+            if (startDate) query.startTime.$gte = new Date(startDate as string);
+            if (endDate) query.startTime.$lte = new Date(endDate as string);
+        }
+
+        const logs = await AstrologerAvailabilityLog.find(query)
+            .sort({ startTime: -1 })
+            .limit(100);
+
+        res.json({ success: true, logs });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }

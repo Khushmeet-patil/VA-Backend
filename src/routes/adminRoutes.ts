@@ -64,6 +64,7 @@ import {
     updateStartPopup,
     deleteStartPopup
 } from '../controllers/adminController';
+import { getAvailabilityLogs } from '../controllers/astrologerPanelController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
 const router = express.Router();
@@ -107,6 +108,7 @@ router.get('/astrologers/:astrologerId', getAstrologerDetails);
 router.get('/astrologers/:astrologerId/earnings', getAstrologerEarnings);
 router.get('/astrologers/:astrologerId/withdrawals', getAstrologerWithdrawals);
 router.get('/astrologers/:astrologerId/chats', getAstrologerChats);
+router.get('/astrologers/:astrologerId/availability', getAvailabilityLogs);
 
 // Reviews
 router.get('/reviews/pending', getPendingReviews);

@@ -15,7 +15,8 @@ import {
     getSessionHistory,
     getPanelReviews,
     getUserProfileForAstrologer,
-    requestAccountDeletion
+    requestAccountDeletion,
+    getTodayHours
 } from '../controllers/astrologerPanelController';
 import {
     getSchedule,
@@ -40,6 +41,7 @@ router.put('/rate', authMiddleware, updateChatRate);
 router.get('/stats', authMiddleware, getStats);
 router.get('/chats', authMiddleware, getChats);
 router.get('/reviews', authMiddleware, getPanelReviews);
+router.get('/today-hours', authMiddleware, getTodayHours);
 
 // Withdrawal routes
 router.post('/withdraw', authMiddleware, requestWithdrawal);
