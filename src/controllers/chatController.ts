@@ -75,11 +75,21 @@ export const acceptChat = async (req: AuthRequest, res: Response) => {
 
         const updatedSession = await chatService.acceptChatRequest(sessionId);
 
+        // Fetch user info for complete response (useful if socket event is missed)
+        const user = await User.findById(updatedSession.userId);
+
         res.json({
             message: 'Chat accepted',
             sessionId: updatedSession.sessionId,
             status: updatedSession.status,
-            startTime: updatedSession.startTime
+            startTime: updatedSession.startTime,
+            ratePerMinute: updatedSession.ratePerMinute,
+            userId: updatedSession.userId?._id || updatedSession.userId,
+            userName: user?.name || 'User',
+            userMobile: user?.mobile || '',
+            intakeDetails: updatedSession.intakeDetails,
+            isFreeTrialSession: updatedSession.isFreeTrialSession || false,
+            freeTrialDurationSeconds: updatedSession.freeTrialDurationSeconds || 0,
         });
 
     } catch (error: any) {
