@@ -69,8 +69,10 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         const roomName = `${userType}:${userId}`;
         socket.join(roomName);
 
-        // Enhanced logging for debugging
-        console.log(`[Socket] ${userType} connected: ID=${userId}, Room=${roomName}, SocketID=${socket.id}`);
+        // Enhanced logging for debugging - roomSize check confirms the join was successful
+        const room = io.sockets.adapter.rooms.get(roomName);
+        const roomSize = room ? room.size : 0;
+        console.log(`[Socket] ${userType} connected & joined room: ID=${userId}, Room=${roomName}, RoomSize=${roomSize}, SocketID=${socket.id}`);
 
         // Handle reconnect (clear grace period if any)
         chatService.handleReconnect(userId, userType === 'astrologer');

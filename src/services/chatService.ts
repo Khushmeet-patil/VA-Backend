@@ -244,11 +244,12 @@ class ChatService {
                 return false;
             };
 
-            attemptDelivery(3).then(async (success) => {
+            attemptDelivery(7).then(async (success) => {
+                const finalSockets = await this.io!.in(roomName).fetchSockets();
                 if (success) {
-                    console.log(`[ChatService] CHAT_REQUEST delivered and ACK'd after resilient hunt.`);
+                    console.log(`[ChatService] CHAT_REQUEST delivered and ACK'd after resilient hunt. (Final Room Size: ${finalSockets.length})`);
                 } else {
-                    console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed socket delivery after full resilient hunt. Session remains PENDING.`);
+                    console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed socket delivery after full resilient hunt. Session remains PENDING. (Final Room Size: ${finalSockets.length})`);
                 }
             }).catch(e => console.error('[ChatService] Error in resilient delivery attempt:', e));
 
@@ -2027,11 +2028,12 @@ class ChatService {
                 return false;
             };
 
-            attemptDelivery(3).then(async (success) => {
+            attemptDelivery(7).then(async (success) => {
+                const finalSockets = await this.io!.in(roomName).fetchSockets();
                 if (success) {
-                    console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivered and ACK'd after resilient hunt.`);
+                    console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivered and ACK'd after resilient hunt. (Final Room Size: ${finalSockets.length})`);
                 } else {
-                    console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed socket delivery after resilient hunt.`);
+                    console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed socket delivery after resilient hunt. (Final Room Size: ${finalSockets.length})`);
                 }
             }).catch(e => console.error('[ChatService] Error in continue delivery resilient hunt:', e));
         }
