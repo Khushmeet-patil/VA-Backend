@@ -67,10 +67,18 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static('uploads'));
 
 // Initialize Socket.IO
+// pingInterval + pingTimeout determines how fast dead connections are detected.
+// Old: 25s + 60s = up to 85s "zombie" window. New: 10s + 20s = ~30s max.
+// connectionStateRecovery buffers events for 2 minutes so reconnecting clients
+// automatically receive any missed events without application-level re-delivery.
 const io = new SocketIOServer(httpServer, {
     cors: corsOptions,
-    pingTimeout: 60000,
-    pingInterval: 25000,
+    pingInterval: 10000,
+    pingTimeout: 20000,
+    connectionStateRecovery: {
+        maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+        skipMiddlewares: true,
+    },
 });
 
 // Initialize socket handlers

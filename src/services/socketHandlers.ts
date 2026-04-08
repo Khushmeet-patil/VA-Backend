@@ -77,14 +77,16 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         // Handle reconnect (clear grace period if any)
         chatService.handleReconnect(userId, userType === 'astrologer');
 
-        // Handle sending messages
+        // Handle sending messages.
+        // Supports an optional ACK callback: socket.emit('send_message', data, (res) => {...})
+        // res = { success: true, messageId, timestamp } or { success: false, error }
         socket.on('send_message', async (data: {
             sessionId: string;
             text: string;
             type?: 'text' | 'image' | 'file' | 'profile_data';
             fileData?: { url: string; name?: string; size?: number };
             replyToId?: string;
-        }) => {
+        }, callback?: (res: { success: boolean; messageId?: string; timestamp?: string; error?: string }) => void) => {
             try {
                 const { sessionId, text, type = 'text', fileData, replyToId } = data;
 
@@ -112,8 +114,14 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     return;
                 }
 
-                // Save message
-                const savedMsg = await chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId);
+                // Save message with a timeout guard so a slow DB doesn't hang indefinitely.
+                // If it times out, the catch block sends { success: false } to the client.
+                const savedMsg = await Promise.race([
+                    chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId),
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('DB_TIMEOUT')), 8000)
+                    )
+                ]);
 
                 // Fetch reply message if replyToId was provided
                 let replyTo: { id: string; text: string; sender: string; type?: string; fileUrl?: string } | undefined;
@@ -165,6 +173,12 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     sessionId,
                     ...message
                 });
+
+                // ACK sender immediately after save+broadcast — before FCM/profile detection
+                // (FCM is best-effort and must not delay or block the ACK)
+                if (typeof callback === 'function') {
+                    callback({ success: true, messageId: savedMsg._id.toString(), timestamp: savedMsg.timestamp.toISOString() });
+                }
 
                 // FALLBACK: Check if this message is actually a Shared Profile sent as text
                 // Format: 👤 Name: ... ⚧️ Gender: ... 📅 DOB: ...
@@ -291,9 +305,16 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     console.error('[Socket] FCM notification error:', fcmError);
                 }
 
-            } catch (error) {
+            } catch (error: any) {
                 console.error('[Socket] Send message error:', error);
-                socket.emit('error', { message: 'Failed to send message' });
+                const errMsg = error?.message === 'DB_TIMEOUT'
+                    ? 'Message save timed out, please retry'
+                    : 'Failed to send message';
+                if (typeof callback === 'function') {
+                    callback({ success: false, error: errMsg });
+                } else {
+                    socket.emit('error', { message: errMsg });
+                }
             }
         });
 
