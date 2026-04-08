@@ -145,6 +145,34 @@ class ChatService {
             throw new Error('You already have a pending chat request');
         }
 
+        // Check if astrologer is actively connected via sockets before proceeding
+        if (this.io) {
+            const roomName = `astrologer:${astrologerId}`;
+            const room = this.io.sockets.adapter.rooms.get(roomName);
+            if (!room || room.size === 0) {
+                console.warn(`[ChatService] Astrologer ${astrologerId} has no active socket connection. Instantly rejecting request.`);
+                
+                // Create the session but immediately end it to log it as OFFLINE
+                const instantOfflineSession = new ChatSession({
+                    userId,
+                    astrologerId,
+                    ratePerMinute,
+                    status: 'ENDED',
+                    endReason: 'ASTROLOGER_OFFLINE_DURING_REQUEST',
+                    errorDescription: 'Astrologer was completely offline when request was made',
+                    intakeDetails,
+                    profileId: (intakeDetails as any)?.profileId || 'default',
+                    isFreeTrialSession: isEligibleForFreeTrial,
+                    freeTrialDurationSeconds: isEligibleForFreeTrial ? 120 : undefined,
+                    endTime: new Date()
+                });
+                await instantOfflineSession.save();
+                
+                // Throw error so request isn't created as pending
+                throw new Error('Astrologer is currently unreachable or offline. Please try again later.');
+            }
+        }
+
         // Create new chat session
         const session = new ChatSession({
             userId,
