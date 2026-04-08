@@ -166,3 +166,40 @@ export const scheduleDailyReset = () => {
         timezone: "Asia/Kolkata"
     });
 };
+
+/**
+ * Sanity Check: Periodically clean up "Online" astrologers who are unreachable.
+ * Handles cases where server restarts or missed disconnect events leave "zombies".
+ */
+export const scheduleZombieCleanup = () => {
+    // Run every 10 minutes
+    cron.schedule('*/10 * * * *', async () => {
+        console.log('[Scheduler] Running Zombie Cleanup sanity check...');
+        try {
+            // 1. Find astrologers who are isOnline=true but have NO fcmToken.
+            // If they have no FCM token, they CANNOT receive push notifications in the background.
+            // They are effectively offline and should be marked as such.
+            const unreachableAstrologers = await Astrologer.find({ 
+                isOnline: true, 
+                fcmToken: { $exists: false } 
+            });
+
+            for (const astro of unreachableAstrologers) {
+                console.log(`[Scheduler] Zombie Cleanup: Astrologer ${astro._id} is online but has no FCM token. Marking offline.`);
+                await Astrologer.findByIdAndUpdate(astro._id, { $set: { isOnline: false } });
+                await availabilityService.recordOffline(astro._id as any);
+                
+                if (ioInstance) {
+                    ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
+                }
+            }
+
+            // 2. Self-healing for "isBusy" state (added for robustness)
+            // If an astrologer is marked isBusy:true but has no socket connection, 
+            // they might be in a stuck state. (Deferred: handles by ChatService.cleanupStaleSessions already)
+            
+        } catch (error) {
+            console.error('[Scheduler] Error in zombie cleanup:', error);
+        }
+    });
+};

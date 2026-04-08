@@ -4,6 +4,7 @@ import * as path from 'path';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Notification from '../models/Notification';
+import availabilityService from './availabilityService';
 
 /**
  * NotificationService - Firebase Cloud Messaging handler
@@ -611,16 +612,30 @@ class NotificationService {
     async cleanupToken(token: string): Promise<void> {
         if (!token) return;
         try {
+            // Find astrologers using this token before unsetting it
+            const astrologers = await Astrologer.find({ fcmToken: token });
+            
             const userUpdate = User.updateMany(
                 { fcmToken: token },
                 { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
             );
+            
+            // For astrologers: also mark offline if they were online
             const astrologerUpdate = Astrologer.updateMany(
                 { fcmToken: token },
-                { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
+                { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 }, $set: { isOnline: false } }
             );
 
             await Promise.all([userUpdate, astrologerUpdate]);
+
+            // Track offline time in availability log
+            for (const astro of astrologers) {
+                if (astro.isOnline) {
+                    await availabilityService.recordOffline(astro._id as any);
+                    console.log(`[NotificationService] Astrologer ${astro._id} marked offline due to dead FCM token (App may be uninstalled)`);
+                }
+            }
+
             console.log(`[NotificationService] Globally cleared invalid FCM token: ${token.substring(0, 15)}...`);
         } catch (error) {
             console.error('[NotificationService] Error in global token cleanup:', error);

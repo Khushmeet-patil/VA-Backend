@@ -7,6 +7,7 @@ import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import notificationService from './notificationService';
+import availabilityService from './availabilityService';
 
 /**
  * ChatService - Core billing and session management
@@ -1664,11 +1665,11 @@ class ChatService {
             return;
         }
 
-        // PENDING session: astrologer disconnected while request was ringing.
-        // Give a 10-second grace window for transient network blips before cancelling.
-        // If the astrologer reconnects within 10s, handleReconnect will re-deliver the request.
+        // PENDING/ONLINE session: astrologer disconnected.
         if (isAstrologer) {
             const pendingSession = await ChatSession.findOne({ astrologerId: userId, status: 'PENDING' });
+            
+            // 1. PENDING Request Grace Window (10 seconds)
             if (pendingSession) {
                 console.log(`[ChatService] Astrologer ${userId} disconnected with PENDING request ${pendingSession.sessionId}. Starting 10s grace window.`);
 
@@ -1676,17 +1677,11 @@ class ChatService {
                     try {
                         // Re-check: has the session already been resolved during the grace window?
                         const stillPending = await ChatSession.findOne({ sessionId: pendingSession.sessionId, status: 'PENDING' });
-                        if (!stillPending) {
-                            console.log(`[ChatService] Grace window: session ${pendingSession.sessionId} already resolved — no action needed.`);
-                            return;
-                        }
+                        if (!stillPending) return;
 
                         // Re-check: did the astrologer reconnect?
                         const room = this.io?.sockets.adapter.rooms.get(`astrologer:${userId}`);
-                        if (room && room.size > 0) {
-                            console.log(`[ChatService] Grace window: astrologer ${userId} reconnected — PENDING session preserved.`);
-                            return; // handleReconnect already re-delivered the request
-                        }
+                        if (room && room.size > 0) return;
 
                         // Astrologer is still offline — cancel the request
                         console.log(`[ChatService] Grace window expired: astrologer ${userId} still offline. Cancelling PENDING request ${pendingSession.sessionId}.`);
@@ -1698,7 +1693,6 @@ class ChatService {
                         }
                         this.requestDeliveryConfirmed.delete(pendingSession.sessionId);
 
-                        // Atomic update — only cancel if still PENDING
                         const cancelled = await ChatSession.findOneAndUpdate(
                             { sessionId: pendingSession.sessionId, status: 'PENDING' },
                             { $set: { status: 'ENDED', endReason: 'ASTROLOGER_OFFLINE_DURING_REQUEST' } }
@@ -1714,6 +1708,48 @@ class ChatService {
                         console.error(`[ChatService] Error in disconnect grace window for ${pendingSession.sessionId}:`, graceErr);
                     }
                 }, 10000);
+            }
+
+            // 2. Global "Zombie Detection" (10 minutes)
+            // If an astrologer is marked ONLINE but disconnects their socket, 
+            // they might have uninstalled the app or lost connection forever.
+            // We wait 10 minutes; if they don't reconnect and aren't in an ACTIVE chat, we mark them offline.
+            const astrologer = await Astrologer.findById(userId);
+            if (astrologer && astrologer.isOnline) {
+                console.log(`[ChatService] Online astrologer ${userId} disconnected. Starting 10-minute Zombie Detection timer.`);
+                
+                setTimeout(async () => {
+                    try {
+                        // Re-fetch current state
+                        const currentAstro = await Astrologer.findById(userId);
+                        if (!currentAstro || !currentAstro.isOnline) return;
+
+                        // Check if they reconnected
+                        const room = this.io?.sockets.adapter.rooms.get(`astrologer:${userId}`);
+                        if (room && room.size > 0) {
+                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} reconnected within 10m. Keeping online.`);
+                            return;
+                        }
+
+                        // Check if they are in an ACTIVE session (don't mark offline during chat)
+                        const activeSession = await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' });
+                        if (activeSession) {
+                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} still disconnected but in ACTIVE chat. Preserving online status for now.`);
+                            return;
+                        }
+
+                        // If still disconnected and no active session, mark offline
+                        console.log(`[ChatService] Zombie Detection: Astrologer ${userId} persistently disconnected for 10m. Marking OFFLINE.`);
+                        await Astrologer.findByIdAndUpdate(userId, { $set: { isOnline: false } });
+                        await availabilityService.recordOffline(userId);
+
+                        if (this.io) {
+                            this.io.to(`astrologer:${userId}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
+                        }
+                    } catch (zombieErr) {
+                        console.error(`[ChatService] Error in Zombie Detection for ${userId}:`, zombieErr);
+                    }
+                }, 10 * 60 * 1000); // 10 minutes
             }
         }
     }

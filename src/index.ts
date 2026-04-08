@@ -24,7 +24,7 @@ import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
 import scheduledNotificationService from './services/scheduledNotificationService';
-import scheduleAutoOnline, { scheduleDailyReset, setIOInstance } from './services/scheduler'; // Auto-online scheduler
+import scheduleAutoOnline, { scheduleDailyReset, scheduleZombieCleanup, setIOInstance } from './services/scheduler'; // Auto-online scheduler
 import { startSessionScheduler } from './services/sessionScheduler'; // Session maintenance
 import astrologyRoutes from './routes/astrologyProxyRoutes';
 import matchingRoutes from './routes/matchingRoutes';
@@ -45,6 +45,7 @@ notificationService.initialize();
 // Initialize Auto-Online Scheduling (cron registration - io will be injected below)
 scheduleAutoOnline();
 scheduleDailyReset(); // Reset freeChatsToday & isManualOverride daily at midnight IST
+scheduleZombieCleanup(); // Periodically clean up offline astrologers
 startSessionScheduler(); // Start chat session maintenance & billing recovery
 
 const app = express();
