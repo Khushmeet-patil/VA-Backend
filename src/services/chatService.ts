@@ -152,23 +152,8 @@ class ChatService {
             if (!room || room.size === 0) {
                 console.warn(`[ChatService] Astrologer ${astrologerId} has no active socket connection. Instantly rejecting request.`);
                 
-                // Create the session but immediately end it to log it as OFFLINE
-                const instantOfflineSession = new ChatSession({
-                    userId,
-                    astrologerId,
-                    ratePerMinute,
-                    status: 'ENDED',
-                    endReason: 'ASTROLOGER_OFFLINE_DURING_REQUEST',
-                    errorDescription: 'Astrologer was completely offline when request was made',
-                    intakeDetails,
-                    profileId: (intakeDetails as any)?.profileId || 'default',
-                    isFreeTrialSession: isEligibleForFreeTrial,
-                    freeTrialDurationSeconds: isEligibleForFreeTrial ? 120 : undefined,
-                    endTime: new Date()
-                });
-                await instantOfflineSession.save();
-                
                 // Throw error so request isn't created as pending
+                // We do NOT save a ChatSession here, so it won't appear as a "Missed Chat" in the admin panel
                 throw new Error('Astrologer is currently unreachable or offline. Please try again later.');
             }
         }
@@ -196,7 +181,7 @@ class ChatService {
         }, this.REQUEST_TIMEOUT_MS);
         this.requestTimeouts.set(session.sessionId, timeout);
 
-        // Emit CHAT_REQUEST to astrologer
+        // Emit CHAT_REQUEST to astrologer with ACK and Retry Queue
         if (this.io) {
             const roomName = `astrologer:${astrologerId}`;
             const room = this.io.sockets.adapter.rooms.get(roomName);
@@ -207,15 +192,63 @@ class ChatService {
                 console.warn(`[ChatService] WARNING: No sockets in room ${roomName}. Astrologer may be disconnected.`);
             }
 
-            this.io.to(roomName).emit('CHAT_REQUEST', {
+            const requestPayload = {
                 sessionId: session.sessionId,
                 userId: user._id,
                 userName: user.name || 'User',
                 intakeDetails,
                 ratePerMinute,
                 userMobile: user.mobile
-            });
-            console.log(`[ChatService] CHAT_REQUEST emitted successfully`);
+            };
+
+            // Attempt Delivery with ACK & Retry
+            const attemptDelivery = async (retries = 2): Promise<boolean> => {
+                for (let attempt = 1; attempt <= retries + 1; attempt++) {
+                    const sockets = await this.io!.in(roomName).fetchSockets();
+                    if (sockets.length === 0) {
+                        return false;
+                    }
+
+                    const ackPromises = sockets.map(socket => {
+                        return new Promise<boolean>((resolve) => {
+                            let isResolved = false;
+                            const fallbackTimeout = setTimeout(() => {
+                                if (!isResolved) {
+                                    isResolved = true;
+                                    resolve(false);
+                                }
+                            }, 5000); // 5 sec timeout
+
+                            socket.emit('CHAT_REQUEST', requestPayload, (ack: any) => {
+                                if (!isResolved) {
+                                    isResolved = true;
+                                    clearTimeout(fallbackTimeout);
+                                    resolve(ack?.success === true);
+                                }
+                            });
+                        });
+                    });
+
+                    const acks = await Promise.all(ackPromises);
+                    if (acks.some(ack => ack === true)) {
+                        return true;
+                    }
+                    console.warn(`[ChatService] CHAT_REQUEST ACK missing (Attempt ${attempt}/${retries + 1})`);
+                    if (attempt <= retries) {
+                        await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+                    }
+                }
+                return false;
+            };
+
+            attemptDelivery(2).then(async (success) => {
+                if (success) {
+                    console.log(`[ChatService] CHAT_REQUEST delivery acknowledged successfully.`);
+                } else {
+                    console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed to receive ACK after retries. Relying on FCM/API fallback.`);
+                }
+            }).catch(e => console.error('[ChatService] Error in delivery attempt:', e));
+
         } else {
             console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
         }
@@ -1941,14 +1974,14 @@ class ChatService {
         }, this.REQUEST_TIMEOUT_MS);
         this.requestTimeouts.set(session.sessionId, timeout);
 
-        // Emit CONTINUE_CHAT_REQUEST to astrologer (different event for clarity)
+        // Emit CONTINUE_CHAT_REQUEST to astrologer with ACK and Retry Queue (different event for clarity)
         if (this.io) {
             const roomName = `astrologer:${astrologerId}`;
             const room = this.io.sockets.adapter.rooms.get(roomName);
             const roomSize = room ? room.size : 0;
             console.log(`[ChatService] Emitting CONTINUE_CHAT_REQUEST to room: ${roomName}, connected sockets: ${roomSize}`);
 
-            this.io.to(roomName).emit('CONTINUE_CHAT_REQUEST', {
+            const requestPayload = {
                 sessionId: session.sessionId,
                 userId: user._id,
                 userName: user.name || 'User',
@@ -1956,7 +1989,55 @@ class ChatService {
                 ratePerMinute,
                 userMobile: user.mobile,
                 intakeDetails: previousSession.intakeDetails // Include intake details for the modal
-            });
+            };
+
+            // Attempt Delivery with ACK & Retry
+            const attemptDelivery = async (retries = 2): Promise<boolean> => {
+                for (let attempt = 1; attempt <= retries + 1; attempt++) {
+                    const sockets = await this.io!.in(roomName).fetchSockets();
+                    if (sockets.length === 0) {
+                        return false;
+                    }
+
+                    const ackPromises = sockets.map(socket => {
+                        return new Promise<boolean>((resolve) => {
+                            let isResolved = false;
+                            const fallbackTimeout = setTimeout(() => {
+                                if (!isResolved) {
+                                    isResolved = true;
+                                    resolve(false);
+                                }
+                            }, 5000); // 5 sec timeout
+
+                            socket.emit('CONTINUE_CHAT_REQUEST', requestPayload, (ack: any) => {
+                                if (!isResolved) {
+                                    isResolved = true;
+                                    clearTimeout(fallbackTimeout);
+                                    resolve(ack?.success === true);
+                                }
+                            });
+                        });
+                    });
+
+                    const acks = await Promise.all(ackPromises);
+                    if (acks.some(ack => ack === true)) {
+                        return true;
+                    }
+                    console.warn(`[ChatService] CONTINUE_CHAT_REQUEST ACK missing (Attempt ${attempt}/${retries + 1})`);
+                    if (attempt <= retries) {
+                        await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+                    }
+                }
+                return false;
+            };
+
+            attemptDelivery(2).then(async (success) => {
+                if (success) {
+                    console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivery acknowledged successfully.`);
+                } else {
+                    console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed to receive ACK after retries. Relying on FCM/API fallback.`);
+                }
+            }).catch(e => console.error('[ChatService] Error in continue delivery attempt:', e));
         }
 
         // Send high-priority FCM notification to astrologer
