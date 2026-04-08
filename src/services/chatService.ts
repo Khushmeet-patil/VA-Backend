@@ -31,11 +31,17 @@ class ChatService {
     // Billing cycle interval (60 seconds)
     private readonly BILLING_INTERVAL_MS = 60000;
 
-    // Request timeout (60 seconds - auto-reject if not accepted)
-    private readonly REQUEST_TIMEOUT_MS = 30000; // 30 seconds match user app
+    // Request timeout — must exceed ping detection window (pingInterval 10s + pingTimeout 20s = 30s).
+    // 30s gives enough time for socket reconnect + FCM wake-up before marking as missed.
+    private readonly REQUEST_TIMEOUT_MS = 30000;
 
     // Map of request timeout timers: sessionId -> NodeJS.Timeout
     private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
+
+    // Tracks whether CHAT_REQUEST was ACK'd by astrologer's socket.
+    // Only confirmed deliveries trigger missed-chat penalties. In-memory only —
+    // loss on restart is safe (conservative failure: no penalty = correct default).
+    private requestDeliveryConfirmed: Map<string, boolean> = new Map();
 
     // Map of free trial timers: sessionId -> NodeJS.Timeout
     private freeTrialTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -244,9 +250,13 @@ class ChatService {
                 return false;
             };
 
-            attemptDelivery(7).then(async (success) => {
+            attemptDelivery(5).then(async (success) => {
                 const finalSockets = await this.io!.in(roomName).fetchSockets();
                 if (success) {
+                    // Only mark delivered if session is still pending (not already resolved)
+                    if (this.requestTimeouts.has(session.sessionId)) {
+                        this.requestDeliveryConfirmed.set(session.sessionId, true);
+                    }
                     console.log(`[ChatService] CHAT_REQUEST delivered and ACK'd after resilient hunt. (Final Room Size: ${finalSockets.length})`);
                 } else {
                     console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed socket delivery after full resilient hunt. Session remains PENDING. (Final Room Size: ${finalSockets.length})`);
@@ -281,6 +291,7 @@ class ChatService {
             clearTimeout(timeout);
             this.requestTimeouts.delete(sessionId);
         }
+        this.requestDeliveryConfirmed.delete(sessionId);
 
         // Verify user still has enough balance (skip for free trial)
         const user = await User.findById(session.userId);
@@ -304,28 +315,33 @@ class ChatService {
             throw new Error(errorMsg);
         }
 
-        // Lock astrologer (prevent concurrent chats)
-        const astrologer = await Astrologer.findById(session.astrologerId);
-        if (!astrologer) {
-            throw new Error('Astrologer not found');
-        }
+        // Atomically acquire the isBusy lock — only succeeds if astrologer is NOT currently busy.
+        // This prevents race conditions where two simultaneous accepts both pass the isBusy check.
+        const astrologer = await Astrologer.findOneAndUpdate(
+            { _id: session.astrologerId, isBusy: { $ne: true } },
+            { $set: { isBusy: true, activeSessionId: sessionId } },
+            { new: true }
+        );
 
-        if (astrologer.isBusy) {
-            const errorMsg = `Astrologer is already busy with another chat (Session: ${astrologer.activeSessionId})`;
+        if (!astrologer) {
+            // Either astrologer not found or already busy — either way we can't proceed
+            const existingAstro = await Astrologer.findById(session.astrologerId);
+            const errorMsg = existingAstro
+                ? `Astrologer is already busy with another chat (Session: ${existingAstro.activeSessionId})`
+                : 'Astrologer not found';
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
-                { 
-                    status: 'REJECTED',
-                    errorDescription: errorMsg
-                }
+                { status: 'REJECTED', errorDescription: errorMsg }
             );
+            // Clean up timeout tracking since this session is now resolved
+            const existingTimeout = this.requestTimeouts.get(sessionId);
+            if (existingTimeout) {
+                clearTimeout(existingTimeout);
+                this.requestTimeouts.delete(sessionId);
+            }
+            this.requestDeliveryConfirmed.delete(sessionId);
             throw new Error(errorMsg);
         }
-
-        // Update astrologer status first
-        astrologer.isBusy = true;
-        astrologer.activeSessionId = sessionId;
-        await astrologer.save();
 
         // ATOMIC COMMIT: Try to change status PENDING -> ACTIVE
         const updatedSession = await ChatSession.findOneAndUpdate(
@@ -509,6 +525,7 @@ class ChatService {
             clearTimeout(timeout);
             this.requestTimeouts.delete(sessionId);
         }
+        this.requestDeliveryConfirmed.delete(sessionId);
 
         session.status = 'REJECTED';
         session.endReason = 'ASTROLOGER_REJECTED';
@@ -554,7 +571,12 @@ class ChatService {
 
         this.requestTimeouts.delete(sessionId);
 
-        console.log(`[ChatService] Chat request timed out: ${sessionId}`);
+        // Read and clear delivery flag BEFORE any penalty logic.
+        // wasDelivered=false means the request never reached the astrologer's device,
+        // so no penalty should be applied (zombie socket, reconnect in progress, etc.)
+        const wasDelivered = this.requestDeliveryConfirmed.get(sessionId) ?? false;
+        this.requestDeliveryConfirmed.delete(sessionId);
+        console.log(`[ChatService] Chat request timed out: ${sessionId} (wasDelivered=${wasDelivered})`);
 
         // Emit CHAT_TIMEOUT to both parties via socket
         if (this.io) {
@@ -575,11 +597,13 @@ class ChatService {
             'timeout'
         ).catch(err => console.error('[ChatService] FCM timeout push failed:', err));
 
-        // NEW: Send "Missed Chat" notification to astrologer with penalty info if applicable
+        // Send "Missed Chat" notification to astrologer with penalty info if applicable.
+        // Penalty only applies when the request was confirmed delivered (wasDelivered=true).
+        // If the socket was dead/zombie and ACK was never received, no penalty is fair.
         let penaltyAmount = 0;
         const astrologer = await Astrologer.findById(session.astrologerId);
 
-        if (session.isFreeTrialSession && astrologer) {
+        if (wasDelivered && session.isFreeTrialSession && astrologer) {
             try {
                 const systemSettingModel = mongoose.model('SystemSetting');
                 const freeChatRateSetting = await systemSettingModel.findOne({ key: 'freeChatRate' });
@@ -655,8 +679,10 @@ class ChatService {
             console.error('[ChatService] Failed to send missed chat notification:', notifErr);
         }
 
-        // Increment missedChats for astrologer and handle auto-blocking
-        if (astrologer) {
+        // Only increment missedChats and apply auto-block if the request was actually delivered.
+        // If delivery was never confirmed (zombie socket, device offline), the astrologer
+        // had no way to respond — incrementing missedChats would be unfair.
+        if (wasDelivered && astrologer) {
             astrologer.missedChats = (astrologer.missedChats || 0) + 1;
 
             // AUTO-BLOCK LOGIC:
@@ -674,6 +700,8 @@ class ChatService {
                 }
             }
             await astrologer.save();
+        } else if (!wasDelivered) {
+            console.log(`[ChatService] Skipping missedChats/penalty for ${sessionId} — request was never confirmed delivered to astrologer.`);
         }
     }
 
@@ -722,6 +750,7 @@ class ChatService {
             clearTimeout(timeout);
             this.requestTimeouts.delete(sessionId);
         }
+        this.requestDeliveryConfirmed.delete(sessionId);
 
         console.log(`[ChatService] Chat request cancelled by user: ${sessionId}`);
 
@@ -1627,32 +1656,56 @@ class ChatService {
             return;
         }
 
-        // PENDING session: astrologer went offline while request was ringing — cancel the request
+        // PENDING session: astrologer disconnected while request was ringing.
+        // Give a 10-second grace window for transient network blips before cancelling.
+        // If the astrologer reconnects within 10s, handleReconnect will re-deliver the request.
         if (isAstrologer) {
             const pendingSession = await ChatSession.findOne({ astrologerId: userId, status: 'PENDING' });
             if (pendingSession) {
-                console.log(`[ChatService] Astrologer ${userId} disconnected while chat request ${pendingSession.sessionId} was ringing. Marking as missed.`);
+                console.log(`[ChatService] Astrologer ${userId} disconnected with PENDING request ${pendingSession.sessionId}. Starting 10s grace window.`);
 
-                // Clear request timeout
-                const timeout = this.requestTimeouts.get(pendingSession.sessionId);
-                if (timeout) {
-                    clearTimeout(timeout);
-                    this.requestTimeouts.delete(pendingSession.sessionId);
-                }
+                setTimeout(async () => {
+                    try {
+                        // Re-check: has the session already been resolved during the grace window?
+                        const stillPending = await ChatSession.findOne({ sessionId: pendingSession.sessionId, status: 'PENDING' });
+                        if (!stillPending) {
+                            console.log(`[ChatService] Grace window: session ${pendingSession.sessionId} already resolved — no action needed.`);
+                            return;
+                        }
 
-                // Atomic update to missed
-                await ChatSession.updateOne(
-                    { sessionId: pendingSession.sessionId, status: 'PENDING' },
-                    { $set: { status: 'ENDED', endReason: 'ASTROLOGER_OFFLINE_DURING_REQUEST' } }
-                );
+                        // Re-check: did the astrologer reconnect?
+                        const room = this.io?.sockets.adapter.rooms.get(`astrologer:${userId}`);
+                        if (room && room.size > 0) {
+                            console.log(`[ChatService] Grace window: astrologer ${userId} reconnected — PENDING session preserved.`);
+                            return; // handleReconnect already re-delivered the request
+                        }
 
-                // Notify User
-                if (this.io) {
-                    this.io.to(`user:${pendingSession.userId}`).emit('CHAT_REJECTED', {
-                        sessionId: pendingSession.sessionId,
-                        reason: 'Astrologer went offline'
-                    });
-                }
+                        // Astrologer is still offline — cancel the request
+                        console.log(`[ChatService] Grace window expired: astrologer ${userId} still offline. Cancelling PENDING request ${pendingSession.sessionId}.`);
+
+                        const pendingTimeout = this.requestTimeouts.get(pendingSession.sessionId);
+                        if (pendingTimeout) {
+                            clearTimeout(pendingTimeout);
+                            this.requestTimeouts.delete(pendingSession.sessionId);
+                        }
+                        this.requestDeliveryConfirmed.delete(pendingSession.sessionId);
+
+                        // Atomic update — only cancel if still PENDING
+                        const cancelled = await ChatSession.findOneAndUpdate(
+                            { sessionId: pendingSession.sessionId, status: 'PENDING' },
+                            { $set: { status: 'ENDED', endReason: 'ASTROLOGER_OFFLINE_DURING_REQUEST' } }
+                        );
+
+                        if (cancelled && this.io) {
+                            this.io.to(`user:${pendingSession.userId}`).emit('CHAT_REJECTED', {
+                                sessionId: pendingSession.sessionId,
+                                reason: 'Astrologer went offline'
+                            });
+                        }
+                    } catch (graceErr) {
+                        console.error(`[ChatService] Error in disconnect grace window for ${pendingSession.sessionId}:`, graceErr);
+                    }
+                }, 10000);
             }
         }
     }
@@ -1669,7 +1722,38 @@ class ChatService {
             ? await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' })
             : await ChatSession.findOne({ userId: userId, status: 'ACTIVE' });
 
-        if (!session) return;
+        if (!session) {
+            // No ACTIVE session. Check if there is a PENDING request waiting for this astrologer.
+            // This handles the reconnect-after-disconnect scenario: the astrologer's socket died,
+            // the disconnect handler started the grace window, and now they are back online.
+            if (isAstrologer && this.io) {
+                const pendingSession = await ChatSession.findOne({ astrologerId: userId, status: 'PENDING' });
+                if (pendingSession) {
+                    const elapsed = Date.now() - pendingSession.createdAt.getTime();
+                    const remaining = this.REQUEST_TIMEOUT_MS - elapsed;
+                    if (remaining > 5000) {
+                        const pendingUser = await User.findById(pendingSession.userId);
+                        const roomName = `astrologer:${userId}`;
+                        this.io.to(roomName).emit('CHAT_REQUEST', {
+                            sessionId: pendingSession.sessionId,
+                            userId: pendingSession.userId.toString(),
+                            userName: pendingUser?.name || 'User',
+                            userMobile: (pendingUser as any)?.mobile,
+                            intakeDetails: pendingSession.intakeDetails,
+                            ratePerMinute: pendingSession.ratePerMinute,
+                            isRedelivered: true,
+                            remainingSeconds: Math.floor(remaining / 1000)
+                        });
+                        // Astrologer is demonstrably connected — mark as delivered
+                        this.requestDeliveryConfirmed.set(pendingSession.sessionId, true);
+                        console.log(`[ChatService] Re-delivered PENDING request ${pendingSession.sessionId} to reconnected astrologer ${userId} (${Math.floor(remaining / 1000)}s remaining)`);
+                    } else {
+                        console.log(`[ChatService] PENDING request ${pendingSession.sessionId} has only ${remaining}ms remaining — not re-delivering, timeout will fire.`);
+                    }
+                }
+            }
+            return;
+        }
 
         // Update last seen in DB
         const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
@@ -1799,8 +1883,9 @@ class ChatService {
         // We only clean up stale PENDING requests here.
         // Billing timers handle wallet depletion and explicit session endings.
 
-        // Clean up stale PENDING requests (older than 45s)
-        const requestTimeoutCutoff = new Date(Date.now() - 45000);
+        // Clean up stale PENDING requests older than REQUEST_TIMEOUT_MS + 5s buffer.
+        // Must be > REQUEST_TIMEOUT_MS so the in-memory timer fires first.
+        const requestTimeoutCutoff = new Date(Date.now() - (this.REQUEST_TIMEOUT_MS + 5000));
         const staleRequests = await ChatSession.find({
             status: 'PENDING',
             createdAt: { $lt: requestTimeoutCutoff }
@@ -2031,6 +2116,9 @@ class ChatService {
             attemptDelivery(7).then(async (success) => {
                 const finalSockets = await this.io!.in(roomName).fetchSockets();
                 if (success) {
+                    if (this.requestTimeouts.has(session.sessionId)) {
+                        this.requestDeliveryConfirmed.set(session.sessionId, true);
+                    }
                     console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivered and ACK'd after resilient hunt. (Final Room Size: ${finalSockets.length})`);
                 } else {
                     console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed socket delivery after resilient hunt. (Final Room Size: ${finalSockets.length})`);
