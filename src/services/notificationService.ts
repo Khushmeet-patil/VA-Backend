@@ -101,7 +101,12 @@ class NotificationService {
 
             if (!serviceAccount) {
                 console.error('[NotificationService] CRITICAL: No Firebase credentials found in environment variables!');
-                console.warn('[NotificationService] Expected FIREBASE_SERVICE_ACCOUNT (JSON) OR (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY)');
+                console.warn('[NotificationService] Checked sources:');
+                console.warn(`  1. Path: ${path.join(__dirname, '../../firebase-service-account.json')} (Exists: ${fs.existsSync(path.join(__dirname, '../../firebase-service-account.json'))})`);
+                console.warn(`  2. FIREBASE_SERVICE_ACCOUNT Env: ${process.env.FIREBASE_SERVICE_ACCOUNT ? 'Found' : 'Missing'}`);
+                console.warn(`  3. FIREBASE_PROJECT_ID Env: ${process.env.FIREBASE_PROJECT_ID ? 'Found' : 'Missing'}`);
+                console.warn(`  4. FIREBASE_CLIENT_EMAIL Env: ${process.env.FIREBASE_CLIENT_EMAIL ? 'Found' : 'Missing'}`);
+                console.warn(`  5. FIREBASE_PRIVATE_KEY Env: ${process.env.FIREBASE_PRIVATE_KEY ? 'Found' : 'Missing'}`);
                 return;
             }
 

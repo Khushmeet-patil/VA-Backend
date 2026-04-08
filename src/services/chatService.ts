@@ -454,6 +454,14 @@ class ChatService {
             freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
         }).catch(err => console.error('[ChatService] FCM chat_started push failed:', err));
 
+        // DISMISS SIGNAL: Send a 'cancel' notification to the ASTROLOGER themselves.
+        // This ensures the persistent 'incoming call' notification is cleared on ALL their devices.
+        notificationService.sendChatCancelNotification(
+            session.astrologerId.toString(),
+            sessionId,
+            'cancelled' // Using 'cancelled' as the reason triggers notification dismissal in the app
+        ).catch(err => console.error('[ChatService] FCM dismiss notify failed:', err));
+
         return session;
     }
 
