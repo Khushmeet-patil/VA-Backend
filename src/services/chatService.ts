@@ -39,11 +39,6 @@ class ChatService {
     // Map of request timeout timers: sessionId -> NodeJS.Timeout
     private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
-    // Tracks whether CHAT_REQUEST was ACK'd by astrologer's socket.
-    // Only confirmed deliveries trigger missed-chat penalties. In-memory only —
-    // loss on restart is safe (conservative failure: no penalty = correct default).
-    private requestDeliveryConfirmed: Map<string, boolean> = new Map();
-
     // Map of free trial timers: sessionId -> NodeJS.Timeout
     private freeTrialTimers: Map<string, NodeJS.Timeout> = new Map();
 
@@ -92,38 +87,8 @@ class ChatService {
             throw new Error('Astrologer is not approved');
         }
 
-        // Self-healing: Check if the "busy" state is actually due to an old/stuck session with THIS user
         if (astrologer.isBusy) {
-            if (astrologer.activeSessionId) {
-                const blockingSession = await ChatSession.findOne({ sessionId: astrologer.activeSessionId });
-
-                // If the blocking session exists and belongs to THIS user, end it and proceed
-                if (blockingSession && blockingSession.userId.toString() === userId) {
-                    console.log(`[ChatService] Found stuck session ${blockingSession.sessionId} for user ${userId}. Auto-ending it.`);
-                    try {
-                        // Force end the old session
-                        await this.endChat(blockingSession.sessionId, 'USER_END');
-
-                        // Re-fetch astrologer to ensure state is clear
-                        const refreshedAstrologer = await Astrologer.findById(astrologerId);
-                        if (refreshedAstrologer && refreshedAstrologer.isBusy) {
-                            // Should not happen if endChat works, but safety check
-                            throw new Error('Astrologer is still busy after cleanup. Please try again.');
-                        }
-                    } catch (err) {
-                        console.error('[ChatService] Failed to clean up stuck session:', err);
-                        // Continue anyway if possible? No, safer to error if cleanup failed
-                        throw new Error('Failed to close previous session. Please try again.');
-                    }
-                } else {
-                    throw new Error('Astrologer is busy with another chat');
-                }
-            } else {
-                // isBusy is true but no activeSessionId? Inconsistent state.
-                // We should probably clear it, but safer to block for now unless we are sure.
-                // Let's assume it's a valid busy state with missing ID (shouldn't happen).
-                throw new Error('Astrologer is busy with another call');
-            }
+            throw new Error('Astrologer is busy with another chat');
         }
 
         const ratePerMinute = astrologer.pricePerMin;
@@ -176,16 +141,9 @@ class ChatService {
         }, this.REQUEST_TIMEOUT_MS);
         this.requestTimeouts.set(session.sessionId, timeout);
 
-        // Emit CHAT_REQUEST to astrologer with ACK and Retry Queue
+        // Send FCM wake-up + socket notification to astrologer
         if (this.io) {
             const roomName = `astrologer:${astrologerId}`;
-            const room = this.io.sockets.adapter.rooms.get(roomName);
-            const roomSize = room ? room.size : 0;
-            console.log(`[ChatService] Emitting CHAT_REQUEST to room: ${roomName}, connected sockets in room: ${roomSize}`);
-
-            if (roomSize === 0) {
-                console.warn(`[ChatService] WARNING: No sockets in room ${roomName}. Astrologer may be disconnected.`);
-            }
 
             const requestPayload = {
                 sessionId: session.sessionId,
@@ -196,74 +154,19 @@ class ChatService {
                 userMobile: user.mobile
             };
 
-            // Attempt Delivery with ACK & Resilient Retry Queue
-            const attemptDelivery = async (retries = 3): Promise<boolean> => {
-                // 1. Send high-priority FCM immediately - triggering "Wake Up" during the socket hunt
-                try {
-                    await notificationService.sendHighPriorityChatRequest(astrologerId, {
-                        sessionId: session.sessionId,
-                        userId: user._id.toString(),
-                        userName: user.name || 'User',
-                        userMobile: user.mobile,
-                        ratePerMinute,
-                        intakeDetails,
-                    });
-                    console.log(`[ChatService] Resilient Hunt: FCM wake-up sent to ${astrologerId}`);
-                } catch (fcmError) {
-                    console.error(`[ChatService] Resilient Hunt: Initial FCM wake-up failed:`, fcmError);
-                }
+            // FCM wake-up (best-effort, works even if app is killed/background)
+            notificationService.sendHighPriorityChatRequest(astrologerId, {
+                sessionId: session.sessionId,
+                userId: user._id.toString(),
+                userName: user.name || 'User',
+                userMobile: user.mobile,
+                ratePerMinute,
+                intakeDetails,
+            }).catch(e => console.error('[ChatService] FCM chat request send failed:', e));
 
-                for (let attempt = 1; attempt <= retries + 1; attempt++) {
-                    const sockets = await this.io!.in(roomName).fetchSockets();
-                    
-                    if (sockets.length > 0) {
-                        const ackPromises = sockets.map(socket => {
-                            return new Promise<boolean>((resolve) => {
-                                let isResolved = false;
-                                const fallbackTimeout = setTimeout(() => {
-                                    if (!isResolved) {
-                                        isResolved = true;
-                                        resolve(false);
-                                    }
-                                }, 5000); // 5 sec timeout
-
-                                socket.emit('CHAT_REQUEST', requestPayload, (ack: any) => {
-                                    if (!isResolved) {
-                                        isResolved = true;
-                                        clearTimeout(fallbackTimeout);
-                                        resolve(ack?.success === true);
-                                    }
-                                });
-                            });
-                        });
-
-                        const acks = await Promise.all(ackPromises);
-                        if (acks.some(ack => ack === true)) {
-                            return true;
-                        }
-                    }
-
-                    console.warn(`[ChatService] CHAT_REQUEST delivery hunt (Attempt ${attempt}/${retries + 1}). Sockets found: ${sockets.length}`);
-                    if (attempt <= retries) {
-                        await new Promise(r => setTimeout(r, 3000)); // wait 3s before retry
-                    }
-                }
-                return false;
-            };
-
-            attemptDelivery(5).then(async (success) => {
-                const finalSockets = await this.io!.in(roomName).fetchSockets();
-                if (success) {
-                    // Only mark delivered if session is still pending (not already resolved)
-                    if (this.requestTimeouts.has(session.sessionId)) {
-                        this.requestDeliveryConfirmed.set(session.sessionId, true);
-                    }
-                    console.log(`[ChatService] CHAT_REQUEST delivered and ACK'd after resilient hunt. (Final Room Size: ${finalSockets.length})`);
-                } else {
-                    console.warn(`[ChatService] CRITICAL: CHAT_REQUEST failed socket delivery after full resilient hunt. Session remains PENDING. (Final Room Size: ${finalSockets.length})`);
-                }
-            }).catch(e => console.error('[ChatService] Error in resilient delivery attempt:', e));
-
+            // Socket emit — fire and forget, no ACK, no retry
+            this.io.to(roomName).emit('CHAT_REQUEST', requestPayload);
+            console.log(`[ChatService] CHAT_REQUEST sent to room: ${roomName}`);
         } else {
             console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
         }
@@ -299,7 +202,6 @@ class ChatService {
             clearTimeout(timeout);
             this.requestTimeouts.delete(sessionId);
         }
-        this.requestDeliveryConfirmed.delete(sessionId);
 
         // Verify user still has enough balance (skip for free trial)
         const user = await User.findById(session.userId);
@@ -608,7 +510,6 @@ class ChatService {
             clearTimeout(timeout);
             this.requestTimeouts.delete(sessionId);
         }
-        this.requestDeliveryConfirmed.delete(sessionId);
 
         session.status = 'REJECTED';
         session.endReason = 'ASTROLOGER_REJECTED';
@@ -653,13 +554,7 @@ class ChatService {
         }
 
         this.requestTimeouts.delete(sessionId);
-
-        // Read and clear delivery flag BEFORE any penalty logic.
-        // wasDelivered=false means the request never reached the astrologer's device,
-        // so no penalty should be applied (zombie socket, reconnect in progress, etc.)
-        const wasDelivered = this.requestDeliveryConfirmed.get(sessionId) ?? false;
-        this.requestDeliveryConfirmed.delete(sessionId);
-        console.log(`[ChatService] Chat request timed out: ${sessionId} (wasDelivered=${wasDelivered})`);
+        console.log(`[ChatService] Chat request timed out: ${sessionId}`);
 
         // Emit CHAT_TIMEOUT to both parties via socket
         if (this.io) {
@@ -673,32 +568,27 @@ class ChatService {
             });
         }
 
-        // Also send FCM push to cancel notification (works even if socket is disconnected)
+        // FCM push to dismiss astrologer's incoming chat notification
         notificationService.sendChatCancelNotification(
             session.astrologerId.toString(),
             sessionId,
             'timeout'
         ).catch(err => console.error('[ChatService] FCM timeout push failed:', err));
 
-        // Send "Missed Chat" notification to astrologer with penalty info if applicable.
-        // Penalty only applies when the request was confirmed delivered (wasDelivered=true).
-        // If the socket was dead/zombie and ACK was never received, no penalty is fair.
         let penaltyAmount = 0;
         const astrologer = await Astrologer.findById(session.astrologerId);
 
-        if (wasDelivered && session.isFreeTrialSession && astrologer) {
+        if (session.isFreeTrialSession && astrologer) {
             try {
                 const systemSettingModel = mongoose.model('SystemSetting');
                 const freeChatRateSetting = await systemSettingModel.findOne({ key: 'freeChatRate' });
                 const penaltyEnabledSetting = await systemSettingModel.findOne({ key: 'isFreeChatPenaltyEnabled' });
                 const penaltyRateSetting = await systemSettingModel.findOne({ key: 'freeChatPenaltyRate' });
 
-                // Check if penalty is enabled (defaulting to true if not set)
                 const isPenaltyEnabled = penaltyEnabledSetting ? (penaltyEnabledSetting.value === true || penaltyEnabledSetting.value === 'true') : true;
 
                 if (isPenaltyEnabled) {
                     const freeChatRate = Number(freeChatRateSetting?.value ?? 4);
-                    // Use custom penalty rate or fallback to commission rate (original behavior)
                     let freeChatPenaltyRate = penaltyRateSetting?.value;
                     if (freeChatPenaltyRate === undefined || freeChatPenaltyRate === null) {
                         const freeChatCommissionSetting = await systemSettingModel.findOne({ key: 'freeChatCommission' });
@@ -710,11 +600,9 @@ class ChatService {
                     penaltyAmount = Math.round((freeChatRate * freeChatPenaltyRate / 100) * 100) / 100;
 
                     if (penaltyAmount > 0) {
-                        // Update earnings atomically in memory (will be saved below)
                         astrologer.earnings = Math.round(((astrologer.earnings || 0) - penaltyAmount) * 100) / 100;
                         console.log(`[ChatService] Deducting penalty of ₹${penaltyAmount} from astrologer ${astrologer._id} for missed free chat (Rate: ${freeChatPenaltyRate}%).`);
 
-                        // Create transaction for penalty
                         const transaction = new Transaction({
                             fromUser: session.userId,
                             toAstrologer: astrologer._id,
@@ -724,8 +612,7 @@ class ChatService {
                             description: `Penalty for missed free chat session: ${session.sessionId} (Base: ₹${freeChatRate}, Penalty: ₹${penaltyAmount})`
                         });
                         await transaction.save();
-                        
-                        // Update session with penalty amount for history display
+
                         session.penaltyAmount = penaltyAmount;
                         await session.save();
                     }
@@ -740,7 +627,7 @@ class ChatService {
         try {
             const user = await User.findById(session.userId);
             const userName = user ? `${user.name || 'User'}` : 'a user';
-            
+
             const notificationBody = penaltyAmount > 0
                 ? `You missed a free chat request from ${userName}. A penalty of ₹${penaltyAmount} has been deducted from your wallet balance.`
                 : `You missed a chat request from ${userName}. Please try to stay online for next requests.`;
@@ -762,20 +649,15 @@ class ChatService {
             console.error('[ChatService] Failed to send missed chat notification:', notifErr);
         }
 
-        // Only increment missedChats and apply auto-block if the request was actually delivered.
-        // If delivery was never confirmed (zombie socket, device offline), the astrologer
-        // had no way to respond — incrementing missedChats would be unfair.
-        if (wasDelivered && astrologer) {
+        if (astrologer) {
             astrologer.missedChats = (astrologer.missedChats || 0) + 1;
 
-            // AUTO-BLOCK LOGIC:
-            // If astrologer crosses the threshold of 3 missed chats AND already has 2 or more warnings
+            // AUTO-BLOCK: if astrologer has 2+ warnings and 3+ missed chats
             if (astrologer.warningCount >= 2 && astrologer.missedChats >= 3) {
                 console.log(`[ChatService] Auto-blocking astrologer ${astrologer._id} due to 3 missed chats after 2 warnings.`);
                 astrologer.isBlocked = true;
-                astrologer.isOnline = false; // Remove from user app
+                astrologer.isOnline = false;
 
-                // Emit ASTROLOGER_BLOCKED to force real-time block screen
                 if (this.io) {
                     this.io.to(`astrologer:${astrologer._id}`).emit('ASTROLOGER_BLOCKED', {
                         reason: 'Account blocked due to missing 3 chats after receiving 2 official warnings.'
@@ -783,8 +665,6 @@ class ChatService {
                 }
             }
             await astrologer.save();
-        } else if (!wasDelivered) {
-            console.log(`[ChatService] Skipping missedChats/penalty for ${sessionId} — request was never confirmed delivered to astrologer.`);
         }
     }
 
@@ -833,7 +713,6 @@ class ChatService {
             clearTimeout(timeout);
             this.requestTimeouts.delete(sessionId);
         }
-        this.requestDeliveryConfirmed.delete(sessionId);
 
         console.log(`[ChatService] Chat request cancelled by user: ${sessionId}`);
 
@@ -1765,7 +1644,6 @@ class ChatService {
                             clearTimeout(pendingTimeout);
                             this.requestTimeouts.delete(pendingSession.sessionId);
                         }
-                        this.requestDeliveryConfirmed.delete(pendingSession.sessionId);
 
                         const cancelled = await ChatSession.findOneAndUpdate(
                             { sessionId: pendingSession.sessionId, status: 'PENDING' },
@@ -1878,8 +1756,6 @@ class ChatService {
                             isRedelivered: true,
                             remainingSeconds: Math.floor(remaining / 1000)
                         });
-                        // Astrologer is demonstrably connected — mark as delivered
-                        this.requestDeliveryConfirmed.set(pendingSession.sessionId, true);
                         console.log(`[ChatService] Re-delivered PENDING request ${pendingSession.sessionId} to reconnected astrologer ${userId} (${Math.floor(remaining / 1000)}s remaining)`);
                     } else {
                         console.log(`[ChatService] PENDING request ${pendingSession.sessionId} has only ${remaining}ms remaining — not re-delivering, timeout will fire.`);
@@ -2030,33 +1906,6 @@ class ChatService {
             await this.timeoutChatRequest(request.sessionId);
         }
 
-        // NEW: Self-healing for "stuck" busy state
-        // Find astrologers who are isBusy=true but have no ACTIVE session pointing to them
-        try {
-            const busyAstrologers = await Astrologer.find({ isBusy: true });
-            for (const astro of busyAstrologers) {
-                if (astro.activeSessionId) {
-                    const activeSessionCount = await ChatSession.countDocuments({
-                        sessionId: astro.activeSessionId,
-                        status: 'ACTIVE'
-                    });
-                    if (activeSessionCount === 0) {
-                        console.log(`[ChatService] Self-healing stuck busy state for astrologer ${astro._id} (Session: ${astro.activeSessionId} is NOT active)`);
-                        await Astrologer.findByIdAndUpdate(astro._id, {
-                            $set: { isBusy: false, activeSessionId: undefined }
-                        });
-                    }
-                } else {
-                    // isBusy is true but no activeSessionId? Inconsistent state.
-                    console.log(`[ChatService] Self-healing inconsistent busy state for astrologer ${astro._id} (isBusy but no activeSessionId)`);
-                    await Astrologer.findByIdAndUpdate(astro._id, {
-                        $set: { isBusy: false, activeSessionId: undefined }
-                    });
-                }
-            }
-        } catch (healError) {
-            console.error('[ChatService] Error during busy-state self-healing:', healError);
-        }
     }
 
     /**
@@ -2175,12 +2024,9 @@ class ChatService {
         }, this.REQUEST_TIMEOUT_MS);
         this.requestTimeouts.set(session.sessionId, timeout);
 
-        // Emit CONTINUE_CHAT_REQUEST to astrologer with ACK and Retry Queue (different event for clarity)
+        // Send FCM wake-up + socket notification to astrologer
         if (this.io) {
             const roomName = `astrologer:${astrologerId}`;
-            const room = this.io.sockets.adapter.rooms.get(roomName);
-            const roomSize = room ? room.size : 0;
-            console.log(`[ChatService] Emitting CONTINUE_CHAT_REQUEST to room: ${roomName}, connected sockets: ${roomSize}`);
 
             const requestPayload = {
                 sessionId: session.sessionId,
@@ -2189,75 +2035,22 @@ class ChatService {
                 previousSessionId,
                 ratePerMinute,
                 userMobile: user.mobile,
-                intakeDetails: previousSession.intakeDetails // Include intake details for the modal
+                intakeDetails: previousSession.intakeDetails
             };
 
-            // Attempt Delivery with ACK & Resilient Retry Queue (Hunt)
-            const attemptDelivery = async (retries = 3): Promise<boolean> => {
-                // 1. Send high-priority FCM immediately
-                try {
-                    await notificationService.sendHighPriorityChatRequest(astrologerId, {
-                        sessionId: session.sessionId,
-                        userId: user._id.toString(),
-                        userName: user.name || 'User',
-                        userMobile: user.mobile,
-                        ratePerMinute,
-                        intakeDetails: previousSession.intakeDetails,
-                    });
-                    console.log(`[ChatService] Resilient Hunt (Continue): FCM wake-up sent to ${astrologerId}`);
-                } catch (fcmError) {
-                    console.error(`[ChatService] Resilient Hunt (Continue): FCM wake-up failed:`, fcmError);
-                }
+            // FCM wake-up (best-effort)
+            notificationService.sendHighPriorityChatRequest(astrologerId, {
+                sessionId: session.sessionId,
+                userId: user._id.toString(),
+                userName: user.name || 'User',
+                userMobile: user.mobile,
+                ratePerMinute,
+                intakeDetails: previousSession.intakeDetails,
+            }).catch(e => console.error('[ChatService] FCM continue chat request send failed:', e));
 
-                for (let attempt = 1; attempt <= retries + 1; attempt++) {
-                    const sockets = await this.io!.in(roomName).fetchSockets();
-                    
-                    if (sockets.length > 0) {
-                        const ackPromises = sockets.map(socket => {
-                            return new Promise<boolean>((resolve) => {
-                                let isResolved = false;
-                                const fallbackTimeout = setTimeout(() => {
-                                    if (!isResolved) {
-                                        isResolved = true;
-                                        resolve(false);
-                                    }
-                                }, 5000); // 5 sec timeout
-
-                                socket.emit('CONTINUE_CHAT_REQUEST', requestPayload, (ack: any) => {
-                                    if (!isResolved) {
-                                        isResolved = true;
-                                        clearTimeout(fallbackTimeout);
-                                        resolve(ack?.success === true);
-                                    }
-                                });
-                            });
-                        });
-
-                        const acks = await Promise.all(ackPromises);
-                        if (acks.some(ack => ack === true)) {
-                            return true;
-                        }
-                    }
-
-                    console.warn(`[ChatService] CONTINUE_CHAT_REQUEST delivery hunt (Attempt ${attempt}/${retries + 1}). Sockets found: ${sockets.length}`);
-                    if (attempt <= retries) {
-                        await new Promise(r => setTimeout(r, 3000)); // wait 3s before retry
-                    }
-                }
-                return false;
-            };
-
-            attemptDelivery(7).then(async (success) => {
-                const finalSockets = await this.io!.in(roomName).fetchSockets();
-                if (success) {
-                    if (this.requestTimeouts.has(session.sessionId)) {
-                        this.requestDeliveryConfirmed.set(session.sessionId, true);
-                    }
-                    console.log(`[ChatService] CONTINUE_CHAT_REQUEST delivered and ACK'd after resilient hunt. (Final Room Size: ${finalSockets.length})`);
-                } else {
-                    console.warn(`[ChatService] CRITICAL: CONTINUE_CHAT_REQUEST failed socket delivery after resilient hunt. (Final Room Size: ${finalSockets.length})`);
-                }
-            }).catch(e => console.error('[ChatService] Error in continue delivery resilient hunt:', e));
+            // Socket emit — fire and forget, no ACK, no retry
+            this.io.to(roomName).emit('CONTINUE_CHAT_REQUEST', requestPayload);
+            console.log(`[ChatService] CONTINUE_CHAT_REQUEST sent to room: ${roomName}`);
         }
 
         return session;
