@@ -433,30 +433,36 @@ class ChatService {
                 userName: user.name || 'User',
             });
 
-            // MANDATORY BRIDGE CHECK:
-            // Verify the user's socket is actually alive and acknowledges the start.
-            // This prevents "Ghost Chats" where the astrologer accepts but the user is gone.
+            // BRIDGE CHECK (Backward Compatible):
+            // We check if the user has at least one active socket connection. 
+            // This works for ALL app versions. 
             try {
-                console.log(`[ChatService] Verifying user bridge for session: ${sessionId}`);
-                // Attempt to get acknowledgement from the user's room (wait max 3s)
-                const userAcks = await this.io.timeout(3000).to(`user:${session.userId}`).emitWithAck('BRIDGE_VERIFY', {
-                    sessionId
-                });
+                const userSockets = await this.io.in(`user:${session.userId}`).fetchSockets();
                 
-                if (!userAcks || userAcks.length === 0) {
-                   throw new Error('NO_USER_ACK');
+                if (userSockets.length === 0) {
+                   console.log(`[ChatService] User 0 sockets found for session: ${sessionId}. Rolling back.`);
+                   throw new Error('NO_USER_SOCKETS');
                 }
-                console.log(`[ChatService] User bridge verified for session: ${sessionId}`);
-            } catch (err) {
-                console.warn(`[ChatService] User bridge FAILED for session: ${sessionId}. Rolling back.`);
                 
-                // ROLLBACK: User is not reachable/connected
+                console.log(`[ChatService] User is reachable (${userSockets.length} sockets). Proceeding.`);
+
+                // Attempt optional verification check for new apps (Non-blocking for old apps)
+                this.io.timeout(2000).to(`user:${session.userId}`).emitWithAck('BRIDGE_VERIFY', { sessionId })
+                    .then(acks => {
+                        if (acks && acks.length > 0) console.log(`[ChatService] Bridge verified via ACK for session: ${sessionId}`);
+                    })
+                    .catch(() => { /* Ignore timeout for backward compatibility */ });
+
+            } catch (err) {
+                console.warn(`[ChatService] User is PROPERLY unreachable for session: ${sessionId}. Rolling back.`);
+                
+                // ROLLBACK: User is confirmed not connected
                 await ChatSession.findOneAndUpdate(
                     { sessionId },
                     { 
                         status: 'ENDED', 
                         endReason: 'USER_UNREACHABLE_AT_START',
-                        errorDescription: 'User socket failed to acknowledge bridge in time'
+                        errorDescription: 'User has 0 active sockets at the moment of acceptance'
                     }
                 );
 
@@ -472,7 +478,6 @@ class ChatService {
                     this.billingTimers.delete(sessionId);
                 }
                 
-                // Clear free trial timer if exists
                 const trialTimer = this.freeTrialTimers.get(sessionId);
                 if (trialTimer) {
                     clearInterval(trialTimer);
