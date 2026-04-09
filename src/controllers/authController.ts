@@ -204,7 +204,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
         await user.save();
 
         // Generate Token immediately upon verification
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
+        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
 
         return res.status(200).json({
             success: true,
