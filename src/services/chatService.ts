@@ -151,7 +151,8 @@ class ChatService {
                 userName: user.name || 'User',
                 intakeDetails,
                 ratePerMinute,
-                userMobile: user.mobile
+                userMobile: user.mobile,
+                createdAt: session.createdAt.toISOString(),
             };
 
             // FCM wake-up (best-effort, works even if app is killed/background)
@@ -1626,6 +1627,16 @@ class ChatService {
             if (pendingSession) {
                 console.log(`[ChatService] Astrologer ${userId} disconnected with PENDING request ${pendingSession.sessionId}. Starting 10s grace window.`);
 
+                // Immediately cancel the auto-reject timeout so it cannot race with the grace
+                // window. Previously this clearTimeout was inside the 10s callback, which meant
+                // the 30s request timeout could fire before we had a chance to cancel it —
+                // causing a spurious "missed chat" notification on every late disconnect.
+                const pendingTimeout = this.requestTimeouts.get(pendingSession.sessionId);
+                if (pendingTimeout) {
+                    clearTimeout(pendingTimeout);
+                    this.requestTimeouts.delete(pendingSession.sessionId);
+                }
+
                 setTimeout(async () => {
                     try {
                         // Re-check: has the session already been resolved during the grace window?
@@ -1638,12 +1649,6 @@ class ChatService {
 
                         // Astrologer is still offline — cancel the request
                         console.log(`[ChatService] Grace window expired: astrologer ${userId} still offline. Cancelling PENDING request ${pendingSession.sessionId}.`);
-
-                        const pendingTimeout = this.requestTimeouts.get(pendingSession.sessionId);
-                        if (pendingTimeout) {
-                            clearTimeout(pendingTimeout);
-                            this.requestTimeouts.delete(pendingSession.sessionId);
-                        }
 
                         const cancelled = await ChatSession.findOneAndUpdate(
                             { sessionId: pendingSession.sessionId, status: 'PENDING' },
@@ -1753,6 +1758,7 @@ class ChatService {
                             userMobile: (pendingUser as any)?.mobile,
                             intakeDetails: pendingSession.intakeDetails,
                             ratePerMinute: pendingSession.ratePerMinute,
+                            createdAt: pendingSession.createdAt.toISOString(),
                             isRedelivered: true,
                             remainingSeconds: Math.floor(remaining / 1000)
                         });
