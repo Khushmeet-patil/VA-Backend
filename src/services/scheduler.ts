@@ -178,14 +178,27 @@ export const scheduleZombieCleanup = () => {
         try {
             // 1. Find astrologers who are isOnline=true but have NO fcmToken.
             // If they have no FCM token, they CANNOT receive push notifications in the background.
-            // They are effectively offline and should be marked as such.
             const unreachableAstrologers = await Astrologer.find({ 
                 isOnline: true, 
                 fcmToken: { $exists: false } 
             });
 
             for (const astro of unreachableAstrologers) {
-                console.log(`[Scheduler] Zombie Cleanup: Astrologer ${astro._id} is online but has no FCM token. Marking offline.`);
+                // Check if they are actually connected via socket right now
+                if (ioInstance) {
+                    const roomName = `astrologer:${astro._id.toString()}`;
+                    const room = ioInstance.sockets.adapter.rooms.get(roomName);
+                    if (room && room.size > 0) {
+                        console.log(`[Scheduler] Zombie Cleanup Skip: Astrologer ${astro._id} has no FCM but is active on socket.`);
+                        continue;
+                    }
+                }
+
+                // If they have isManualOverride=true, we are a bit more lenient 
+                // but no FCM + no Socket is usually a dead session.
+                // For now, let's proceed with offline marking if truly unreachable.
+                
+                console.log(`[Scheduler] Zombie Cleanup: Astrologer ${astro._id} is online but unreachable (No FCM & No Socket). Marking offline.`);
                 await Astrologer.findByIdAndUpdate(astro._id, { $set: { isOnline: false } });
                 await availabilityService.recordOffline(astro._id as any);
                 

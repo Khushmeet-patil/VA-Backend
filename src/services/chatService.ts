@@ -1710,46 +1710,62 @@ class ChatService {
                 }, 10000);
             }
 
-            // 2. Global "Zombie Detection" (10 minutes)
+            // 2. Global "Zombie Detection"
             // If an astrologer is marked ONLINE but disconnects their socket, 
             // they might have uninstalled the app or lost connection forever.
-            // We wait 10 minutes; if they don't reconnect and aren't in an ACTIVE chat, we mark them offline.
+            // We wait for a grace period; if they don't reconnect and aren't in an ACTIVE chat, we mark them offline.
             const astrologer = await Astrologer.findById(userId);
             if (astrologer && astrologer.isOnline) {
-                console.log(`[ChatService] Online astrologer ${userId} disconnected. Starting 10-minute Zombie Detection timer.`);
+                const isManual = !!astrologer.isManualOverride;
+                const hasFCM = !!astrologer.fcmToken;
+                
+                // --- PERSISTENCE LOGIC ---
+                // If it's a manual override, they stay online INDEFINITELY until they manually toggle off.
+                // This satisfies the requirement: "he will be online until he get do manual offline".
+                if (isManual) {
+                    console.log(`[ChatService] Manual Online Astrologer ${userId} disconnected. PERSISTING online status until manual logout.`);
+                    return;
+                }
+
+                // For Auto-online (schedule based) or missing manual flag:
+                // We use a grace period (15m if FCM exists, 5m if not).
+                let gracePeriodMinutes = hasFCM ? 15 : 5;
+
+                console.log(`[ChatService] Auto-Online astrologer ${userId} disconnected. (hasFCM=${hasFCM}). Starting ${gracePeriodMinutes}-minute Zombie Detection timer.`);
                 
                 setTimeout(async () => {
                     try {
                         // Re-fetch current state
                         const currentAstro = await Astrologer.findById(userId);
-                        if (!currentAstro || !currentAstro.isOnline) return;
+                        if (!currentAstro || !currentAstro.isOnline || currentAstro.isManualOverride) return;
 
                         // Check if they reconnected
-                        const room = this.io?.sockets.adapter.rooms.get(`astrologer:${userId}`);
+                        const roomName = `astrologer:${userId}`;
+                        const room = this.io?.sockets.adapter.rooms.get(roomName);
                         if (room && room.size > 0) {
-                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} reconnected within 10m. Keeping online.`);
+                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} reconnected. Keeping online.`);
                             return;
                         }
 
-                        // Check if they are in an ACTIVE session (don't mark offline during chat)
+                        // Check if they are in an ACTIVE session
                         const activeSession = await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' });
                         if (activeSession) {
-                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} still disconnected but in ACTIVE chat. Preserving online status for now.`);
+                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} still disconnected but in ACTIVE chat. Preserving online status.`);
                             return;
                         }
 
                         // If still disconnected and no active session, mark offline
-                        console.log(`[ChatService] Zombie Detection: Astrologer ${userId} persistently disconnected for 10m. Marking OFFLINE.`);
+                        console.log(`[ChatService] Zombie Detection: Astrologer ${userId} persistently disconnected for ${gracePeriodMinutes}m. Marking OFFLINE.`);
                         await Astrologer.findByIdAndUpdate(userId, { $set: { isOnline: false } });
                         await availabilityService.recordOffline(userId);
 
                         if (this.io) {
-                            this.io.to(`astrologer:${userId}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
+                            this.io.to(roomName).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                         }
                     } catch (zombieErr) {
                         console.error(`[ChatService] Error in Zombie Detection for ${userId}:`, zombieErr);
                     }
-                }, 10 * 60 * 1000); // 10 minutes
+                }, gracePeriodMinutes * 60 * 1000);
             }
         }
     }
