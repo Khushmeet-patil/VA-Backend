@@ -282,6 +282,13 @@ class ChatService {
             throw new Error('Session not found');
         }
 
+        // IDEMPOTENCY: If the session is already ACTIVE, just return it.
+        // This handles cases where double-clicks or retries occur for an already successfully started chat.
+        if (session.status === 'ACTIVE') {
+            console.log(`[ChatService] acceptChatRequest itempotency: Session ${sessionId} is already ACTIVE.`);
+            return session;
+        }
+
         if (session.status !== 'PENDING') {
             throw new Error(`Cannot accept session with status: ${session.status}`);
         }
@@ -316,31 +323,32 @@ class ChatService {
             throw new Error(errorMsg);
         }
 
-        // Atomically acquire the isBusy lock — only succeeds if astrologer is NOT currently busy.
-        // This prevents race conditions where two simultaneous accepts both pass the isBusy check.
+        // Atomically acquire the isBusy lock — only succeeds if astrologer is NOT currently busy,
+        // OR if they are already busy with THIS specific session (re-accept/idempotency case).
         const astrologer = await Astrologer.findOneAndUpdate(
-            { _id: session.astrologerId, isBusy: { $ne: true } },
+            { 
+                _id: session.astrologerId, 
+                $or: [
+                    { isBusy: { $ne: true } },
+                    { activeSessionId: sessionId } // Allow if already locked for this session
+                ] 
+            },
             { $set: { isBusy: true, activeSessionId: sessionId } },
             { new: true }
         );
 
         if (!astrologer) {
-            // Either astrologer not found or already busy — either way we can't proceed
+            // Either astrologer not found or already busy with ANOTHER chat
             const existingAstro = await Astrologer.findById(session.astrologerId);
             const errorMsg = existingAstro
                 ? `Astrologer is already busy with another chat (Session: ${existingAstro.activeSessionId})`
                 : 'Astrologer not found';
-            await ChatSession.findOneAndUpdate(
-                { sessionId, status: 'PENDING' },
-                { status: 'REJECTED', errorDescription: errorMsg }
-            );
-            // Clean up timeout tracking since this session is now resolved
-            const existingTimeout = this.requestTimeouts.get(sessionId);
-            if (existingTimeout) {
-                clearTimeout(existingTimeout);
-                this.requestTimeouts.delete(sessionId);
-            }
-            this.requestDeliveryConfirmed.delete(sessionId);
+            
+            // CRITICAL CHANGE: Do NOT mark the session as REJECTED here.
+            // Marking it REJECTED permanently kills the session, preventing any retry.
+            // If the busy state was transient or a race condition, we want the session to stay PENDING.
+            // Only manual rejection or timeout should set REJECTED/ENDED.
+            
             throw new Error(errorMsg);
         }
 
@@ -358,7 +366,14 @@ class ChatService {
 
         if (!updatedSession) {
             // RACE CONDITION LOST!
-            // The session is no longer PENDING (likely cancelled by user).
+            // The session is no longer PENDING (likely cancelled by user or already activated by another call).
+            
+            // Check current status to see if it was already activated (idempotency)
+            const checkSession = await ChatSession.findOne({ sessionId });
+            if (checkSession?.status === 'ACTIVE') {
+                 return checkSession;
+            }
+
             // Revert astrologer state ONLY IF it still points to this session
             await Astrologer.findOneAndUpdate(
                 { _id: session.astrologerId, activeSessionId: sessionId },
