@@ -433,6 +433,60 @@ class ChatService {
                 userName: user.name || 'User',
             });
 
+            // MANDATORY BRIDGE CHECK:
+            // Verify the user's socket is actually alive and acknowledges the start.
+            // This prevents "Ghost Chats" where the astrologer accepts but the user is gone.
+            try {
+                console.log(`[ChatService] Verifying user bridge for session: ${sessionId}`);
+                // Attempt to get acknowledgement from the user's room (wait max 3s)
+                const userAcks = await this.io.timeout(3000).to(`user:${session.userId}`).emitWithAck('BRIDGE_VERIFY', {
+                    sessionId
+                });
+                
+                if (!userAcks || userAcks.length === 0) {
+                   throw new Error('NO_USER_ACK');
+                }
+                console.log(`[ChatService] User bridge verified for session: ${sessionId}`);
+            } catch (err) {
+                console.warn(`[ChatService] User bridge FAILED for session: ${sessionId}. Rolling back.`);
+                
+                // ROLLBACK: User is not reachable/connected
+                await ChatSession.findOneAndUpdate(
+                    { sessionId },
+                    { 
+                        status: 'ENDED', 
+                        endReason: 'USER_UNREACHABLE_AT_START',
+                        errorDescription: 'User socket failed to acknowledge bridge in time'
+                    }
+                );
+
+                await Astrologer.findOneAndUpdate(
+                    { _id: session.astrologerId, activeSessionId: sessionId },
+                    { $set: { isBusy: false, activeSessionId: undefined } }
+                );
+
+                // Stop any running timers
+                const billingTimer = this.billingTimers.get(sessionId);
+                if (billingTimer) {
+                    clearTimeout(billingTimer);
+                    this.billingTimers.delete(sessionId);
+                }
+                
+                // Clear free trial timer if exists
+                const trialTimer = this.freeTrialTimers.get(sessionId);
+                if (trialTimer) {
+                    clearInterval(trialTimer);
+                    this.freeTrialTimers.delete(sessionId);
+                }
+
+                this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_CANCELLED', {
+                    sessionId,
+                    reason: 'User is no longer connected. Chat cancelled.'
+                });
+
+                throw new Error('User is no longer reachable. Please try another request.');
+            }
+
             // Also emit TIMER_STARTED immediately with duration
             const realBalance = user.walletBalance || 0;
             const bonusBalance = user.bonusBalance || 0;
