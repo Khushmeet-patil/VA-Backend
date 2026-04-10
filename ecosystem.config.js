@@ -15,9 +15,9 @@ module.exports = {
             name: 'va-backend',
             script: './dist/index.js',
 
-            // ── Cluster mode: one worker per vCPU ──────────────────────────
-            instances: 2,          // KVM2 has 2 vCPUs
-            exec_mode: 'cluster',
+            // ── Fork mode: single process (cluster mode caused PM2 hang) ──
+            instances: 1,
+            exec_mode: 'fork',
 
             // ── Memory guard ───────────────────────────────────────────────
             // Restart a worker if it leaks past 1.5 GB (leaves headroom for OS + MongoDB)
@@ -25,8 +25,7 @@ module.exports = {
 
             // ── Restart policy ─────────────────────────────────────────────
             autorestart: true,
-            restart_delay: 1000,   // 1 s between restarts
-            max_restarts: 10,
+            restart_delay: 1000,
 
             // ── Logging ────────────────────────────────────────────────────
             merge_logs: true,
