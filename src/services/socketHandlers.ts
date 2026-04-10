@@ -61,7 +61,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         }
     });
 
-    io.on('connection', (socket: AuthenticatedSocket) => {
+    io.on('connection', async (socket: AuthenticatedSocket) => {
         const userId = socket.userId!;
         const userType = socket.userType!;
 
@@ -73,6 +73,22 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         const room = io.sockets.adapter.rooms.get(roomName);
         const roomSize = room ? room.size : 0;
         console.log(`[Socket] ${userType} connected & joined room: ID=${userId}, Room=${roomName}, RoomSize=${roomSize}, SocketID=${socket.id}`);
+
+        // If there is an ACTIVE session for this user, immediately join the
+        // session room so no messages are missed between reconnect and the
+        // handleReconnect async path finishing.
+        try {
+            const activeSession = userType === 'user'
+                ? await chatService.getActiveSessionForUser(userId)
+                : await chatService.getActiveSessionForAstrologer(userId);
+            if (activeSession && activeSession.status === 'ACTIVE') {
+                const sessionRoom = `session:${activeSession.sessionId}`;
+                socket.join(sessionRoom);
+                console.log(`[Socket] Auto-joined session room ${sessionRoom} on connect`);
+            }
+        } catch (e) {
+            // Non-critical: handleReconnect will fix it up
+        }
 
         // Handle reconnect (clear grace period if any)
         chatService.handleReconnect(userId, userType === 'astrologer');
@@ -153,26 +169,31 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     status: 'sent'
                 };
 
-                // Log rooms and message content
+                // Determine rooms
+                const sessionRoom = `session:${sessionId}`;
                 const userRoom = `user:${session.userId}`;
                 const astrologerRoom = `astrologer:${session.astrologerId}`;
-                console.log('[Socket] Broadcasting RECEIVE_MESSAGE:', {
-                    userRoom,
-                    astrologerRoom,
-                    type: message.type,
-                    fileUrl: message.fileUrl,
-                    hasReplyTo: !!replyTo
-                });
 
-                // Emit to both participants
-                io.to(userRoom).emit('RECEIVE_MESSAGE', {
-                    sessionId,
-                    ...message
-                });
-                io.to(astrologerRoom).emit('RECEIVE_MESSAGE', {
-                    sessionId,
-                    ...message
-                });
+                // Check which rooms have active sockets
+                const sessionRoomSockets = io.sockets.adapter.rooms.get(sessionRoom);
+                const hasSessionRoom = sessionRoomSockets && sessionRoomSockets.size > 0;
+
+                const messagePayload = { sessionId, ...message };
+
+                if (hasSessionRoom) {
+                    // Primary: broadcast to session room (both parties are here)
+                    io.to(sessionRoom).emit('RECEIVE_MESSAGE', messagePayload);
+                    console.log(`[Socket] RECEIVE_MESSAGE → session room ${sessionRoom} (${sessionRoomSockets!.size} sockets)`);
+                } else {
+                    // Fallback: broadcast to individual rooms (session room not yet populated)
+                    io.to(userRoom).emit('RECEIVE_MESSAGE', messagePayload);
+                    io.to(astrologerRoom).emit('RECEIVE_MESSAGE', messagePayload);
+                    console.log(`[Socket] RECEIVE_MESSAGE → individual rooms (${userRoom}, ${astrologerRoom}) — session room empty`);
+
+                    // Async: try to populate the session room for future messages
+                    chatService.joinSessionRoom(sessionId, session.userId.toString(), session.astrologerId.toString())
+                        .catch(err => console.error('[Socket] joinSessionRoom fallback error:', err));
+                }
 
                 // ACK sender immediately after save+broadcast — before FCM/profile detection
                 // (FCM is best-effort and must not delay or block the ACK)

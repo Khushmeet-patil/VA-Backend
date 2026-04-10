@@ -48,6 +48,13 @@ class ChatService {
     // Free trial duration (120 seconds = 2 minutes)
     private readonly FREE_TRIAL_DURATION_MS = 120000;
 
+    // ─── Session Cache ───────────────────────────────────────────────────────
+    // Avoid hitting MongoDB on every send_message call.
+    // Entries are primed immediately when a session transitions to ACTIVE and
+    // invalidated whenever the session status changes (end, reject, timeout).
+    private sessionCache: Map<string, { session: IChatSession; cachedAt: number }> = new Map();
+    private readonly SESSION_CACHE_TTL = 10000; // 10 seconds
+
     /**
      * Initialize the chat service with Socket.IO instance
      */
@@ -289,15 +296,26 @@ class ChatService {
         // Use the updated session object from here
         session = updatedSession;
 
+        // Prime the session cache immediately with the ACTIVE session so the
+        // first send_message (which may arrive within milliseconds of CHAT_STARTED)
+        // doesn't hit MongoDB and see a stale PENDING status.
+        this.updateSessionCache(session);
+
         // Start appropriate timer based on session type
         if (session.isFreeTrialSession) {
             // Free trial - start countdown timer instead of billing
             this.startFreeTrialTimer(sessionId, session.freeTrialDurationSeconds || 120);
 
-            // Increment daily free chat count for astrologer
+            // Increment daily free chat count for astrologer.
+            // Use findOneAndUpdate (not .save()) to avoid running full-document
+            // validation on legacy astrologer records that may have empty required fields.
             astrologer.freeChatsToday = (astrologer.freeChatsToday || 0) + 1;
-            astrologer.lastFreeChatDate = new Date();
-            await astrologer.save();
+            await Astrologer.findByIdAndUpdate(astrologer._id, {
+                $set: {
+                    freeChatsToday: astrologer.freeChatsToday,
+                    lastFreeChatDate: new Date()
+                }
+            });
 
             console.log(`[ChatService] Chat accepted - FREE TRIAL STARTED: ${sessionId}. Astrologer free chats today: ${astrologer.freeChatsToday}`);
         } else {
@@ -349,6 +367,13 @@ class ChatService {
                 
                 console.log(`[ChatService] User is reachable (${userSockets.length} sockets). Proceeding.`);
 
+                // Force-join all sockets of both parties into the session room.
+                // This is the WhatsApp-style "chat room": a single room that both
+                // participants are in for the lifetime of the session.  Messages will
+                // be broadcast here, eliminating delivery gaps caused by reconnect
+                // timing where a socket hasn't re-subscribed to user/astrologer rooms yet.
+                await this.joinSessionRoom(sessionId, session.userId.toString(), session.astrologerId.toString());
+
                 // Attempt optional verification check for new apps (Non-blocking for old apps)
                 this.io.timeout(2000).to(`user:${session.userId}`).emitWithAck('BRIDGE_VERIFY', { sessionId })
                     .then(acks => {
@@ -360,10 +385,11 @@ class ChatService {
                 console.warn(`[ChatService] User is PROPERLY unreachable for session: ${sessionId}. Rolling back.`);
                 
                 // ROLLBACK: User is confirmed not connected
+                this.invalidateSessionCache(sessionId);
                 await ChatSession.findOneAndUpdate(
                     { sessionId },
-                    { 
-                        status: 'ENDED', 
+                    {
+                        status: 'ENDED',
                         endReason: 'USER_UNREACHABLE_AT_START',
                         errorDescription: 'User has 0 active sockets at the moment of acceptance'
                     }
@@ -496,6 +522,8 @@ class ChatService {
      * Reject a pending chat request
      */
     async rejectChatRequest(sessionId: string): Promise<void> {
+        this.invalidateSessionCache(sessionId);
+
         const session = await ChatSession.findOne({ sessionId });
         if (!session) {
             throw new Error('Session not found');
@@ -538,6 +566,8 @@ class ChatService {
      * Auto-timeout a chat request that wasn't responded to
      */
     private async timeoutChatRequest(sessionId: string): Promise<void> {
+        this.invalidateSessionCache(sessionId);
+
         // Use atomic operation to handle race condition
         const session = await ChatSession.findOneAndUpdate(
             { sessionId, status: 'PENDING' },
@@ -651,13 +681,14 @@ class ChatService {
         }
 
         if (astrologer) {
-            astrologer.missedChats = (astrologer.missedChats || 0) + 1;
+            const newMissedChats = (astrologer.missedChats || 0) + 1;
+            const updateFields: any = { missedChats: newMissedChats };
 
             // AUTO-BLOCK: if astrologer has 2+ warnings and 3+ missed chats
-            if (astrologer.warningCount >= 2 && astrologer.missedChats >= 3) {
+            if (astrologer.warningCount >= 2 && newMissedChats >= 3) {
                 console.log(`[ChatService] Auto-blocking astrologer ${astrologer._id} due to 3 missed chats after 2 warnings.`);
-                astrologer.isBlocked = true;
-                astrologer.isOnline = false;
+                updateFields.isBlocked = true;
+                updateFields.isOnline = false;
 
                 if (this.io) {
                     this.io.to(`astrologer:${astrologer._id}`).emit('ASTROLOGER_BLOCKED', {
@@ -665,7 +696,10 @@ class ChatService {
                     });
                 }
             }
-            await astrologer.save();
+
+            // Use findOneAndUpdate (not .save()) to target only the fields we changed
+            // and avoid running full-document validation on legacy records with empty required fields.
+            await Astrologer.findByIdAndUpdate(astrologer._id, { $set: updateFields });
         }
     }
 
@@ -675,6 +709,8 @@ class ChatService {
      * Returns: { cancelled: boolean, reason?: string }
      */
     async cancelChatRequest(sessionId: string, userId: string): Promise<{ cancelled: boolean; reason?: string }> {
+        this.invalidateSessionCache(sessionId);
+
         // Use atomic findOneAndUpdate to prevent race conditions
         // Only cancel if still PENDING and belongs to this user
         const session = await ChatSession.findOneAndUpdate(
@@ -742,6 +778,9 @@ class ChatService {
         sessionId: string,
         endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED'
     ): Promise<IChatSession> {
+        // Invalidate cache first so any concurrent send_message re-reads from DB
+        this.invalidateSessionCache(sessionId);
+
         const session = await ChatSession.findOne({ sessionId });
         if (!session) {
             throw new Error('Session not found');
@@ -1775,6 +1814,23 @@ class ChatService {
         const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
         await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
 
+        // Refresh the cache with the DB-fetched session (it's fresh here)
+        this.updateSessionCache(session);
+
+        // Re-join the reconnected socket(s) to the session room so they receive
+        // messages broadcast to it even before the next billing tick updates them.
+        if (this.io) {
+            const reconnectedRoom = `${userType}:${userId}`;
+            const reconnectedSockets = await this.io.in(reconnectedRoom).fetchSockets();
+            const sessionRoom = `session:${session.sessionId}`;
+            for (const s of reconnectedSockets) {
+                s.join(sessionRoom);
+            }
+            if (reconnectedSockets.length > 0) {
+                console.log(`[ChatService] Re-joined ${reconnectedSockets.length} ${userType} socket(s) to session room ${sessionRoom}`);
+            }
+        }
+
         // Re-deliver missed messages on reconnect
         try {
             // Get messages from the last 10 minutes that might have been missed
@@ -1915,10 +1971,52 @@ class ChatService {
     }
 
     /**
-     * Get session by ID
+     * Get session by ID — uses in-memory cache to avoid a DB hit on every message.
+     * Cache entries are primed on accept and invalidated on any status change.
      */
     async getSession(sessionId: string): Promise<IChatSession | null> {
-        return ChatSession.findOne({ sessionId });
+        const cached = this.sessionCache.get(sessionId);
+        if (cached && (Date.now() - cached.cachedAt) < this.SESSION_CACHE_TTL) {
+            return cached.session;
+        }
+        const session = await ChatSession.findOne({ sessionId });
+        if (session) {
+            this.sessionCache.set(sessionId, { session, cachedAt: Date.now() });
+        }
+        return session;
+    }
+
+    /** Prime or refresh the cache for a session we just mutated. */
+    private updateSessionCache(session: IChatSession): void {
+        this.sessionCache.set(session.sessionId, { session, cachedAt: Date.now() });
+    }
+
+    /** Remove a session from the cache so the next read goes to DB. */
+    invalidateSessionCache(sessionId: string): void {
+        this.sessionCache.delete(sessionId);
+    }
+
+    /**
+     * Force-join all active sockets of both participants into a dedicated
+     * session room (`session:<sessionId>`).  Messages are then broadcast to
+     * this room instead of relying on the individual user/astrologer rooms,
+     * which eliminates missed messages caused by reconnect timing gaps.
+     */
+    async joinSessionRoom(sessionId: string, userId: string, astrologerId: string): Promise<void> {
+        if (!this.io) return;
+        const sessionRoom = `session:${sessionId}`;
+        try {
+            const [userSockets, astrologerSockets] = await Promise.all([
+                this.io.in(`user:${userId}`).fetchSockets(),
+                this.io.in(`astrologer:${astrologerId}`).fetchSockets(),
+            ]);
+            for (const s of [...userSockets, ...astrologerSockets]) {
+                s.join(sessionRoom);
+            }
+            console.log(`[ChatService] Session room ${sessionRoom}: joined ${userSockets.length} user + ${astrologerSockets.length} astrologer socket(s)`);
+        } catch (err) {
+            console.error(`[ChatService] joinSessionRoom error for ${sessionId}:`, err);
+        }
     }
 
     /**

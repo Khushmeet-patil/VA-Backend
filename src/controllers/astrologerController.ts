@@ -33,9 +33,10 @@ export const applyForAstrologer = async (req: Request, res: Response) => {
         }
         mobileNumber = mobileNumber.trim();
 
-        // Validation for required fields
-        if (!firstName || !lastName || !mobileNumber || !email || !city || !country) {
-            return res.status(400).json({ message: 'Missing required fields' });
+        // Validation for required fields — explicitly reject empty strings so the
+        // Mongoose schema's `required: true` validator is never triggered with ''.
+        if (!firstName?.trim() || !lastName?.trim() || !mobileNumber || !email?.trim() || !city?.trim() || !country?.trim()) {
+            return res.status(400).json({ message: 'Missing required fields: firstName, lastName, email, city, and country are all required and cannot be empty.' });
         }
 
         // If not authenticated, find or create user
@@ -795,8 +796,17 @@ export const updateSchedule = async (req: Request, res: Response) => {
             }
         }
         // --- END ---
-
-        await astrologer.save();
+        // Use findOneAndUpdate instead of .save() to avoid full-document validation
+        // on legacy astrologer records that may have empty required fields (e.g. country:'').
+        await Astrologer.findByIdAndUpdate(astrologer._id, {
+            $set: {
+                availabilitySchedule: astrologer.availabilitySchedule,
+                isAutoOnlineEnabled: astrologer.isAutoOnlineEnabled,
+                isManualOverride: astrologer.isManualOverride,
+                expectedScheduleState: astrologer.expectedScheduleState,
+                isOnline: astrologer.isOnline,
+            }
+        });
 
         res.json({
             success: true,

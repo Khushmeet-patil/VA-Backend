@@ -1230,22 +1230,22 @@ export const uploadVerificationDocument = async (req: Request, res: Response) =>
             return res.status(500).json({ success: false, message: 'Failed to upload document' });
         }
 
-        // Add to documents array
-        astrologer.verificationDocuments.push({
-            name: docName,
-            url: r2Url,
-            uploadedAt: new Date()
+        // Add to documents array using $push to avoid full-doc validation
+        // on legacy astrologer records that may have empty required fields.
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            $push: {
+                verificationDocuments: {
+                    name: docName,
+                    url: r2Url,
+                    uploadedAt: new Date()
+                }
+            }
         });
-
-        // Auto-verify if needed (optional, keeping manual for now)
-        // astrologer.isVerified = true; 
-
-        await astrologer.save();
 
         res.status(200).json({
             success: true,
             message: 'Document uploaded successfully',
-            data: astrologer
+            data: await Astrologer.findById(astrologerId)
         });
     } catch (error: any) {
         console.error('Upload verification doc error:', error);
@@ -1644,10 +1644,19 @@ export const approveChangeRequest = async (req: Request, res: Response) => {
             }
         }
 
-        // Apply afterData to astrologer
+        // Apply afterData to astrologer.
+        // Skip any key whose value is an empty string — this prevents a change
+        // request that accidentally sends '' for a required field (e.g. country)
+        // from overwriting a valid existing value and crashing on .save().
         const afterData = changeRequest.afterData;
+        const REQUIRED_STRING_FIELDS = ['firstName', 'lastName', 'gender', 'mobileNumber', 'email', 'city', 'country'];
         for (const key of Object.keys(afterData)) {
-            (astrologer as any)[key] = afterData[key];
+            const value = afterData[key];
+            if (REQUIRED_STRING_FIELDS.includes(key) && typeof value === 'string' && value.trim() === '') {
+                console.warn(`[Admin] Skipping empty required field "${key}" in change request ${id} — keeping existing value.`);
+                continue;
+            }
+            (astrologer as any)[key] = value;
         }
         await astrologer.save();
 
@@ -1966,8 +1975,8 @@ export const rejectWithdrawal = async (req: Request, res: Response) => {
             const refundAmount = withdrawal.amount;
             const newBalance = previousBalance + refundAmount;
 
-            astrologer.earnings = newBalance;
-            await astrologer.save();
+            // Use findOneAndUpdate to avoid full-doc validation on legacy records
+            await Astrologer.findByIdAndUpdate(astrologer._id, { $set: { earnings: newBalance } });
 
             // 3. Create Transaction Record (Refund)
             // We need a transaction to show this refund. 
@@ -2061,12 +2070,16 @@ export const approveDeletion = async (req: Request, res: Response) => {
         const astrologer = await Astrologer.findById(astrologerId);
 
         if (astrologer) {
-            // Block the astrologer and set status to rejected to prevent re-registration with this number
-            astrologer.isBlocked = true;
-            astrologer.status = 'rejected';
-            astrologer.isDeletionRequested = false; // Reset request flag as it's now finalized
-            astrologer.activeDeviceId = undefined; // Force logout
-            await astrologer.save();
+            // Block the astrologer and set status to rejected to prevent re-registration with this number.
+            // Use findOneAndUpdate to avoid full-doc validation on legacy records with empty required fields.
+            await Astrologer.findByIdAndUpdate(astrologer._id, {
+                $set: {
+                    isBlocked: true,
+                    status: 'rejected',
+                    isDeletionRequested: false,
+                },
+                $unset: { activeDeviceId: '' }
+            });
 
             // Note: In a real production system, you might want to anonymize personal data here
             // e.g., astrologer.firstName = 'Deleted'; astrologer.lastName = 'User';
@@ -2096,9 +2109,10 @@ export const rejectDeletion = async (req: Request, res: Response) => {
         const astrologer = await Astrologer.findById(astrologerId);
 
         if (astrologer) {
-            astrologer.isDeletionRequested = false;
-            // Optionally astrologer could be set back to online if admin wishes, but better let them do it manually.
-            await astrologer.save();
+            // Use findOneAndUpdate to avoid full-doc validation on legacy records.
+            await Astrologer.findByIdAndUpdate(astrologer._id, {
+                $set: { isDeletionRequested: false }
+            });
         }
 
         request.status = 'rejected';

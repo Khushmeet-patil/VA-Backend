@@ -160,10 +160,10 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             });
         }
 
-        // Save device ID
+        // Save device ID — use findOneAndUpdate to avoid full-document validation
+        // on legacy astrologer records that might have empty required fields.
         if (deviceId) {
-            astrologer.activeDeviceId = deviceId;
-            await astrologer.save();
+            await Astrologer.findByIdAndUpdate(astrologer._id, { $set: { activeDeviceId: deviceId } });
         }
 
         // Generate token
@@ -738,10 +738,14 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
         });
         await withdrawal.save();
 
-        // Update astrologer balances: move earnings to pending, keeping minBalance in earnings
-        astrologer.pendingWithdrawal = (astrologer.pendingWithdrawal || 0) + actualWithdrawAmount;
-        astrologer.earnings = minBalance;
-        await astrologer.save();
+        // Update astrologer balances using findOneAndUpdate to avoid full-doc validation
+        // on legacy records that may have empty required fields.
+        await Astrologer.findByIdAndUpdate(astrologer._id, {
+            $set: {
+                pendingWithdrawal: (astrologer.pendingWithdrawal || 0) + actualWithdrawAmount,
+                earnings: minBalance
+            }
+        });
 
         console.log(`[Withdrawal] Request created: ${withdrawal._id}, amount: ${actualWithdrawAmount}, maintained: ${minBalance}`);
 
@@ -819,14 +823,15 @@ export const requestAccountDeletion = async (req: Request, res: Response) => {
 
         await deletionRequest.save();
 
-        // Mark astrologer as deletion requested and set to offline
-        const astrologer = await Astrologer.findById(astrologerId);
-        if (astrologer) {
-            astrologer.isDeletionRequested = true;
-            astrologer.deletionRequestedAt = new Date();
-            astrologer.isOnline = false;
-            await astrologer.save();
-        }
+        // Mark astrologer as deletion requested and set to offline.
+        // Use findOneAndUpdate to avoid full-doc validation on legacy records.
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            $set: {
+                isDeletionRequested: true,
+                deletionRequestedAt: new Date(),
+                isOnline: false
+            }
+        });
 
         console.log(`[AstrologerPanel] Deletion request created and astrologer ${astrologerId} set to offline`);
 
