@@ -43,7 +43,7 @@ module.exports = {
 
             // ── Node.js flags ──────────────────────────────────────────────
             // Increase libuv thread pool for heavy I/O (MongoDB + Redis)
-            node_args: '--max-old-space-size=1400 --uv-threadpool-size=16',
+            node_args: '--max-old-space-size=1400',
         },
     ],
 };
