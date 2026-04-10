@@ -55,6 +55,12 @@ class ChatService {
     private activeDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
     private readonly ACTIVE_DISCONNECT_GRACE_MS = 30000; // 30 seconds
 
+    // ─── Astrologer Waitlist ─────────────────────────────────────────────────
+    // Tracks users who tried to reach a busy astrologer.
+    // Key: astrologerId  Value: Set of userId strings
+    // When the astrologer's chat ends, all waiting users are notified.
+    private astrologerWaitlist: Map<string, Set<string>> = new Map();
+
     // ─── Session Cache (Redis) ───────────────────────────────────────────────
     // Stored in Redis so all PM2 cluster workers share the same cache.
     // Key: session:{sessionId}  Value: JSON-serialised IChatSession
@@ -101,7 +107,21 @@ class ChatService {
         }
 
         if (astrologer.isBusy) {
-            throw new Error('Astrologer is busy with another chat');
+            // Register user in waitlist so they get notified when this astrologer is free
+            this.addToWaitlist(astrologerId, userId);
+            throw new Error('ASTROLOGER_BUSY: Astrologer is busy with another chat');
+        }
+
+        // Check if astrologer already has a PENDING request from another user
+        const existingPendingSession = await ChatSession.findOne({
+            astrologerId,
+            userId: { $ne: userId },
+            status: 'PENDING',
+        });
+        if (existingPendingSession) {
+            // Register user in waitlist so they get notified when this astrologer is free
+            this.addToWaitlist(astrologerId, userId);
+            throw new Error('ASTROLOGER_BUSY_PENDING: Astrologer is currently handling another incoming request. Please stay tuned.');
         }
 
         const ratePerMinute = astrologer.pricePerMin;
@@ -915,10 +935,13 @@ class ChatService {
         // -----------------------------
 
         // Unlock astrologer atomically
-        await Astrologer.findByIdAndUpdate(session.astrologerId, {
+        const freedAstrologer = await Astrologer.findByIdAndUpdate(session.astrologerId, {
             $set: { isBusy: false, activeSessionId: undefined },
             $inc: { totalChats: 1 }
-        });
+        }, { new: false }); // old doc sufficient — we just need name
+
+        // Notify any users who were waiting for this astrologer
+        await this.notifyWaitlistUsers(session.astrologerId.toString(), freedAstrologer);
 
         // Fetch FINAL fresh user balance to send with end event
         const finalUser = await User.findById(session.userId);
@@ -2289,6 +2312,65 @@ class ChatService {
             this.io.to(`user:${session.userId}`).emit('SHARE_PROFILE', profile);
             this.io.to(`astrologer:${session.astrologerId}`).emit('SHARE_PROFILE', profile);
         }
+    }
+
+    // ─── Waitlist Helpers ────────────────────────────────────────────────────
+
+    /**
+     * Add a user to the waitlist for an astrologer.
+     * Called when the user's request is blocked because the astrologer is busy.
+     */
+    private addToWaitlist(astrologerId: string, userId: string): void {
+        if (!this.astrologerWaitlist.has(astrologerId)) {
+            this.astrologerWaitlist.set(astrologerId, new Set());
+        }
+        this.astrologerWaitlist.get(astrologerId)!.add(userId);
+        console.log(`[ChatService] User ${userId} added to waitlist for astrologer ${astrologerId}`);
+    }
+
+    /**
+     * Notify all users waiting for an astrologer that they are now available.
+     * Called after a chat session ends and the astrologer is unlocked.
+     */
+    private async notifyWaitlistUsers(astrologerId: string, astrologerDoc: any): Promise<void> {
+        const waitingUsers = this.astrologerWaitlist.get(astrologerId);
+        if (!waitingUsers || waitingUsers.size === 0) return;
+
+        // Build astrologer name
+        const astrologerName = astrologerDoc
+            ? (astrologerDoc.firstName && astrologerDoc.lastName
+                ? `${astrologerDoc.firstName} ${astrologerDoc.lastName}`
+                : astrologerDoc.firstName || astrologerDoc.name || 'Your Astrologer')
+            : 'Your Astrologer';
+
+        const payload = {
+            astrologerId,
+            astrologerName,
+            message: `${astrologerName} is now available! Chat now before they get busy again.`,
+        };
+
+        console.log(`[ChatService] Notifying ${waitingUsers.size} waiting user(s) for astrologer ${astrologerId}`);
+
+        const notifyPromises: Promise<any>[] = [];
+
+        for (const userId of waitingUsers) {
+            // Socket — instant delivery if user is online
+            if (this.io) {
+                this.io.to(`user:${userId}`).emit('ASTROLOGER_NOW_AVAILABLE', payload);
+            }
+
+            // FCM — backup for users whose app is in background/killed
+            notifyPromises.push(
+                notificationService.sendAstrologerAvailableNotification(userId, payload)
+                    .catch(err => console.error(`[ChatService] FCM available notification failed for user ${userId}:`, err))
+            );
+        }
+
+        await Promise.allSettled(notifyPromises);
+
+        // Clear the waitlist for this astrologer
+        this.astrologerWaitlist.delete(astrologerId);
+        console.log(`[ChatService] Waitlist cleared for astrologer ${astrologerId}`);
     }
 }
 

@@ -867,6 +867,69 @@ class NotificationService {
             return { checked: 0, cleaned: 0 };
         }
     }
+
+    /**
+     * Send FCM notification to a user telling them an astrologer is now available.
+     * Used as a backup when socket delivery may fail (app backgrounded/killed).
+     */
+    async sendAstrologerAvailableNotification(
+        userId: string,
+        data: {
+            astrologerId: string;
+            astrologerName: string;
+            message: string;
+        }
+    ): Promise<boolean> {
+        if (!this.initialized) return false;
+
+        try {
+            const user = await User.findById(userId);
+            if (!user?.fcmToken) return false;
+
+            const message: admin.messaging.Message = {
+                token: user.fcmToken,
+                notification: {
+                    title: `${data.astrologerName} is Available!`,
+                    body: data.message,
+                },
+                data: {
+                    type: 'astrologer_available',
+                    astrologerId: data.astrologerId,
+                    astrologerName: data.astrologerName,
+                },
+                android: {
+                    priority: 'high',
+                    ttl: 5 * 60 * 1000, // 5 minutes TTL — still relevant if app opens soon
+                    notification: {
+                        sound: 'default',
+                        channelId: 'chat_requests',
+                    },
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            sound: 'default',
+                            badge: 1,
+                        },
+                    },
+                },
+            };
+
+            const response = await admin.messaging().send(message);
+            console.log(`[NotificationService] astrologer_available FCM sent to user ${userId}: ${response}`);
+            return true;
+        } catch (error: any) {
+            console.error('[NotificationService] Error sending astrologer_available notification:', error);
+            if (
+                error.code === 'messaging/invalid-registration-token' ||
+                error.code === 'messaging/registration-token-not-registered'
+            ) {
+                const user = await User.findById(userId);
+                if (user?.fcmToken) await this.cleanupToken(user.fcmToken);
+            }
+            return false;
+        }
+    }
 }
 
 // Export singleton instance
