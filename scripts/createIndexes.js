@@ -29,19 +29,14 @@ async function createIndexes() {
     console.log('✓ chatsessions indexes created');
 
     // ── ChatMessage ──────────────────────────────────────────────────────────
-    // Fetching message history for a session (sorted by timestamp)
     await db.collection('chatmessages').createIndex({ sessionId: 1, timestamp: 1 }, { background: true });
-    // Message status update by _id
-    await db.collection('chatmessages').createIndex({ _id: 1 }, { background: true }); // already exists but explicit
     console.log('✓ chatmessages indexes created');
 
     // ── User ─────────────────────────────────────────────────────────────────
-    await db.collection('users').createIndex({ _id: 1 }, { background: true });
     await db.collection('users').createIndex({ email: 1 }, { unique: true, sparse: true, background: true });
     console.log('✓ users indexes created');
 
     // ── Astrologer ───────────────────────────────────────────────────────────
-    await db.collection('astrologers').createIndex({ _id: 1 }, { background: true });
     await db.collection('astrologers').createIndex({ isOnline: 1, isBlocked: 1 }, { background: true });
     console.log('✓ astrologers indexes created');
 
