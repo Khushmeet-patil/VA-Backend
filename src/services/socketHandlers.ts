@@ -497,8 +497,8 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const { sessionId } = data;
 
                 const session = await chatService.getSession(sessionId);
-                if (!session || session.status !== 'ACTIVE') {
-                    const err = { success: false, message: 'Invalid or inactive session' };
+                if (!session) {
+                    const err = { success: false, message: 'Session not found' };
                     if (callback) callback(err);
                     else socket.emit('error', err);
                     return;
@@ -515,9 +515,15 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     return;
                 }
 
+                // If session already ended, just ack success — endChat handles idempotency
+                if (session.status !== 'ACTIVE') {
+                    if (callback) callback({ success: true });
+                    return;
+                }
+
                 const endReason = isUser ? 'USER_END' : 'ASTROLOGER_END';
                 await chatService.endChat(sessionId, endReason);
-                
+
                 if (callback) callback({ success: true });
 
             } catch (error: any) {

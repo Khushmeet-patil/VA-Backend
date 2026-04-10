@@ -781,13 +781,16 @@ class ChatService {
         // Invalidate cache first so any concurrent send_message re-reads from DB
         this.invalidateSessionCache(sessionId);
 
+        // Atomic: only transition if currently ACTIVE — prevents double-end race condition
         const session = await ChatSession.findOne({ sessionId });
         if (!session) {
             throw new Error('Session not found');
         }
 
         if (session.status !== 'ACTIVE') {
-            throw new Error(`Cannot end session with status: ${session.status}`);
+            // Already ended — silently ignore (client sent end_chat twice)
+            console.log(`[ChatService] endChat called on session ${sessionId} with status ${session.status} — ignoring duplicate`);
+            return session;
         }
 
         // Stop billing timer and free trial timer
@@ -944,6 +947,16 @@ class ChatService {
                 totalAmount: session.totalAmount,
             }
         ).catch(err => console.error('[ChatService] FCM chat_ended push failed:', err));
+
+        // Clean up session room — remove all sockets so no future messages leak into this room
+        if (this.io) {
+            const sessionRoom = `session:${sessionId}`;
+            const roomSockets = await this.io.in(sessionRoom).fetchSockets();
+            for (const s of roomSockets) {
+                s.leave(sessionRoom);
+            }
+            console.log(`[ChatService] Cleaned up session room ${sessionRoom} (removed ${roomSockets.length} sockets)`);
+        }
 
         return session;
     }
@@ -1980,7 +1993,8 @@ class ChatService {
             return cached.session;
         }
         const session = await ChatSession.findOne({ sessionId });
-        if (session) {
+        // Only cache ACTIVE sessions — ended/rejected sessions must never be served stale
+        if (session && session.status === 'ACTIVE') {
             this.sessionCache.set(sessionId, { session, cachedAt: Date.now() });
         }
         return session;
