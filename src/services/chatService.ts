@@ -8,6 +8,7 @@ import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import notificationService from './notificationService';
 import availabilityService from './availabilityService';
+import redisClient from '../config/redis';
 
 /**
  * ChatService - Core billing and session management
@@ -48,12 +49,17 @@ class ChatService {
     // Free trial duration (120 seconds = 2 minutes)
     private readonly FREE_TRIAL_DURATION_MS = 120000;
 
-    // ─── Session Cache ───────────────────────────────────────────────────────
-    // Avoid hitting MongoDB on every send_message call.
-    // Entries are primed immediately when a session transitions to ACTIVE and
-    // invalidated whenever the session status changes (end, reject, timeout).
-    private sessionCache: Map<string, { session: IChatSession; cachedAt: number }> = new Map();
-    private readonly SESSION_CACHE_TTL = 10000; // 10 seconds
+    // Grace timers for ACTIVE chat disconnects: sessionId -> NodeJS.Timeout
+    // If the disconnected participant does not reconnect within the grace window,
+    // the chat is ended automatically so the other side is not left hanging.
+    private activeDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+    private readonly ACTIVE_DISCONNECT_GRACE_MS = 30000; // 30 seconds
+
+    // ─── Session Cache (Redis) ───────────────────────────────────────────────
+    // Stored in Redis so all PM2 cluster workers share the same cache.
+    // Key: session:{sessionId}  Value: JSON-serialised IChatSession
+    // TTL: 30 seconds (Redis handles expiry automatically)
+    private readonly SESSION_CACHE_TTL_SECS = 30;
 
     /**
      * Initialize the chat service with Socket.IO instance
@@ -299,7 +305,7 @@ class ChatService {
         // Prime the session cache immediately with the ACTIVE session so the
         // first send_message (which may arrive within milliseconds of CHAT_STARTED)
         // doesn't hit MongoDB and see a stale PENDING status.
-        this.updateSessionCache(session);
+        void this.updateSessionCache(session);
 
         // Start appropriate timer based on session type
         if (session.isFreeTrialSession) {
@@ -385,7 +391,7 @@ class ChatService {
                 console.warn(`[ChatService] User is PROPERLY unreachable for session: ${sessionId}. Rolling back.`);
                 
                 // ROLLBACK: User is confirmed not connected
-                this.invalidateSessionCache(sessionId);
+                void this.invalidateSessionCache(sessionId);
                 await ChatSession.findOneAndUpdate(
                     { sessionId },
                     {
@@ -522,7 +528,7 @@ class ChatService {
      * Reject a pending chat request
      */
     async rejectChatRequest(sessionId: string): Promise<void> {
-        this.invalidateSessionCache(sessionId);
+        void this.invalidateSessionCache(sessionId);
 
         const session = await ChatSession.findOne({ sessionId });
         if (!session) {
@@ -566,7 +572,7 @@ class ChatService {
      * Auto-timeout a chat request that wasn't responded to
      */
     private async timeoutChatRequest(sessionId: string): Promise<void> {
-        this.invalidateSessionCache(sessionId);
+        void this.invalidateSessionCache(sessionId);
 
         // Use atomic operation to handle race condition
         const session = await ChatSession.findOneAndUpdate(
@@ -709,7 +715,7 @@ class ChatService {
      * Returns: { cancelled: boolean, reason?: string }
      */
     async cancelChatRequest(sessionId: string, userId: string): Promise<{ cancelled: boolean; reason?: string }> {
-        this.invalidateSessionCache(sessionId);
+        void this.invalidateSessionCache(sessionId);
 
         // Use atomic findOneAndUpdate to prevent race conditions
         // Only cancel if still PENDING and belongs to this user
@@ -779,18 +785,22 @@ class ChatService {
         endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED'
     ): Promise<IChatSession> {
         // Invalidate cache first so any concurrent send_message re-reads from DB
-        this.invalidateSessionCache(sessionId);
+        void this.invalidateSessionCache(sessionId);
 
-        // Atomic: only transition if currently ACTIVE — prevents double-end race condition
+        // Cancel any active-disconnect grace timer for this session
+        const graceTimer = this.activeDisconnectTimers.get(sessionId);
+        if (graceTimer) {
+            clearTimeout(graceTimer);
+            this.activeDisconnectTimers.delete(sessionId);
+        }
+
         const session = await ChatSession.findOne({ sessionId });
         if (!session) {
             throw new Error('Session not found');
         }
 
         if (session.status !== 'ACTIVE') {
-            // Already ended — silently ignore (client sent end_chat twice)
-            console.log(`[ChatService] endChat called on session ${sessionId} with status ${session.status} — ignoring duplicate`);
-            return session;
+            throw new Error(`Cannot end session with status: ${session.status}`);
         }
 
         // Stop billing timer and free trial timer
@@ -947,16 +957,6 @@ class ChatService {
                 totalAmount: session.totalAmount,
             }
         ).catch(err => console.error('[ChatService] FCM chat_ended push failed:', err));
-
-        // Clean up session room — remove all sockets so no future messages leak into this room
-        if (this.io) {
-            const sessionRoom = `session:${sessionId}`;
-            const roomSockets = await this.io.in(sessionRoom).fetchSockets();
-            for (const s of roomSockets) {
-                s.leave(sessionRoom);
-            }
-            console.log(`[ChatService] Cleaned up session room ${sessionRoom} (removed ${roomSockets.length} sockets)`);
-        }
 
         return session;
     }
@@ -1667,7 +1667,36 @@ class ChatService {
         if (session) {
             const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
             await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
-            console.log(`[ChatService] Updated lastSeen for ${userType} in session: ${session.sessionId}. Chat continues (wallet-only ending).`);
+            console.log(`[ChatService] ${userType} disconnected from ACTIVE session ${session.sessionId}. Starting ${this.ACTIVE_DISCONNECT_GRACE_MS / 1000}s grace window.`);
+
+            // Clear any existing grace timer for this session (safety)
+            const existing = this.activeDisconnectTimers.get(session.sessionId);
+            if (existing) clearTimeout(existing);
+
+            const timer = setTimeout(async () => {
+                this.activeDisconnectTimers.delete(session.sessionId);
+                try {
+                    // Re-check: is the participant back online?
+                    const participantRoom = `${userType}:${userId}`;
+                    const room = this.io?.sockets.adapter.rooms.get(participantRoom);
+                    if (room && room.size > 0) {
+                        console.log(`[ChatService] ${userType} ${userId} reconnected within grace window — chat continues.`);
+                        return;
+                    }
+
+                    // Re-check: is the session still ACTIVE?
+                    const still = await ChatSession.findOne({ sessionId: session.sessionId, status: 'ACTIVE' });
+                    if (!still) return; // Already ended by billing or other means
+
+                    console.log(`[ChatService] Grace window expired: ${userType} ${userId} still offline. Ending session ${session.sessionId}.`);
+                    const endReason = isAstrologer ? 'ASTROLOGER_END' : 'USER_END';
+                    await this.endChat(session.sessionId, endReason);
+                } catch (err) {
+                    console.error(`[ChatService] Error in active-disconnect grace timer for ${session.sessionId}:`, err);
+                }
+            }, this.ACTIVE_DISCONNECT_GRACE_MS);
+
+            this.activeDisconnectTimers.set(session.sessionId, timer);
             return;
         }
 
@@ -1823,15 +1852,16 @@ class ChatService {
             return;
         }
 
-        // Update last seen in DB
-        const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
-        await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
+        // Cancel the active-disconnect grace timer if one was running for this session
+        const graceTimer = this.activeDisconnectTimers.get(session.sessionId);
+        if (graceTimer) {
+            clearTimeout(graceTimer);
+            this.activeDisconnectTimers.delete(session.sessionId);
+            console.log(`[ChatService] ${userType} ${userId} reconnected — cancelled grace timer for session ${session.sessionId}.`);
+        }
 
-        // Refresh the cache with the DB-fetched session (it's fresh here)
-        this.updateSessionCache(session);
-
-        // Re-join the reconnected socket(s) to the session room so they receive
-        // messages broadcast to it even before the next billing tick updates them.
+        // Re-join the reconnected socket(s) to the session room FIRST so they
+        // are subscribed before we emit re-delivered messages below.
         if (this.io) {
             const reconnectedRoom = `${userType}:${userId}`;
             const reconnectedSockets = await this.io.in(reconnectedRoom).fetchSockets();
@@ -1844,19 +1874,30 @@ class ChatService {
             }
         }
 
-        // Re-deliver missed messages on reconnect
+        // Re-deliver ALL messages sent since this participant last had a socket
+        // connected — using their lastSeen timestamp as the precise cutoff.
+        // We read lastSeen from the session object BEFORE updating it to now,
+        // so the cutoff is the disconnect time, not the reconnect time.
         try {
-            // Get messages from the last 10 minutes that might have been missed
-            const tenMinutesAgo = new Date(Date.now() - 600000);
+            const lastSeen = isAstrologer
+                ? (session as any).astrologerLastSeen
+                : (session as any).userLastSeen;
+
+            // Fall back to session start if never disconnected before (first connect)
+            const since = lastSeen
+                ? new Date(lastSeen)
+                : new Date((session as any).startTime || (session as any).createdAt || Date.now() - 600000);
+
+            // Fetch ALL messages after lastSeen (both own queued + other party's)
+            // Cap at 100 to avoid flooding a very long offline window
             const missedMessages = await ChatMessage.find({
                 sessionId: session.sessionId,
-                timestamp: { $gte: tenMinutesAgo },
-                senderType: { $ne: userType } // Only messages from the OTHER party
-            }).sort({ timestamp: 1 }).limit(50);
+                timestamp: { $gt: since },
+            }).sort({ timestamp: 1 }).limit(100);
 
             if (missedMessages.length > 0 && this.io) {
                 const roomName = `${userType}:${userId}`;
-                console.log(`[ChatService] Re-delivering ${missedMessages.length} missed messages to ${roomName}`);
+                console.log(`[ChatService] Re-delivering ${missedMessages.length} missed messages to ${roomName} (since ${since.toISOString()})`);
 
                 for (const msg of missedMessages) {
                     this.io.to(roomName).emit('RECEIVE_MESSAGE', {
@@ -1871,13 +1912,22 @@ class ChatService {
                         fileSize: msg.fileSize,
                         timestamp: msg.timestamp.toISOString(),
                         status: msg.status || 'sent',
-                        isRedelivered: true // Flag so frontend can deduplicate
+                        isRedelivered: true,
                     });
                 }
+            } else if (this.io) {
+                console.log(`[ChatService] No missed messages for ${userType} ${userId} since ${since.toISOString()}`);
             }
         } catch (redeliveryError) {
             console.error(`[ChatService] Error re-delivering messages:`, redeliveryError);
         }
+
+        // Update lastSeen to NOW after redelivery — this becomes the cutoff for the NEXT reconnect
+        const updateField = isAstrologer ? { astrologerLastSeen: new Date() } : { userLastSeen: new Date() };
+        await ChatSession.updateOne({ sessionId: session.sessionId }, { $set: updateField });
+
+        // Refresh the Redis cache with the updated session
+        void this.updateSessionCache(session);
     }
 
     /**
@@ -1984,30 +2034,46 @@ class ChatService {
     }
 
     /**
-     * Get session by ID — uses in-memory cache to avoid a DB hit on every message.
+     * Get session by ID — Redis cache first, MongoDB fallback.
      * Cache entries are primed on accept and invalidated on any status change.
+     * Shared across all PM2 cluster workers via Redis.
      */
     async getSession(sessionId: string): Promise<IChatSession | null> {
-        const cached = this.sessionCache.get(sessionId);
-        if (cached && (Date.now() - cached.cachedAt) < this.SESSION_CACHE_TTL) {
-            return cached.session;
+        try {
+            const cached = await redisClient.get(`session:${sessionId}`);
+            if (cached) {
+                return JSON.parse(cached) as IChatSession;
+            }
+        } catch (e) {
+            // Redis unavailable — fall through to DB
         }
         const session = await ChatSession.findOne({ sessionId });
-        // Only cache ACTIVE sessions — ended/rejected sessions must never be served stale
-        if (session && session.status === 'ACTIVE') {
-            this.sessionCache.set(sessionId, { session, cachedAt: Date.now() });
+        if (session) {
+            await this.updateSessionCache(session);
         }
         return session;
     }
 
-    /** Prime or refresh the cache for a session we just mutated. */
-    private updateSessionCache(session: IChatSession): void {
-        this.sessionCache.set(session.sessionId, { session, cachedAt: Date.now() });
+    /** Prime or refresh the Redis cache for a session we just mutated. */
+    private async updateSessionCache(session: IChatSession): Promise<void> {
+        try {
+            await redisClient.setex(
+                `session:${session.sessionId}`,
+                this.SESSION_CACHE_TTL_SECS,
+                JSON.stringify(session)
+            );
+        } catch (e) {
+            // Non-fatal — next read will just go to DB
+        }
     }
 
-    /** Remove a session from the cache so the next read goes to DB. */
-    invalidateSessionCache(sessionId: string): void {
-        this.sessionCache.delete(sessionId);
+    /** Remove a session from the Redis cache so the next read goes to DB. */
+    async invalidateSessionCache(sessionId: string): Promise<void> {
+        try {
+            await redisClient.del(`session:${sessionId}`);
+        } catch (e) {
+            // Non-fatal
+        }
     }
 
     /**

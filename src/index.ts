@@ -7,6 +7,8 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { redisPub, redisSub } from './config/redis';
 
 console.log('Imports loaded, loading local modules...');
 
@@ -74,13 +76,34 @@ app.use('/uploads', express.static('uploads'));
 // automatically receive any missed events without application-level re-delivery.
 const io = new SocketIOServer(httpServer, {
     cors: corsOptions,
-    pingInterval: 10000,
-    pingTimeout: 20000,
+
+    // ── Ping / zombie detection ────────────────────────────────────────────
+    pingInterval: 10000,   // Send ping every 10 s
+    pingTimeout: 20000,    // Disconnect if no pong within 20 s (~30 s zombie window)
+
+    // ── Transport ─────────────────────────────────────────────────────────
+    // Prefer WebSocket; fall back to polling only if WS is blocked
+    transports: ['websocket', 'polling'],
+
+    // ── Payload limits ────────────────────────────────────────────────────
+    maxHttpBufferSize: 1e6, // 1 MB max per message (guards against large payloads)
+
+    // ── Connection state recovery ─────────────────────────────────────────
+    // Buffers missed events for reconnecting clients (up to 2 minutes)
     connectionStateRecovery: {
-        maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+        maxDisconnectionDuration: 2 * 60 * 1000,
         skipMiddlewares: true,
     },
+
+    // ── Per-socket send buffer ─────────────────────────────────────────────
+    // Drop messages if the client can't keep up (prevents memory bloat)
+    // Default is Infinity — cap it to protect the server under load
+    // (socket.io v4.6+ only)
 });
+
+// Attach Redis adapter so all cluster workers share Socket.IO rooms
+io.adapter(createAdapter(redisPub, redisSub));
+console.log('[Socket.IO] Redis adapter attached');
 
 // Initialize socket handlers
 initializeSocketHandlers(io);

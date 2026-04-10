@@ -74,9 +74,9 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         const roomSize = room ? room.size : 0;
         console.log(`[Socket] ${userType} connected & joined room: ID=${userId}, Room=${roomName}, RoomSize=${roomSize}, SocketID=${socket.id}`);
 
-        // If there is an ACTIVE session for this user, immediately join the
-        // session room so no messages are missed between reconnect and the
-        // handleReconnect async path finishing.
+        // Join session room FIRST, then redeliver missed messages.
+        // Both steps must be sequential — messages must not be emitted to a
+        // room before the socket has joined it (race condition fix).
         try {
             const activeSession = userType === 'user'
                 ? await chatService.getActiveSessionForUser(userId)
@@ -87,11 +87,11 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 console.log(`[Socket] Auto-joined session room ${sessionRoom} on connect`);
             }
         } catch (e) {
-            // Non-critical: handleReconnect will fix it up
+            // Non-critical: handleReconnect will still redeliver
         }
 
-        // Handle reconnect (clear grace period if any)
-        chatService.handleReconnect(userId, userType === 'astrologer');
+        // NOW handle reconnect — session room is joined, safe to redeliver
+        await chatService.handleReconnect(userId, userType === 'astrologer');
 
         // Handle sending messages.
         // Supports an optional ACK callback: socket.emit('send_message', data, (res) => {...})
@@ -497,8 +497,8 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const { sessionId } = data;
 
                 const session = await chatService.getSession(sessionId);
-                if (!session) {
-                    const err = { success: false, message: 'Session not found' };
+                if (!session || session.status !== 'ACTIVE') {
+                    const err = { success: false, message: 'Invalid or inactive session' };
                     if (callback) callback(err);
                     else socket.emit('error', err);
                     return;
@@ -515,15 +515,9 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     return;
                 }
 
-                // If session already ended, just ack success — endChat handles idempotency
-                if (session.status !== 'ACTIVE') {
-                    if (callback) callback({ success: true });
-                    return;
-                }
-
                 const endReason = isUser ? 'USER_END' : 'ASTROLOGER_END';
                 await chatService.endChat(sessionId, endReason);
-
+                
                 if (callback) callback({ success: true });
 
             } catch (error: any) {
