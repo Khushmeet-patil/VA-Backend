@@ -55,18 +55,20 @@ class ChatService {
     private activeDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
     private readonly ACTIVE_DISCONNECT_GRACE_MS = 30000; // 30 seconds
 
-    // ─── Astrologer Waitlist ─────────────────────────────────────────────────
-    // Tracks users who tried to reach a busy astrologer.
-    // Key: astrologerId  Value: Set of userId strings
-    // When the astrologer's chat ends, all waiting users are notified.
-    private astrologerWaitlist: Map<string, Set<string>> = new Map();
+    // ─── Astrologer Waitlist (BUG 6: Redis-backed) ──────────────────────────
+    // Stored in Redis so the waitlist survives server restarts and is shared
+    // across all PM2 cluster workers.  Key pattern: waitlist:<astrologerId>
+    private waitlistKey(astrologerId: string): string {
+        return `waitlist:${astrologerId}`;
+    }
 
     // ─── Session Cache (Redis) ───────────────────────────────────────────────
     // Stored in Redis so all PM2 cluster workers share the same cache.
     // Key: session:{sessionId}  Value: JSON-serialised IChatSession
-    // TTL: 5 minutes — long enough to cover most active sessions without stale reads.
-    // Status-changing operations (end, cancel, reject) invalidate the cache immediately.
-    private readonly SESSION_CACHE_TTL_SECS = 300;
+    // TTL: 30s (BUG 17: reduced from 300s to shrink the window where a stale
+    //   ACTIVE status is returned after the session has already been ended by
+    //   another PM2 worker).  Status-changing operations still invalidate immediately.
+    private readonly SESSION_CACHE_TTL_SECS = 30;
 
     /**
      * Initialize the chat service with Socket.IO instance
@@ -109,7 +111,7 @@ class ChatService {
 
         if (astrologer.isBusy) {
             // Register user in waitlist so they get notified when this astrologer is free
-            this.addToWaitlist(astrologerId, userId);
+            await this.addToWaitlist(astrologerId, userId);
             throw new Error('ASTROLOGER_BUSY: Astrologer is busy with another chat');
         }
 
@@ -121,7 +123,7 @@ class ChatService {
         });
         if (existingPendingSession) {
             // Register user in waitlist so they get notified when this astrologer is free
-            this.addToWaitlist(astrologerId, userId);
+            await this.addToWaitlist(astrologerId, userId);
             throw new Error('ASTROLOGER_BUSY_PENDING: Astrologer is currently handling another incoming request. Please stay tuned.');
         }
 
@@ -212,8 +214,24 @@ class ChatService {
     /**
      * Accept a pending chat request
      * Called when astrologer accepts the request
+     *
+     * RACE-CONDITION SAFETY (BUG 15):
+     *   The auto-reject timeout is cancelled as the very FIRST action, before any async
+     *   DB work.  This closes the window where a 30-second timeout fires while the DB
+     *   lock acquisition is in-flight, which previously caused both CHAT_TIMEOUT and
+     *   CHAT_STARTED to be emitted at the same time.
      */
     async acceptChatRequest(sessionId: string): Promise<IChatSession> {
+        // ── BUG 15 FIX: Cancel auto-reject timer immediately, before any DB work ──
+        // Moving this to the TOP prevents the 30-second timeout from firing while we
+        // await DB operations below (isBusy lock acquisition, balance check, etc.).
+        const timeout = this.requestTimeouts.get(sessionId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.requestTimeouts.delete(sessionId);
+            console.log(`[ChatService] acceptChatRequest: cleared auto-reject timer for ${sessionId}`);
+        }
+
         // Initial check (non-atomic, just for validation)
         let session = await ChatSession.findOne({ sessionId });
         if (!session) {
@@ -229,13 +247,6 @@ class ChatService {
 
         if (session.status !== 'PENDING') {
             throw new Error(`Cannot accept session with status: ${session.status}`);
-        }
-
-        // Clear request timeout
-        const timeout = this.requestTimeouts.get(sessionId);
-        if (timeout) {
-            clearTimeout(timeout);
-            this.requestTimeouts.delete(sessionId);
         }
 
         // Verify user still has enough balance (skip for free trial)
@@ -800,13 +811,24 @@ class ChatService {
 
     /**
      * End an active chat session
+     *
+     * RACE-CONDITION SAFETY (BUG 19):
+     *   Uses an atomic findOneAndUpdate({ status: 'ACTIVE' }) as the very first DB write.
+     *   Only one concurrent caller can succeed — the second sees status already changed and
+     *   throws early, preventing a duplicate CHAT_ENDED from being emitted.
+     *
+     * ORDERING FIX (BUG 2, 7):
+     *   CHAT_ENDED is emitted BEFORE isBusy is cleared.  An 800 ms grace period between
+     *   emission and astrologer unlock gives the frontend time to process CHAT_ENDED before
+     *   a new CHAT_REQUEST can arrive.
      */
     async endChat(
         sessionId: string,
         endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED'
     ): Promise<IChatSession> {
-        // Invalidate cache first so any concurrent send_message re-reads from DB
-        void this.invalidateSessionCache(sessionId);
+        // Stop in-process timers immediately so they cannot fire during cleanup
+        this.stopBillingTimer(sessionId);
+        this.stopFreeTrialTimer(sessionId);
 
         // Cancel any active-disconnect grace timer for this session
         const graceTimer = this.activeDisconnectTimers.get(sessionId);
@@ -815,18 +837,23 @@ class ChatService {
             this.activeDisconnectTimers.delete(sessionId);
         }
 
-        const session = await ChatSession.findOne({ sessionId });
+        // Invalidate cache so any concurrent send_message re-reads from DB
+        void this.invalidateSessionCache(sessionId);
+
+        // ── ATOMIC CLAIM (BUG 19) ───────────────────────────────────────────────
+        // Atomically transition ACTIVE → ENDED.  Returns the OLD document (status=ACTIVE).
+        // If null is returned, another concurrent endChat() already claimed this session.
+        const session = await ChatSession.findOneAndUpdate(
+            { sessionId, status: 'ACTIVE' },
+            { $set: { status: 'ENDED' } },
+            { new: false }
+        );
         if (!session) {
-            throw new Error('Session not found');
+            const existing = await ChatSession.findOne({ sessionId });
+            if (!existing) throw new Error('Session not found');
+            throw new Error(`Cannot end session with status: ${existing.status}`);
         }
-
-        if (session.status !== 'ACTIVE') {
-            throw new Error(`Cannot end session with status: ${session.status}`);
-        }
-
-        // Stop billing timer and free trial timer
-        this.stopBillingTimer(sessionId);
-        this.stopFreeTrialTimer(sessionId);
+        // session now holds the pre-update doc (status was ACTIVE) — safe to use for billing
 
         // --- PARTIAL BILLING LOGIC ---
         // Only if billing actually started AND not a free trial session
@@ -935,21 +962,14 @@ class ChatService {
         }
         // -----------------------------
 
-        // Unlock astrologer atomically
-        const freedAstrologer = await Astrologer.findByIdAndUpdate(session.astrologerId, {
-            $set: { isBusy: false, activeSessionId: undefined },
-            $inc: { totalChats: 1 }
-        }, { new: false }); // old doc sufficient — we just need name
-
-        // Notify any users who were waiting for this astrologer
-        await this.notifyWaitlistUsers(session.astrologerId.toString(), freedAstrologer);
-
         // Fetch FINAL fresh user balance to send with end event
         const finalUser = await User.findById(session.userId);
 
         console.log(`[ChatService] Chat ended: ${sessionId}, reason: ${endReason}`);
 
-        // Emit CHAT_ENDED to both parties
+        // ── STEP 1: Emit CHAT_ENDED FIRST (BUG 2) ──────────────────────────────
+        // The frontend must receive CHAT_ENDED and begin clearing state BEFORE any
+        // new CHAT_REQUEST can arrive.  Emitting before isBusy=false guarantees this.
         if (this.io) {
             const endPayload = {
                 sessionId,
@@ -981,6 +1001,22 @@ class ChatService {
                 totalAmount: session.totalAmount,
             }
         ).catch(err => console.error('[ChatService] FCM chat_ended push failed:', err));
+
+        // ── STEP 2: Grace period (BUG 2, 7) ────────────────────────────────────
+        // Give the frontend ~800 ms to process CHAT_ENDED and clear its state
+        // before we unlock the astrologer and allow a new CHAT_REQUEST to be sent.
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // ── STEP 3: Unlock astrologer (BUG 2, 7) ───────────────────────────────
+        const freedAstrologer = await Astrologer.findByIdAndUpdate(session.astrologerId, {
+            $set: { isBusy: false, activeSessionId: undefined },
+            $inc: { totalChats: 1 }
+        }, { new: false }); // old doc sufficient — we just need name
+
+        // ── STEP 4: Notify waitlist users ───────────────────────────────────────
+        // Only called AFTER unlock so any notified user's CHAT_REQUEST won't race
+        // with the outgoing CHAT_ENDED still being processed on the frontend.
+        await this.notifyWaitlistUsers(session.astrologerId.toString(), freedAstrologer);
 
         return session;
     }
@@ -1098,11 +1134,35 @@ class ChatService {
 
     /**
      * Process one billing cycle (60 seconds)
-     * This is the CRITICAL billing logic
+     * This is the CRITICAL billing logic.
+     *
+     * RACE-CONDITION SAFETY (BUG 12, 22):
+     *   Uses an atomic findOneAndUpdate to both verify the session is still ACTIVE and
+     *   advance lastBilledAt in one operation.  If the update returns null, either
+     *   the session ended or another concurrent billing cycle already ran — we bail.
+     *   This prevents duplicate billing from a timer that fires twice under server load,
+     *   and prevents a lingering billing cycle from a just-ended session.
      */
     private async processBillingCycle(sessionId: string): Promise<void> {
-        const session = await ChatSession.findOne({ sessionId });
-        if (!session || session.status !== 'ACTIVE') {
+        // Atomically claim this billing slot: only succeeds if session is ACTIVE and
+        // lastBilledAt is old enough (i.e., this cycle hasn't already been processed).
+        const minLastBilled = new Date(Date.now() - (this.BILLING_INTERVAL_MS - 5000));
+        const session = await ChatSession.findOneAndUpdate(
+            {
+                sessionId,
+                status: 'ACTIVE',
+                $or: [
+                    { lastBilledAt: { $exists: false } },
+                    { lastBilledAt: null },
+                    { lastBilledAt: { $lt: minLastBilled } }
+                ]
+            },
+            { $set: { lastBilledAt: new Date() } },
+            { new: false } // return old doc
+        );
+
+        if (!session) {
+            // Session ended OR another concurrent cycle already ran — stop the timer
             this.stopBillingTimer(sessionId);
             return;
         }
@@ -2345,27 +2405,37 @@ class ChatService {
         }
     }
 
-    // ─── Waitlist Helpers ────────────────────────────────────────────────────
+    // ─── Waitlist Helpers (Redis-backed — BUG 6) ────────────────────────────
 
     /**
      * Add a user to the waitlist for an astrologer.
-     * Called when the user's request is blocked because the astrologer is busy.
+     * Stored in Redis so it survives restarts and is shared across PM2 workers.
      */
-    private addToWaitlist(astrologerId: string, userId: string): void {
-        if (!this.astrologerWaitlist.has(astrologerId)) {
-            this.astrologerWaitlist.set(astrologerId, new Set());
+    private async addToWaitlist(astrologerId: string, userId: string): Promise<void> {
+        try {
+            await redisClient.sadd(this.waitlistKey(astrologerId), userId);
+            // Set a 24-hour expiry so stale waitlists don't accumulate forever
+            await redisClient.expire(this.waitlistKey(astrologerId), 86400);
+            console.log(`[ChatService] User ${userId} added to Redis waitlist for astrologer ${astrologerId}`);
+        } catch (err) {
+            console.error(`[ChatService] Failed to add user ${userId} to Redis waitlist:`, err);
         }
-        this.astrologerWaitlist.get(astrologerId)!.add(userId);
-        console.log(`[ChatService] User ${userId} added to waitlist for astrologer ${astrologerId}`);
     }
 
     /**
      * Notify all users waiting for an astrologer that they are now available.
-     * Called after a chat session ends and the astrologer is unlocked.
+     * Reads from Redis Set, notifies each user, then deletes the key atomically.
      */
     private async notifyWaitlistUsers(astrologerId: string, astrologerDoc: any): Promise<void> {
-        const waitingUsers = this.astrologerWaitlist.get(astrologerId);
-        if (!waitingUsers || waitingUsers.size === 0) return;
+        let waitingUsers: string[] = [];
+        try {
+            waitingUsers = await redisClient.smembers(this.waitlistKey(astrologerId));
+        } catch (err) {
+            console.error(`[ChatService] Failed to read Redis waitlist for astrologer ${astrologerId}:`, err);
+            return;
+        }
+
+        if (!waitingUsers || waitingUsers.length === 0) return;
 
         // Build astrologer name
         const astrologerName = astrologerDoc
@@ -2380,7 +2450,7 @@ class ChatService {
             message: `${astrologerName} is now available! Chat now before they get busy again.`,
         };
 
-        console.log(`[ChatService] Notifying ${waitingUsers.size} waiting user(s) for astrologer ${astrologerId}`);
+        console.log(`[ChatService] Notifying ${waitingUsers.length} waiting user(s) for astrologer ${astrologerId}`);
 
         const notifyPromises: Promise<any>[] = [];
 
@@ -2399,9 +2469,13 @@ class ChatService {
 
         await Promise.allSettled(notifyPromises);
 
-        // Clear the waitlist for this astrologer
-        this.astrologerWaitlist.delete(astrologerId);
-        console.log(`[ChatService] Waitlist cleared for astrologer ${astrologerId}`);
+        // Delete the waitlist key atomically after notifying
+        try {
+            await redisClient.del(this.waitlistKey(astrologerId));
+            console.log(`[ChatService] Redis waitlist cleared for astrologer ${astrologerId}`);
+        } catch (err) {
+            console.error(`[ChatService] Failed to clear Redis waitlist for astrologer ${astrologerId}:`, err);
+        }
     }
 }
 
