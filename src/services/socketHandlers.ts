@@ -130,14 +130,29 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     return;
                 }
 
-                // Save message with a timeout guard so a slow DB doesn't hang indefinitely.
-                // If it times out, the catch block sends { success: false } to the client.
-                const savedMsg = await Promise.race([
-                    chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId),
-                    new Promise<never>((_, reject) =>
-                        setTimeout(() => reject(new Error('DB_TIMEOUT')), 8000)
-                    )
-                ]);
+                // Save message with a timeout guard. Retries once on DB_TIMEOUT before failing.
+                let savedMsg: any;
+                try {
+                    savedMsg = await Promise.race([
+                        chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId),
+                        new Promise<never>((_, reject) =>
+                            setTimeout(() => reject(new Error('DB_TIMEOUT')), 8000)
+                        )
+                    ]);
+                } catch (firstErr: any) {
+                    if (firstErr?.message === 'DB_TIMEOUT') {
+                        console.warn('[Socket] DB_TIMEOUT on first attempt — retrying in 500ms...');
+                        await new Promise(r => setTimeout(r, 500));
+                        savedMsg = await Promise.race([
+                            chatService.saveMessage(sessionId, userId, userType, text, type, fileData, replyToId),
+                            new Promise<never>((_, reject) =>
+                                setTimeout(() => reject(new Error('DB_TIMEOUT')), 10000)
+                            )
+                        ]);
+                    } else {
+                        throw firstErr;
+                    }
+                }
 
                 // Fetch reply message if replyToId was provided
                 let replyTo: { id: string; text: string; sender: string; type?: string; fileUrl?: string } | undefined;
@@ -174,25 +189,24 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const userRoom = `user:${session.userId}`;
                 const astrologerRoom = `astrologer:${session.astrologerId}`;
 
-                // Check which rooms have active sockets
-                const sessionRoomSockets = io.sockets.adapter.rooms.get(sessionRoom);
-                const hasSessionRoom = sessionRoomSockets && sessionRoomSockets.size > 0;
-
                 const messagePayload = { sessionId, ...message };
 
-                if (hasSessionRoom) {
-                    // Primary: broadcast to session room (both parties are here)
-                    io.to(sessionRoom).emit('RECEIVE_MESSAGE', messagePayload);
-                    console.log(`[Socket] RECEIVE_MESSAGE → session room ${sessionRoom} (${sessionRoomSockets!.size} sockets)`);
-                } else {
-                    // Fallback: broadcast to individual rooms (session room not yet populated)
-                    io.to(userRoom).emit('RECEIVE_MESSAGE', messagePayload);
-                    io.to(astrologerRoom).emit('RECEIVE_MESSAGE', messagePayload);
-                    console.log(`[Socket] RECEIVE_MESSAGE → individual rooms (${userRoom}, ${astrologerRoom}) — session room empty`);
+                // Belt-and-suspenders delivery: ALWAYS emit to individual rooms.
+                // Individual rooms are joined immediately on socket connect (no timing gap),
+                // so this is guaranteed to reach any currently connected socket.
+                // Session room is emitted to as well when populated — covers sockets
+                // that reconnected via connectionStateRecovery and re-joined the session room.
+                // Frontend dedup (receivedMessageIds set) silently drops the duplicate.
+                io.to(userRoom).emit('RECEIVE_MESSAGE', messagePayload);
+                io.to(astrologerRoom).emit('RECEIVE_MESSAGE', messagePayload);
 
-                    // Async: try to populate the session room for future messages
-                    chatService.joinSessionRoom(sessionId, session.userId.toString(), session.astrologerId.toString())
-                        .catch(err => console.error('[Socket] joinSessionRoom fallback error:', err));
+                const sessionRoomSockets = io.sockets.adapter.rooms.get(sessionRoom);
+                const sessionRoomSize = sessionRoomSockets ? sessionRoomSockets.size : 0;
+                if (sessionRoomSize > 0) {
+                    io.to(sessionRoom).emit('RECEIVE_MESSAGE', messagePayload);
+                    console.log(`[Socket] RECEIVE_MESSAGE → individual rooms + session:${sessionId} (${sessionRoomSize} sockets)`);
+                } else {
+                    console.log(`[Socket] RECEIVE_MESSAGE → individual rooms only (${userRoom}, ${astrologerRoom})`);
                 }
 
                 // ACK sender immediately after save+broadcast — before FCM/profile detection

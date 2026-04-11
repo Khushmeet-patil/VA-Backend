@@ -64,8 +64,9 @@ class ChatService {
     // ─── Session Cache (Redis) ───────────────────────────────────────────────
     // Stored in Redis so all PM2 cluster workers share the same cache.
     // Key: session:{sessionId}  Value: JSON-serialised IChatSession
-    // TTL: 30 seconds (Redis handles expiry automatically)
-    private readonly SESSION_CACHE_TTL_SECS = 30;
+    // TTL: 5 minutes — long enough to cover most active sessions without stale reads.
+    // Status-changing operations (end, cancel, reject) invalidate the cache immediately.
+    private readonly SESSION_CACHE_TTL_SECS = 300;
 
     /**
      * Initialize the chat service with Socket.IO instance
@@ -1943,6 +1944,36 @@ class ChatService {
             }
         } catch (redeliveryError) {
             console.error(`[ChatService] Error re-delivering messages:`, redeliveryError);
+        }
+
+        // ── Status catch-up for astrologer reconnect ────────────────────────
+        // When the astrologer reconnects, their UI may still show 'sent' ticks
+        // for messages that were already delivered/read while they were offline.
+        // Re-emit MESSAGE_STATUS_UPDATE for every recent message that has a
+        // delivered or read status so their tick marks catch up immediately.
+        if (isAstrologer && this.io) {
+            try {
+                const recentMessages = await ChatMessage.find({
+                    sessionId: session.sessionId,
+                    senderType: 'astrologer',
+                    status: { $in: ['delivered', 'read'] },
+                    timestamp: { $gt: new Date(Date.now() - 60 * 60 * 1000) }, // last 1 hour
+                }).select('_id status').lean();
+
+                const astrologerRoom = `astrologer:${userId}`;
+                for (const msg of recentMessages) {
+                    this.io.to(astrologerRoom).emit('MESSAGE_STATUS_UPDATE', {
+                        sessionId: session.sessionId,
+                        messageId: msg._id.toString(),
+                        status: msg.status,
+                    });
+                }
+                if (recentMessages.length > 0) {
+                    console.log(`[ChatService] Re-synced ${recentMessages.length} message status(es) to reconnected astrologer ${userId}`);
+                }
+            } catch (statusSyncErr) {
+                console.error('[ChatService] Error re-syncing message statuses:', statusSyncErr);
+            }
         }
 
         // Update lastSeen to NOW after redelivery — this becomes the cutoff for the NEXT reconnect
