@@ -1,0 +1,437 @@
+import { Request, Response } from 'express';
+import mongoose from 'mongoose';
+import GiftItem from '../models/GiftItem';
+import GiftTransaction from '../models/GiftTransaction';
+import GiftSettings from '../models/GiftSettings';
+import User from '../models/User';
+import Astrologer from '../models/Astrologer';
+import Transaction from '../models/Transaction';
+import { AuthRequest } from '../middleware/auth';
+
+// Helper: get or create gift settings
+const getGiftSettings = async () => {
+    let settings = await GiftSettings.findOne();
+    if (!settings) {
+        settings = await GiftSettings.create({ commissionPercent: 20 });
+    }
+    return settings;
+};
+
+// ─────────────────────────────────────────────
+// PUBLIC / USER ENDPOINTS
+// ─────────────────────────────────────────────
+
+// GET /api/gifts/items  — all active gift items (public, no auth needed)
+export const getGiftItems = async (req: Request, res: Response) => {
+    try {
+        const items = await GiftItem.find({ isActive: true }).sort({ sortOrder: 1, amount: 1 });
+        const settings = await getGiftSettings();
+        res.json({ success: true, data: items, commissionPercent: settings.commissionPercent });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch gift items' });
+    }
+};
+
+// POST /api/gifts/send  — user sends a gift to astrologer
+export const sendGift = async (req: AuthRequest, res: Response) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const userId = req.userId!;
+        const { astrologerId, giftItemId, sessionId } = req.body;
+
+        if (!astrologerId || !giftItemId) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ success: false, message: 'astrologerId and giftItemId are required' });
+        }
+
+        // Validate gift item
+        const giftItem = await GiftItem.findById(giftItemId).session(session);
+        if (!giftItem || !giftItem.isActive) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'Gift item not found or inactive' });
+        }
+
+        // Validate astrologer
+        const astrologer = await Astrologer.findById(astrologerId).session(session);
+        if (!astrologer) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Validate user balance
+        const user = await User.findById(userId).session(session);
+        if (!user) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const giftAmount = giftItem.amount;
+        const totalBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
+
+        if (totalBalance < giftAmount) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                success: false,
+                message: 'Insufficient balance',
+                code: 'INSUFFICIENT_BALANCE',
+                required: giftAmount,
+                available: totalBalance,
+            });
+        }
+
+        // Deduct from user wallet (real balance first, then bonus)
+        let deductFromReal = 0;
+        let deductFromBonus = 0;
+        const realBalance = user.walletBalance || 0;
+        const bonusBalance = user.bonusBalance || 0;
+
+        if (realBalance >= giftAmount) {
+            deductFromReal = giftAmount;
+        } else {
+            deductFromReal = realBalance;
+            deductFromBonus = giftAmount - realBalance;
+        }
+
+        await User.findByIdAndUpdate(
+            userId,
+            {
+                $inc: {
+                    walletBalance: -deductFromReal,
+                    bonusBalance: -deductFromBonus,
+                }
+            },
+            { session }
+        );
+
+        // Calculate commission
+        const settings = await getGiftSettings();
+        const commissionPercent = settings.commissionPercent;
+        const commissionAmount = Math.round((giftAmount * commissionPercent) / 100);
+        const astrologerAmount = giftAmount - commissionAmount;
+
+        // Credit astrologer earnings
+        await Astrologer.findByIdAndUpdate(
+            astrologerId,
+            { $inc: { earnings: astrologerAmount } },
+            { session }
+        );
+
+        // Record gift transaction
+        const [giftTx] = await GiftTransaction.create([{
+            fromUser: userId,
+            toAstrologer: astrologerId,
+            giftItem: giftItemId,
+            giftName: giftItem.name,
+            giftEmoji: giftItem.emoji,
+            amount: giftAmount,
+            commissionPercent,
+            commissionAmount,
+            astrologerAmount,
+            sessionId: sessionId || undefined,
+        }], { session });
+
+        // Record in Transaction history for user expense history
+        await Transaction.create([{
+            fromUser: userId,
+            toAstrologer: astrologerId,
+            amount: giftAmount,
+            type: 'debit',
+            status: 'success',
+            description: `Gift sent: ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName}`,
+        }], { session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        // Return updated balance
+        const updatedUser = await User.findById(userId).select('walletBalance bonusBalance');
+
+        res.json({
+            success: true,
+            message: `${giftItem.emoji} ${giftItem.name} sent successfully!`,
+            data: {
+                giftTransaction: giftTx,
+                newWalletBalance: updatedUser?.walletBalance || 0,
+                newBonusBalance: updatedUser?.bonusBalance || 0,
+            }
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error('[Gift] sendGift error:', error);
+        res.status(500).json({ success: false, message: 'Failed to send gift' });
+    }
+};
+
+// GET /api/gifts/sent  — user's sent gift history
+export const getSentGifts = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.userId!;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+
+        const gifts = await GiftTransaction.find({ fromUser: userId })
+            .populate('toAstrologer', 'firstName lastName profilePhoto')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+        const total = await GiftTransaction.countDocuments({ fromUser: userId });
+
+        // Summary stats
+        const stats = await GiftTransaction.aggregate([
+            { $match: { fromUser: new mongoose.Types.ObjectId(userId) } },
+            {
+                $group: {
+                    _id: null,
+                    totalSpent: { $sum: '$amount' },
+                    totalGifts: { $sum: 1 },
+                }
+            }
+        ]);
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStats = await GiftTransaction.aggregate([
+            {
+                $match: {
+                    fromUser: new mongoose.Types.ObjectId(userId),
+                    createdAt: { $gte: todayStart }
+                }
+            },
+            { $group: { _id: null, todaySpent: { $sum: '$amount' }, todayCount: { $sum: 1 } } }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                gifts,
+                pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+                summary: {
+                    totalSpent: stats[0]?.totalSpent || 0,
+                    totalGifts: stats[0]?.totalGifts || 0,
+                    todaySpent: todayStats[0]?.todaySpent || 0,
+                    todayCount: todayStats[0]?.todayCount || 0,
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[Gift] getSentGifts error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch gift history' });
+    }
+};
+
+// ─────────────────────────────────────────────
+// ASTROLOGER PANEL ENDPOINTS
+// ─────────────────────────────────────────────
+
+// GET /api/gifts/received  — astrologer's received gift history
+export const getReceivedGifts = async (req: AuthRequest, res: Response) => {
+    try {
+        const astrologerId = req.userId!;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+
+        const gifts = await GiftTransaction.find({ toAstrologer: astrologerId })
+            .populate('fromUser', 'name mobile')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+        const total = await GiftTransaction.countDocuments({ toAstrologer: astrologerId });
+
+        // Summary
+        const stats = await GiftTransaction.aggregate([
+            { $match: { toAstrologer: new mongoose.Types.ObjectId(astrologerId) } },
+            {
+                $group: {
+                    _id: null,
+                    totalReceived: { $sum: '$amount' },
+                    totalEarned: { $sum: '$astrologerAmount' },
+                    totalGifts: { $sum: 1 },
+                }
+            }
+        ]);
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStats = await GiftTransaction.aggregate([
+            {
+                $match: {
+                    toAstrologer: new mongoose.Types.ObjectId(astrologerId),
+                    createdAt: { $gte: todayStart }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    todayReceived: { $sum: '$amount' },
+                    todayEarned: { $sum: '$astrologerAmount' },
+                    todayCount: { $sum: 1 },
+                }
+            }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                gifts,
+                pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+                summary: {
+                    totalReceived: stats[0]?.totalReceived || 0,
+                    totalEarned: stats[0]?.totalEarned || 0,
+                    totalGifts: stats[0]?.totalGifts || 0,
+                    todayReceived: todayStats[0]?.todayReceived || 0,
+                    todayEarned: todayStats[0]?.todayEarned || 0,
+                    todayCount: todayStats[0]?.todayCount || 0,
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[Gift] getReceivedGifts error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch received gifts' });
+    }
+};
+
+// ─────────────────────────────────────────────
+// ADMIN ENDPOINTS
+// ─────────────────────────────────────────────
+
+export const adminGetGiftItems = async (req: Request, res: Response) => {
+    try {
+        const items = await GiftItem.find().sort({ sortOrder: 1, amount: 1 });
+        const settings = await getGiftSettings();
+        res.json({ success: true, data: items, commissionPercent: settings.commissionPercent });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch gift items' });
+    }
+};
+
+export const adminCreateGiftItem = async (req: Request, res: Response) => {
+    try {
+        const { name, emoji, amount, isActive, sortOrder } = req.body;
+        if (!name || !amount) {
+            return res.status(400).json({ success: false, message: 'name and amount are required' });
+        }
+        const item = await GiftItem.create({ name, emoji: emoji || '🎁', amount, isActive: isActive !== false, sortOrder: sortOrder || 0 });
+        res.status(201).json({ success: true, data: item });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to create gift item' });
+    }
+};
+
+export const adminUpdateGiftItem = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const item = await GiftItem.findByIdAndUpdate(id, req.body, { new: true });
+        if (!item) return res.status(404).json({ success: false, message: 'Gift item not found' });
+        res.json({ success: true, data: item });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to update gift item' });
+    }
+};
+
+export const adminDeleteGiftItem = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        await GiftItem.findByIdAndDelete(id);
+        res.json({ success: true, message: 'Gift item deleted' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to delete gift item' });
+    }
+};
+
+export const adminGetGiftSettings = async (req: Request, res: Response) => {
+    try {
+        const settings = await getGiftSettings();
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch gift settings' });
+    }
+};
+
+export const adminUpdateGiftSettings = async (req: Request, res: Response) => {
+    try {
+        const { commissionPercent } = req.body;
+        if (commissionPercent === undefined || commissionPercent < 0 || commissionPercent > 100) {
+            return res.status(400).json({ success: false, message: 'commissionPercent must be 0–100' });
+        }
+        let settings = await GiftSettings.findOne();
+        if (!settings) {
+            settings = await GiftSettings.create({ commissionPercent });
+        } else {
+            settings.commissionPercent = commissionPercent;
+            await settings.save();
+        }
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to update gift settings' });
+    }
+};
+
+export const adminGetGiftTransactions = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 30;
+
+        const gifts = await GiftTransaction.find()
+            .populate('fromUser', 'name mobile')
+            .populate('toAstrologer', 'firstName lastName')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+        const total = await GiftTransaction.countDocuments();
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const statsAgg = await GiftTransaction.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalAmount: { $sum: '$amount' },
+                    totalCommission: { $sum: '$commissionAmount' },
+                    totalCount: { $sum: 1 },
+                }
+            }
+        ]);
+
+        const todayAgg = await GiftTransaction.aggregate([
+            { $match: { createdAt: { $gte: todayStart } } },
+            {
+                $group: {
+                    _id: null,
+                    todayAmount: { $sum: '$amount' },
+                    todayCommission: { $sum: '$commissionAmount' },
+                    todayCount: { $sum: 1 },
+                }
+            }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                gifts,
+                pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+                stats: {
+                    totalAmount: statsAgg[0]?.totalAmount || 0,
+                    totalCommission: statsAgg[0]?.totalCommission || 0,
+                    totalCount: statsAgg[0]?.totalCount || 0,
+                    todayAmount: todayAgg[0]?.todayAmount || 0,
+                    todayCommission: todayAgg[0]?.todayCommission || 0,
+                    todayCount: todayAgg[0]?.todayCount || 0,
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to fetch gift transactions' });
+    }
+};

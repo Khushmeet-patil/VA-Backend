@@ -34,6 +34,7 @@ import kundliRoutes from './routes/kundliRoutes';
 import panchangRoutes from './routes/panchangRoutes';
 import policyRoutes from './routes/policyRoutes';
 import systemRoutes from './routes/systemRoutes';
+import giftRoutes from './routes/giftRoutes';
 
 console.log('All modules loaded successfully');
 
@@ -126,6 +127,7 @@ app.use('/api/kundli', kundliRoutes);
 app.use('/api/panchang', panchangRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/policies', policyRoutes);
+app.use('/api/gifts', giftRoutes);
 
 // Root route
 app.get('/', (req, res) => {
