@@ -95,16 +95,15 @@ const scheduleAutoOnline = () => {
                             console.warn(`[Scheduler] >>> IO instance not available, cannot emit socket event!`);
                         }
 
-                        // Send notification to users when astrologer goes online
+                        // Send notification only to followers when astrologer goes online
                         if (shouldBeOnline) {
                             try {
                                 const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
                                 const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
-                                await notificationService.broadcast('users', {
+                                await notificationService.broadcastToFollowers(astro._id.toString(), {
                                     title: 'Astrologer Online!',
                                     body: `${firstName} ${lastName} is now available for consultation.`
                                 }, {
-                                    type: 'astrologer_online',
                                     astrologerId: astro._id.toString()
                                 });
                             } catch (notifyError) {

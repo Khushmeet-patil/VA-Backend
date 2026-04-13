@@ -4,6 +4,7 @@ import * as path from 'path';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Notification from '../models/Notification';
+import AstrologerFollower from '../models/AstrologerFollower';
 import availabilityService from './availabilityService';
 
 /**
@@ -831,6 +832,104 @@ class NotificationService {
             return { success: successCount, failure: failureCount };
         } catch (error) {
             console.error('[NotificationService] Broadcast error:', error);
+            return { success: 0, failure: 0 };
+        }
+    }
+
+    /**
+     * Send a notification only to users who follow a specific astrologer.
+     * Used for astrologer-online alerts so non-followers are not spammed.
+     */
+    async broadcastToFollowers(
+        astrologerId: string,
+        notification: { title: string; body: string },
+        data?: Record<string, string>
+    ): Promise<{ success: number; failure: number }> {
+        if (!this.initialized) {
+            console.warn('[NotificationService] Not initialized, cannot broadcastToFollowers');
+            return { success: 0, failure: 0 };
+        }
+
+        try {
+            // 1. Get follower userIds for this astrologer
+            const followers = await AstrologerFollower.find({ astrologerId }).select('userId').lean();
+            if (followers.length === 0) {
+                console.log(`[NotificationService] No followers found for astrologer ${astrologerId}`);
+                return { success: 0, failure: 0 };
+            }
+
+            const followerIds = followers.map(f => f.userId);
+
+            // 2. Fetch FCM tokens only for those users
+            const users = await User.find({
+                _id: { $in: followerIds },
+                fcmToken: { $exists: true, $ne: '' },
+                role: 'user'
+            }).select('fcmToken').lean();
+
+            const tokens = users.map((u: any) => u.fcmToken).filter((t: any) => !!t) as string[];
+
+            if (tokens.length === 0) {
+                console.log(`[NotificationService] No FCM tokens found for followers of astrologer ${astrologerId}`);
+                return { success: 0, failure: 0 };
+            }
+
+            const uniqueTokens = Array.from(new Set(tokens));
+            console.log(`[NotificationService] Broadcasting to ${uniqueTokens.length} follower devices for astrologer ${astrologerId}`);
+
+            // 3. Send in batches of 500 (FCM limit)
+            const batchSize = 500;
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (let i = 0; i < uniqueTokens.length; i += batchSize) {
+                const batch = uniqueTokens.slice(i, i + batchSize);
+                const message: admin.messaging.MulticastMessage = {
+                    tokens: batch,
+                    notification: {
+                        title: notification.title,
+                        body: notification.body,
+                    },
+                    data: {
+                        type: 'astrologer_online',
+                        ...(data || {})
+                    },
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            channelId: 'general',
+                            priority: 'high',
+                            defaultSound: true,
+                        },
+                    },
+                };
+
+                const response = await admin.messaging().sendEachForMulticast(message);
+                successCount += response.successCount;
+                failureCount += response.failureCount;
+
+                console.log(`[NotificationService] Follower batch ${Math.floor(i / batchSize) + 1}: ${response.successCount} success, ${response.failureCount} failure`);
+
+                // Cleanup dead tokens
+                const deadTokens = response.responses
+                    .map((resp, idx) => {
+                        if (!resp.success &&
+                            (resp.error?.code === 'messaging/registration-token-not-registered' ||
+                                resp.error?.code === 'messaging/invalid-registration-token')) {
+                            return batch[idx];
+                        }
+                        return null;
+                    })
+                    .filter((t): t is string => !!t);
+
+                if (deadTokens.length > 0) {
+                    await Promise.all(deadTokens.map(token => this.cleanupToken(token)));
+                }
+            }
+
+            return { success: successCount, failure: failureCount };
+        } catch (error) {
+            console.error('[NotificationService] broadcastToFollowers error:', error);
             return { success: 0, failure: 0 };
         }
     }

@@ -187,6 +187,8 @@ class ChatService {
                 ratePerMinute,
                 userMobile: user.mobile,
                 createdAt: session.createdAt.toISOString(),
+                isFreeTrialSession: session.isFreeTrialSession || false,
+                freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
             };
 
             // FCM wake-up (best-effort, works even if app is killed/background)
@@ -1864,6 +1866,8 @@ class ChatService {
                             intakeDetails: pendingSession.intakeDetails,
                             ratePerMinute: pendingSession.ratePerMinute,
                             createdAt: pendingSession.createdAt.toISOString(),
+                            isFreeTrialSession: pendingSession.isFreeTrialSession || false,
+                            freeTrialDurationSeconds: pendingSession.freeTrialDurationSeconds || 0,
                             isRedelivered: true,
                             remainingSeconds: Math.floor(remaining / 1000)
                         });
