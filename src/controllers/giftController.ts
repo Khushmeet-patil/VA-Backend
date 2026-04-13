@@ -34,80 +34,93 @@ export const getGiftItems = async (req: Request, res: Response) => {
 
 // POST /api/gifts/send  — user sends a gift to astrologer
 export const sendGift = async (req: AuthRequest, res: Response) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
     try {
         const userId = req.userId!;
         const { astrologerId, giftItemId, sessionId } = req.body;
 
         if (!astrologerId || !giftItemId) {
-            await session.abortTransaction();
-            session.endSession();
             return res.status(400).json({ success: false, message: 'astrologerId and giftItemId are required' });
         }
 
         // Validate gift item
-        const giftItem = await GiftItem.findById(giftItemId).session(session);
+        const giftItem = await GiftItem.findById(giftItemId);
         if (!giftItem || !giftItem.isActive) {
-            await session.abortTransaction();
-            session.endSession();
             return res.status(404).json({ success: false, message: 'Gift item not found or inactive' });
         }
 
         // Validate astrologer
-        const astrologer = await Astrologer.findById(astrologerId).session(session);
+        const astrologer = await Astrologer.findById(astrologerId);
         if (!astrologer) {
-            await session.abortTransaction();
-            session.endSession();
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        // Validate user balance
-        const user = await User.findById(userId).session(session);
-        if (!user) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
+        // Re-fetch user with fresh balance using findOneAndUpdate with optimistic check
+        // This prevents double-spend: only deduct if balance is sufficient
         const giftAmount = giftItem.amount;
-        const totalBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
 
-        if (totalBalance < giftAmount) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(400).json({
-                success: false,
-                message: 'Insufficient balance',
-                code: 'INSUFFICIENT_BALANCE',
-                required: giftAmount,
-                available: totalBalance,
-            });
-        }
+        // Deduct from real wallet first, then bonus — atomically via findOneAndUpdate with $inc
+        // First try to deduct purely from walletBalance
+        let updatedUser = await User.findOneAndUpdate(
+            { _id: userId, walletBalance: { $gte: giftAmount } },
+            { $inc: { walletBalance: -giftAmount } },
+            { new: true }
+        );
 
-        // Deduct from user wallet (real balance first, then bonus)
-        let deductFromReal = 0;
+        let deductFromReal = giftAmount;
         let deductFromBonus = 0;
-        const realBalance = user.walletBalance || 0;
-        const bonusBalance = user.bonusBalance || 0;
 
-        if (realBalance >= giftAmount) {
-            deductFromReal = giftAmount;
-        } else {
+        if (!updatedUser) {
+            // Not enough in walletBalance alone — check combined balance
+            const user = await User.findById(userId);
+            if (!user) {
+                return res.status(404).json({ success: false, message: 'User not found' });
+            }
+
+            const realBalance = user.walletBalance || 0;
+            const bonusBalance = user.bonusBalance || 0;
+            const totalBalance = realBalance + bonusBalance;
+
+            if (totalBalance < giftAmount) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Insufficient balance',
+                    code: 'INSUFFICIENT_BALANCE',
+                    required: giftAmount,
+                    available: totalBalance,
+                });
+            }
+
+            // Deduct real first, remainder from bonus
             deductFromReal = realBalance;
             deductFromBonus = giftAmount - realBalance;
-        }
 
-        await User.findByIdAndUpdate(
-            userId,
-            {
-                $inc: {
-                    walletBalance: -deductFromReal,
-                    bonusBalance: -deductFromBonus,
-                }
-            },
-            { session }
-        );
+            // Atomic deduct: set walletBalance to 0, deduct remainder from bonus
+            updatedUser = await User.findOneAndUpdate(
+                {
+                    _id: userId,
+                    walletBalance: { $gte: deductFromReal },
+                    bonusBalance: { $gte: deductFromBonus },
+                },
+                {
+                    $inc: {
+                        walletBalance: -deductFromReal,
+                        bonusBalance: -deductFromBonus,
+                    }
+                },
+                { new: true }
+            );
+
+            if (!updatedUser) {
+                // Race condition: balance changed between read and write
+                return res.status(400).json({
+                    success: false,
+                    message: 'Insufficient balance',
+                    code: 'INSUFFICIENT_BALANCE',
+                    required: giftAmount,
+                    available: totalBalance,
+                });
+            }
+        }
 
         // Calculate commission
         const settings = await getGiftSettings();
@@ -116,14 +129,10 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
         const astrologerAmount = giftAmount - commissionAmount;
 
         // Credit astrologer earnings
-        await Astrologer.findByIdAndUpdate(
-            astrologerId,
-            { $inc: { earnings: astrologerAmount } },
-            { session }
-        );
+        await Astrologer.findByIdAndUpdate(astrologerId, { $inc: { earnings: astrologerAmount } });
 
         // Record gift transaction
-        const [giftTx] = await GiftTransaction.create([{
+        const giftTx = await GiftTransaction.create({
             fromUser: userId,
             toAstrologer: astrologerId,
             giftItem: giftItemId,
@@ -134,37 +143,29 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
             commissionAmount,
             astrologerAmount,
             sessionId: sessionId || undefined,
-        }], { session });
+        });
 
         // Record in Transaction history for user expense history
-        await Transaction.create([{
+        await Transaction.create({
             fromUser: userId,
             toAstrologer: astrologerId,
             amount: giftAmount,
             type: 'debit',
             status: 'success',
             description: `Gift sent: ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName}`,
-        }], { session });
-
-        await session.commitTransaction();
-        session.endSession();
-
-        // Return updated balance
-        const updatedUser = await User.findById(userId).select('walletBalance bonusBalance');
+        });
 
         res.json({
             success: true,
             message: `${giftItem.emoji} ${giftItem.name} sent successfully!`,
             data: {
                 giftTransaction: giftTx,
-                newWalletBalance: updatedUser?.walletBalance || 0,
-                newBonusBalance: updatedUser?.bonusBalance || 0,
+                newWalletBalance: updatedUser.walletBalance || 0,
+                newBonusBalance: updatedUser.bonusBalance || 0,
             }
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
         console.error('[Gift] sendGift error:', error);
         res.status(500).json({ success: false, message: 'Failed to send gift' });
     }
