@@ -542,6 +542,10 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
+        // Per-socket in-flight guard: prevents duplicate accept_chat calls from the same socket
+        // before the first one completes (e.g. double-tap on Accept button).
+        const inFlightAccepts = new Set<string>();
+
         // Handle accept chat (for astrologers)
         socket.on('accept_chat', async (data: { sessionId: string }, callback?: (res: any) => void) => {
             try {
@@ -552,7 +556,21 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     return;
                 }
 
-                const session = await chatService.acceptChatRequest(data.sessionId);
+                // Deduplicate concurrent accepts for the same session from this socket
+                if (inFlightAccepts.has(data.sessionId)) {
+                    console.warn(`[Socket] Duplicate accept_chat ignored for session: ${data.sessionId}`);
+                    if (callback) callback({ success: false, message: 'Accept already in progress' });
+                    return;
+                }
+                inFlightAccepts.add(data.sessionId);
+
+                let session: any;
+                try {
+                    session = await chatService.acceptChatRequest(data.sessionId);
+                } finally {
+                    inFlightAccepts.delete(data.sessionId);
+                }
+
                 if (callback) callback({ success: true, session });
 
             } catch (error: any) {
