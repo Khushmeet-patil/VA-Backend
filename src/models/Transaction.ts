@@ -9,6 +9,7 @@ export interface ITransaction extends Document {
     type: 'credit' | 'debit';
     status: 'success' | 'failed' | 'pending';
     description: string;
+    paymentId?: string; // Razorpay payment ID — unique guard against double-credit
     createdAt: Date;
 }
 
@@ -20,7 +21,10 @@ const TransactionSchema: Schema = new Schema({
     totalPaid: { type: Number },
     type: { type: String, enum: ['credit', 'debit'], required: true },
     status: { type: String, enum: ['success', 'failed', 'pending'], default: 'pending' },
-    description: { type: String }
+    description: { type: String },
+    // Sparse unique index: only enforced when the field is present, so legacy
+    // transactions without a paymentId do not conflict with each other.
+    paymentId: { type: String, sparse: true, unique: true }
 }, { timestamps: true });
 
 export default mongoose.model<ITransaction>('Transaction', TransactionSchema);

@@ -66,6 +66,10 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions));
+// Webhook route needs the raw body for HMAC signature verification.
+// express.raw() must be registered BEFORE express.json() — once the stream
+// is consumed by one parser it cannot be re-read by another.
+app.use('/api/auth/razorpay-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static('uploads'));

@@ -703,7 +703,8 @@ const razorpay = new Razorpay({
 // 1. Create Order
 export const createOrder = async (req: Request, res: Response) => {
     try {
-        const { amount } = req.body; // Amount in INR 
+        const userId = (req as any).userId;
+        const { amount, baseAmount, bonusAmount } = req.body; // amount = totalAmount (incl. GST)
         // Note: Razorpay expects amount in PAISE (1 INR = 100 Paise)
 
         if (!amount || amount < 1) {
@@ -713,7 +714,14 @@ export const createOrder = async (req: Request, res: Response) => {
         const options = {
             amount: Math.round(amount * 100), // Convert to paise
             currency: 'INR',
-            receipt: `receipt_${Date.now()}`
+            receipt: `receipt_${Date.now()}`,
+            // Store wallet credit amounts in notes so the webhook can recover
+            // even if the app never calls verify-payment (network drop, crash, etc.)
+            notes: {
+                userId: userId ? userId.toString() : '',
+                baseAmount: String(baseAmount ?? amount),
+                bonusAmount: String(bonusAmount ?? 0),
+            }
         };
 
         const order = await razorpay.orders.create(options);
@@ -756,50 +764,131 @@ export const verifyPayment = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Invalid payment signature' });
         }
 
-        // 2. Payment Verified - Perform Atomic Update
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
-        // Check if this payment ID was already processed (Idempotency)
-        const existingTxn = await Transaction.findOne({ description: { $regex: razorpay_payment_id } });
-        if (existingTxn) {
-            return res.status(200).json({ success: true, message: 'Payment already processed', walletBalance: user.walletBalance });
-        }
-
-        const previousBalance = user.walletBalance || 0;
-        const previousBonus = user.bonusBalance || 0;
-
-        user.walletBalance = previousBalance + Number(amount);
-        user.bonusBalance = previousBonus + (Number(bonusAmount) || 0);
-        await user.save();
-
-        // 3. Log Transaction with GST details
+        // 2. Payment Verified — create Transaction first using paymentId as atomic idempotency guard.
+        // The unique sparse index on paymentId means a duplicate will throw error code 11000
+        // instead of silently crediting the wallet twice.
         const gstRate = await getSettingValue('gstRate', 18);
         const gstAmountValue = (Number(amount) * gstRate) / 100;
         const totalPaidValue = Number(amount) + gstAmountValue;
 
-        await Transaction.create({
-            fromUser: userId,
-            amount: Number(amount),
-            gstAmount: gstAmountValue,
-            totalPaid: totalPaidValue,
-            type: 'credit',
-            status: 'success',
-            description: `Wallet Recharge: ₹${Number(amount).toFixed(2)} + ${gstRate}% GST (Total: ₹${totalPaidValue.toFixed(2)}) (Txn: ${razorpay_payment_id})`
-        });
+        try {
+            await Transaction.create({
+                paymentId: razorpay_payment_id,
+                fromUser: userId,
+                amount: Number(amount),
+                gstAmount: gstAmountValue,
+                totalPaid: totalPaidValue,
+                type: 'credit',
+                status: 'success',
+                description: `Wallet Recharge: ₹${Number(amount).toFixed(2)} + ${gstRate}% GST (Total: ₹${totalPaidValue.toFixed(2)}) (Txn: ${razorpay_payment_id})`
+            });
+        } catch (err: any) {
+            if (err.code === 11000) {
+                // Already processed — return current balance without double-crediting
+                const existing = await User.findById(userId).select('walletBalance bonusBalance');
+                return res.status(200).json({ success: true, message: 'Payment already processed', walletBalance: existing?.walletBalance ?? 0 });
+            }
+            throw err;
+        }
+
+        // 3. Transaction recorded — now update wallet atomically
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $inc: { walletBalance: Number(amount), bonusBalance: Number(bonusAmount) || 0 } },
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
 
         res.json({
             success: true,
             message: 'Payment verified & Wallet updated',
-            walletBalance: user.walletBalance,
-            bonusBalance: user.bonusBalance
+            walletBalance: updatedUser.walletBalance,
+            bonusBalance: updatedUser.bonusBalance
         });
 
     } catch (error: any) {
         console.error('[Auth] Verify Payment Error:', error);
         res.status(500).json({ success: false, message: 'Payment verification failed', error: error.message });
+    }
+};
+
+// 3. Razorpay Webhook — fallback for when the app never calls verify-payment
+// (network drop / crash between Razorpay completing and the app sending the request).
+// Razorpay calls this endpoint directly; no user auth token is present.
+// Raw body parsing (express.raw) must be applied to this route BEFORE express.json().
+export const razorpayWebhook = async (req: Request, res: Response) => {
+    try {
+        const signature = req.headers['x-razorpay-signature'] as string;
+        if (!signature) {
+            return res.status(400).json({ error: 'Missing signature' });
+        }
+
+        // Verify Razorpay webhook signature (uses WEBHOOK_SECRET, not key_secret)
+        const rawBody: Buffer = req.body;
+        const expectedSig = crypto
+            .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || '')
+            .update(rawBody)
+            .digest('hex');
+
+        if (expectedSig !== signature) {
+            console.warn('[Webhook] Invalid Razorpay signature');
+            return res.status(400).json({ error: 'Invalid signature' });
+        }
+
+        const event = JSON.parse(rawBody.toString());
+        console.log('[Webhook] Razorpay event received:', event.event);
+
+        // Only handle payment captured — the money has actually landed
+        if (event.event === 'payment.captured') {
+            const payment = event.payload?.payment?.entity;
+            if (!payment) return res.status(200).json({ received: true });
+
+            const paymentId: string = payment.id;
+            const notes = payment.notes || {};
+            const userId: string = notes.userId;
+            const baseAmount = Number(notes.baseAmount);
+            const bonusAmount = Number(notes.bonusAmount) || 0;
+
+            if (!userId || !baseAmount || baseAmount <= 0) {
+                console.warn('[Webhook] Missing notes on payment:', paymentId);
+                return res.status(200).json({ received: true });
+            }
+
+            // Use the same paymentId unique guard — if verify-payment already ran,
+            // the insert will throw 11000 and we just ack without double-crediting.
+            try {
+                await Transaction.create({
+                    paymentId,
+                    fromUser: userId,
+                    amount: baseAmount,
+                    type: 'credit',
+                    status: 'success',
+                    description: `Wallet Recharge via Webhook: ₹${baseAmount.toFixed(2)} (Txn: ${paymentId})`
+                });
+
+                await User.findByIdAndUpdate(userId, {
+                    $inc: { walletBalance: baseAmount, bonusBalance: bonusAmount }
+                });
+
+                console.log(`[Webhook] Wallet credited ₹${baseAmount} for user ${userId} (${paymentId})`);
+            } catch (err: any) {
+                if (err.code === 11000) {
+                    console.log(`[Webhook] Payment ${paymentId} already processed by verify-payment — skipping`);
+                } else {
+                    throw err;
+                }
+            }
+        }
+
+        res.status(200).json({ received: true });
+
+    } catch (error: any) {
+        console.error('[Webhook] Error processing Razorpay webhook:', error);
+        // Still return 200 — returning 4xx/5xx causes Razorpay to retry endlessly
+        res.status(200).json({ received: true });
     }
 };
 

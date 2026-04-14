@@ -1,7 +1,6 @@
 
 import express from 'express';
-import { checkUser, sendOtp, verifyOtp, facebookLogin, updateProfile, getWalletBalance, getWalletTransactions, registerFcmToken, processRecharge, createOrder, verifyPayment, adminLogin, logoutUser, deleteUser } from '../controllers/authController';
-import notificationService from '../services/notificationService';
+import { checkUser, sendOtp, verifyOtp, facebookLogin, updateProfile, getWalletBalance, getWalletTransactions, registerFcmToken, processRecharge, createOrder, verifyPayment, razorpayWebhook, adminLogin, logoutUser, deleteUser } from '../controllers/authController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
 const router = express.Router();
@@ -21,5 +20,7 @@ router.post('/fcm-token', authMiddleware, registerFcmToken);
 router.post('/recharge', authMiddleware, adminMiddleware, processRecharge); // Restricted to Admin
 router.post('/create-order', authMiddleware, createOrder);
 router.post('/verify-payment', authMiddleware, verifyPayment);
+// No auth middleware — Razorpay calls this directly. Raw body is parsed in index.ts.
+router.post('/razorpay-webhook', razorpayWebhook);
 
 export default router;

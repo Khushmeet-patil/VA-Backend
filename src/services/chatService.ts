@@ -34,8 +34,9 @@ class ChatService {
     private readonly BILLING_INTERVAL_MS = 60000;
 
     // Request timeout — must exceed ping detection window (pingInterval 10s + pingTimeout 20s = 30s).
-    // 30s gives enough time for socket reconnect + FCM wake-up before marking as missed.
-    private readonly REQUEST_TIMEOUT_MS = 30000;
+    // 35s gives 5s of buffer after the client-side 30s countdown expires, preventing a race
+    // where a last-second tap fails because the server timeout fired first.
+    private readonly REQUEST_TIMEOUT_MS = 35000;
 
     // Map of request timeout timers: sessionId -> NodeJS.Timeout
     private requestTimeouts: Map<string, NodeJS.Timeout> = new Map();
