@@ -154,7 +154,15 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
         if (userId) {
             const user = await User.findById(userId);
             if (user && !user.hasUsedFreeTrial) {
-                isFreeChatUser = true;
+                // Only apply free chat filtering when the global limit toggle is ON
+                const SystemSetting = mongoose.model('SystemSetting');
+                const limitEnabledSetting = await SystemSetting.findOne({ key: 'isFreeChatLimitEnabled' });
+                const isLimitEnabled = limitEnabledSetting
+                    ? (limitEnabledSetting.value === true || limitEnabledSetting.value === 'true')
+                    : false;
+                if (isLimitEnabled) {
+                    isFreeChatUser = true;
+                }
             }
         }
 

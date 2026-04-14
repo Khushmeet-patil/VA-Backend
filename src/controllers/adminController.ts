@@ -2337,6 +2337,28 @@ export const approveReview = async (req: Request, res: Response) => {
             await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
         }
 
+        // Auto-follow: user who gave the rating should follow the astrologer
+        if (review.userId && review.astrologerId) {
+            try {
+                const existingFollow = await AstrologerFollower.findOne({
+                    userId: review.userId,
+                    astrologerId: review.astrologerId
+                });
+                if (!existingFollow) {
+                    await new AstrologerFollower({
+                        userId: review.userId,
+                        astrologerId: review.astrologerId
+                    }).save();
+                    await Astrologer.updateOne({ _id: review.astrologerId }, { $inc: { followersCount: 1 } });
+                    console.log(`[approveReview] Auto-followed user ${review.userId} to astrologer ${review.astrologerId}`);
+                }
+            } catch (followErr: any) {
+                if (followErr.code !== 11000) {
+                    console.error('[approveReview] Error creating auto-follow:', followErr);
+                }
+            }
+        }
+
         res.status(200).json({ success: true, message: 'Review approved and rating updated', data: review });
     } catch (error: any) {
         console.error('approveReview error:', error);

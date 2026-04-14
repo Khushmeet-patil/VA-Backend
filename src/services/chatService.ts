@@ -137,6 +137,25 @@ class ChatService {
         const isEligibleForFreeTrial = !user.hasUsedFreeTrial &&
                                       (user.walletBalance < minRealBalanceRequired);
 
+        // If user is eligible for free trial, enforce per-astrologer daily free chat limit
+        // (only when the global isFreeChatLimitEnabled setting is ON)
+        if (isEligibleForFreeTrial) {
+            const systemSettingModel = mongoose.model('SystemSetting');
+            const limitEnabledSetting = await systemSettingModel.findOne({ key: 'isFreeChatLimitEnabled' });
+            const isLimitEnabled = limitEnabledSetting ? (limitEnabledSetting.value === true || limitEnabledSetting.value === 'true') : false;
+
+            if (isLimitEnabled) {
+                if (!astrologer.isFreeChatAvailable) {
+                    throw new Error('FREE_CHAT_UNAVAILABLE: This astrologer does not offer free chat sessions');
+                }
+                const dailyLimit = astrologer.freeChatLimit || 0;
+                const usedToday = astrologer.freeChatsToday || 0;
+                if (dailyLimit > 0 && usedToday >= dailyLimit) {
+                    throw new Error('FREE_CHAT_LIMIT_REACHED: This astrologer has reached their daily free chat limit');
+                }
+            }
+        }
+
         // Check if user has enough REAL balance for at least 5 mins (skip for free trial users)
         if (!isEligibleForFreeTrial && user.walletBalance < minRealBalanceRequired) {
             throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes of chat.`);
