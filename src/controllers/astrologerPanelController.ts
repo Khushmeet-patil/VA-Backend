@@ -486,7 +486,11 @@ export const getStats = async (req: Request, res: Response) => {
             data: {
                 totalChats: stats.totalChats || 0,
                 lifetimeEarnings: stats.lifetimeEarnings || 0,
-                withdrawableBalance: astrologer.earnings || 0,
+                withdrawableBalance: (astrologer.earnings || 0) + (astrologer.giftEarnings || 0),
+                earningsBreakdown: {
+                    chatEarnings: astrologer.earnings || 0,
+                    giftEarnings: astrologer.giftEarnings || 0
+                },
                 pendingAmount: astrologer.pendingWithdrawal || 0,
                 todayChats: todayData.todayChats,
                 todayEarnings: todayData.todayEarnings,
@@ -495,10 +499,16 @@ export const getStats = async (req: Request, res: Response) => {
                 rating: astrologer.rating || 0,
                 reviewsCount: astrologer.reviewsCount || 0,
                 ratingDistribution: ratingCounts,
-                // TDS Information
+                // TDS Information (applied only to chat earnings, not gift earnings)
                 yearlyGrossEarnings: astrologer.yearlyGrossEarnings || 0,
+                yearlyGiftEarnings: astrologer.yearlyGiftEarnings || 0,
                 yearlyTdsDeducted: astrologer.yearlyTdsDeducted || 0,
-                tdsApplicable: (astrologer.yearlyGrossEarnings || 0) > 50000
+                tdsApplicable: (astrologer.yearlyGrossEarnings || 0) > 50000,
+                yearlyEarningsBreakdown: {
+                    chatEarnings: astrologer.yearlyGrossEarnings || 0,
+                    giftEarnings: astrologer.yearlyGiftEarnings || 0,
+                    totalBeforeTDS: (astrologer.yearlyGrossEarnings || 0) + (astrologer.yearlyGiftEarnings || 0)
+                }
             }
         });
 
@@ -698,7 +708,10 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        const withdrawableAmount = astrologer.earnings || 0;
+        // Calculate total withdrawable amount from both chat earnings and gift earnings
+        const chatEarnings = astrologer.earnings || 0;
+        const giftEarnings = astrologer.giftEarnings || 0;
+        const withdrawableAmount = chatEarnings + giftEarnings;
 
         // Get minimum balance to maintain from settings
         const minBalance = await getSettingValue('minWithdrawalBalance', 200);
@@ -706,7 +719,12 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
         if (withdrawableAmount <= minBalance) {
             return res.status(400).json({
                 success: false,
-                message: `Minimum balance of ₹${minBalance} must be maintained in your wallet. Your current balance is ₹${withdrawableAmount}.`
+                message: `Minimum balance of ₹${minBalance} must be maintained in your wallet. Your current balance is ₹${withdrawableAmount}.`,
+                details: {
+                    chatEarnings,
+                    giftEarnings,
+                    total: withdrawableAmount
+                }
             });
         }
 
@@ -724,7 +742,12 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
         if (actualWithdrawAmount < 1000) {
             return res.status(400).json({
                 success: false,
-                message: `Minimum withdrawal amount is ₹1000. Your withdrawable amount is only ₹${actualWithdrawAmount}.`
+                message: `Minimum withdrawal amount is ₹1000. Your withdrawable amount is only ₹${actualWithdrawAmount}.`,
+                details: {
+                    chatEarnings,
+                    giftEarnings,
+                    total: withdrawableAmount
+                }
             });
         }
 
@@ -737,16 +760,21 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
         });
         await withdrawal.save();
 
-        // Update astrologer balances using findOneAndUpdate to avoid full-doc validation
-        // on legacy records that may have empty required fields.
+        // Calculate proportional deduction from chat earnings and gift earnings
+        // Deduct from chat earnings first, then from gift earnings
+        let chatDeduction = Math.min(chatEarnings, actualWithdrawAmount);
+        let giftDeduction = actualWithdrawAmount - chatDeduction;
+
+        // Update astrologer balances
         await Astrologer.findByIdAndUpdate(astrologer._id, {
             $set: {
-                pendingWithdrawal: (astrologer.pendingWithdrawal || 0) + actualWithdrawAmount,
-                earnings: minBalance
+                earnings: chatEarnings - chatDeduction >= 0 ? chatEarnings - chatDeduction : 0,
+                giftEarnings: giftEarnings - giftDeduction >= 0 ? giftEarnings - giftDeduction : 0,
+                pendingWithdrawal: (astrologer.pendingWithdrawal || 0) + actualWithdrawAmount
             }
         });
 
-        console.log(`[Withdrawal] Request created: ${withdrawal._id}, amount: ${actualWithdrawAmount}, maintained: ${minBalance}`);
+        console.log(`[Withdrawal] Request created: ${withdrawal._id}, amount: ${actualWithdrawAmount}, chat-deduction: ${chatDeduction}, gift-deduction: ${giftDeduction}, maintained: ${minBalance}`);
 
         res.json({
             success: true,
@@ -755,9 +783,17 @@ export const requestWithdrawal = async (req: Request, res: Response) => {
                 withdrawalId: withdrawal._id,
                 amount: actualWithdrawAmount,
                 status: 'PENDING',
-                newWithdrawableBalance: minBalance,
-                newPendingAmount: astrologer.pendingWithdrawal,
-                maintainedBalance: minBalance
+                breakdown: {
+                    chatEarningsDeducted: chatDeduction,
+                    giftEarningsDeducted: giftDeduction
+                },
+                newBalance: {
+                    chatEarnings: chatEarnings - chatDeduction,
+                    giftEarnings: giftEarnings - giftDeduction,
+                    total: (chatEarnings - chatDeduction) + (giftEarnings - giftDeduction)
+                },
+                maintainedBalance: minBalance,
+                newPendingAmount: (astrologer.pendingWithdrawal || 0) + actualWithdrawAmount
             }
         });
     } catch (error: any) {

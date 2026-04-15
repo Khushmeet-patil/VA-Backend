@@ -29,9 +29,11 @@ export interface IAstrologer extends Document {
     priceRangeMin: number;
     priceRangeMax: number;
     totalChats: number;
-    earnings: number;
+    earnings: number;                 // Earnings from chat/sessions (subject to TDS)
+    giftEarnings: number;             // Earnings from gifts (NOT subject to TDS)
     yearlyEarningsStartDate: Date;    // Start of current financial year tracking (April 1)
-    yearlyGrossEarnings: number;      // Total earnings this financial year (before TDS)
+    yearlyGrossEarnings: number;      // Total earnings this financial year (before TDS) - from chat/sessions only
+    yearlyGiftEarnings: number;       // Total gift earnings this financial year (not subject to TDS)
     yearlyTdsDeducted: number;        // Total TDS deducted this financial year
     pendingWithdrawal: number;  // Amount pending payout
     missedChats: number;        // Count of missed/timed-out chat requests
@@ -100,9 +102,11 @@ const AstrologerSchema: Schema = new Schema({
     priceRangeMin: { type: Number, default: 10 },
     priceRangeMax: { type: Number, default: 100 },
     totalChats: { type: Number, default: 0 },
-    earnings: { type: Number, default: 0 },
+    earnings: { type: Number, default: 0 },                // Earnings from chat/sessions (subject to TDS)
+    giftEarnings: { type: Number, default: 0 },            // Earnings from gifts (NOT subject to TDS)
     yearlyEarningsStartDate: { type: Date, default: null },  // Start of current financial year tracking
-    yearlyGrossEarnings: { type: Number, default: 0 },       // Total earnings this financial year
+    yearlyGrossEarnings: { type: Number, default: 0 },       // Total earnings this financial year from chat/sessions
+    yearlyGiftEarnings: { type: Number, default: 0 },        // Total gift earnings this financial year
     yearlyTdsDeducted: { type: Number, default: 0 },         // Total TDS deducted this financial year
     pendingWithdrawal: { type: Number, default: 0 },
     missedChats: { type: Number, default: 0 },

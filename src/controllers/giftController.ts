@@ -128,8 +128,36 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
         const commissionAmount = Math.round((giftAmount * commissionPercent) / 100);
         const astrologerAmount = giftAmount - commissionAmount;
 
-        // Credit astrologer earnings
-        await Astrologer.findByIdAndUpdate(astrologerId, { $inc: { earnings: astrologerAmount } });
+        // Get current financial year start date for yearly gift earnings tracking
+        const now = new Date();
+        const currentFYStart = new Date(now.getFullYear(), 3, 1);
+        if (now.getMonth() < 3) currentFYStart.setFullYear(now.getFullYear() - 1);
+
+        // Fetch fresh astrologer data for yearly tracking
+        const freshAstrologer = await Astrologer.findById(astrologerId);
+        if (!freshAstrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Check if we need to reset yearly gift earnings (new financial year)
+        let fyResetUpdate: any = {};
+        if (!freshAstrologer.yearlyEarningsStartDate || new Date(freshAstrologer.yearlyEarningsStartDate) < currentFYStart) {
+            fyResetUpdate = {
+                yearlyEarningsStartDate: currentFYStart,
+                yearlyGiftEarnings: 0
+            };
+        }
+
+        // Credit astrologer gift earnings (NOT included in TDS calculation)
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            $inc: {
+                giftEarnings: astrologerAmount,
+                yearlyGiftEarnings: astrologerAmount
+            },
+            $set: {
+                yearlyEarningsStartDate: fyResetUpdate.yearlyEarningsStartDate || freshAstrologer.yearlyEarningsStartDate
+            }
+        });
 
         // Record gift transaction
         const giftTx = await GiftTransaction.create({
