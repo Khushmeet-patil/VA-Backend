@@ -890,7 +890,7 @@ class ChatService {
                     );
 
                     if (!paymentResult.success) {
-                        console.warn(`[ChatService] Failed to capture final partial amount ${remainingToCharge} from user ${user._id}`);
+                        console.warn(`[ChatService] Failed to capture final partial amount ${remainingToCharge} from user ${user._id}. Session will show what was successfully deducted.`);
                     }
                 }
             }
@@ -899,7 +899,7 @@ class ChatService {
             const finalTotalMinutes = parseFloat(durationMinutes.toFixed(2));
 
             // Atomic update for Session to mark as ENDED and save final duration
-            await ChatSession.findOneAndUpdate(
+            const updatedSessionDoc = await ChatSession.findOneAndUpdate(
                 { sessionId: session.sessionId },
                 {
                     $set: {
@@ -908,7 +908,8 @@ class ChatService {
                         endReason: endReason,
                         totalMinutes: finalTotalMinutes
                     }
-                }
+                },
+                { new: true }
             );
 
             // Update local object so the emitted CHAT_ENDED event contains accurate data
@@ -916,6 +917,14 @@ class ChatService {
             session.endTime = new Date();
             session.endReason = endReason;
             session.totalMinutes = finalTotalMinutes;
+            
+            // CRITICAL FIX: Sync session.totalAmount with DB to ensure it reflects actual deducted amount
+            if (updatedSessionDoc) {
+                session.totalAmount = updatedSessionDoc.totalAmount;
+                session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
+                (session as any).astrologerNetEarnings = (updatedSessionDoc as any).astrologerNetEarnings;
+                console.log(`[ChatService] Final session amounts synced: TotalAmount=₹${session.totalAmount}, AstrologerEarnings=₹${session.astrologerEarnings}`);
+            }
         } else {
             let finalDuration = 0;
             if (session.startTime) {

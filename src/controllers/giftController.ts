@@ -173,7 +173,7 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
             sessionId: sessionId || undefined,
         });
 
-        // Record in Transaction history for user expense history
+        // Record in Transaction history for user expense history (DEBIT)
         await Transaction.create({
             fromUser: userId,
             toAstrologer: astrologerId,
@@ -182,6 +182,25 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
             status: 'success',
             description: `Gift sent: ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName}`,
         });
+
+        // Record in Transaction history for astrologer earning (CREDIT)
+        // This creates an explicit audit trail for the astrologer's income
+        await Transaction.create({
+            fromUser: userId,
+            toAstrologer: astrologerId,
+            amount: astrologerAmount,
+            type: 'credit',
+            status: 'success',
+            description: `Gift earned: ${giftItem.emoji} ${giftItem.name} from ${updatedUser.name || 'User'} (Commission: ₹${commissionAmount})`,
+        });
+
+        // Verify the update actually happened
+        const verifyAstrologer = await Astrologer.findById(astrologerId);
+        if (!verifyAstrologer || verifyAstrologer.giftEarnings < astrologerAmount) {
+            console.error(`[Gift] VERIFICATION FAILED: Gift earnings not properly credited for astrologer ${astrologerId}`);
+        } else {
+            console.log(`[Gift] VERIFIED: Astrologer ${astrologerId} now has giftEarnings: ₹${verifyAstrologer.giftEarnings}`);
+        }
 
         res.json({
             success: true,
