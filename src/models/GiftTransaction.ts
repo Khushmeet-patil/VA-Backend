@@ -10,7 +10,7 @@ export interface IGiftTransaction extends Document {
     commissionPercent: number;
     commissionAmount: number; // Platform cut
     astrologerAmount: number; // Net amount for astrologer
-    sessionId?: mongoose.Types.ObjectId;
+    sessionId?: string;       // UUID string from ChatSession.sessionId (not a MongoDB ObjectId)
     createdAt: Date;
 }
 
@@ -24,7 +24,7 @@ const GiftTransactionSchema: Schema = new Schema({
     commissionPercent: { type: Number, required: true, default: 20 },
     commissionAmount: { type: Number, required: true },
     astrologerAmount: { type: Number, required: true },
-    sessionId: { type: Schema.Types.ObjectId, ref: 'ChatSession' },
+    sessionId: { type: String },  // UUID string from ChatSession.sessionId
 }, { timestamps: true });
 
 export default mongoose.model<IGiftTransaction>('GiftTransaction', GiftTransactionSchema);

@@ -866,8 +866,12 @@ class ChatService {
             // Calculate total expected cost based on exact duration.
             totalExpectedCost = durationMinutes * session.ratePerMinute;
 
-            // Calculate what has NOT yet been billed
-            const alreadyCharged = session.totalAmount;
+            // Re-read session from DB to get the latest totalAmount.
+            // A billing cycle may have been in-flight when endChat was called — it would have
+            // deducted from the user's wallet but not yet updated session.totalAmount in the DB.
+            // This fresh read ensures we don't double-charge for that concurrent cycle.
+            const freshSession = await ChatSession.findOne({ sessionId });
+            const alreadyCharged = freshSession?.totalAmount ?? session.totalAmount;
             let remainingToCharge = totalExpectedCost - alreadyCharged;
 
             // Round to 2 decimals
