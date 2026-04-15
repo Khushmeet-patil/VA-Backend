@@ -36,6 +36,12 @@ import policyRoutes from './routes/policyRoutes';
 import systemRoutes from './routes/systemRoutes';
 import giftRoutes from './routes/giftRoutes';
 
+// Store module (CommonJS – required with require() since it uses JS, not TS)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const storeApp = require('./store/app');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { connectStoreDB } = require('./store/config/db');
+
 console.log('All modules loaded successfully');
 
 // Check R2 Configuration
@@ -133,6 +139,9 @@ app.use('/api/system', systemRoutes);
 app.use('/api/policies', policyRoutes);
 app.use('/api/gifts', giftRoutes);
 
+// Store module — mounted at /store (all store APIs become /store/api/...)
+app.use('/store', storeApp);
+
 // Root route
 app.get('/', (req, res) => {
     res.json({
@@ -161,6 +170,12 @@ httpServer.listen(Number(port), '0.0.0.0', () => {
             console.log('Database connected successfully');
             // Initialize scheduled notifications after DB is connected
             scheduledNotificationService.initialize();
+            // Connect Store DB (separate Atlas cluster)
+            connectStoreDB().then(() => {
+                console.log('[Store] DB ready');
+            }).catch((err: any) => {
+                console.error('[Store] DB connection failed:', err?.message);
+            });
         })
         .catch((error) => {
             console.error('Database connection failed:', error.message);

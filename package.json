@@ -30,11 +30,17 @@
         "firebase-admin": "^13.6.0",
         "ioredis": "^5.10.1",
         "jsonwebtoken": "^9.0.3",
+        "form-data": "^4.0.5",
         "mongoose": "^8.21.0",
         "multer": "^2.0.2",
         "node-cron": "^4.2.1",
+        "nodemailer": "^7.0.11",
+        "puppeteer": "^24.34.0",
         "razorpay": "^2.9.6",
-        "socket.io": "^4.8.3"
+        "socket.io": "^4.8.3",
+        "swagger-jsdoc": "^6.2.8",
+        "swagger-ui-express": "^5.0.1",
+        "winston": "^3.19.0"
     },
     "devDependencies": {
         "@types/cors": "^2.8.17",
