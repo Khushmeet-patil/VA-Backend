@@ -174,6 +174,7 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
         });
 
         // Record in Transaction history for user expense history (DEBIT)
+        // Record debit in user's transaction history
         await Transaction.create({
             fromUser: userId,
             toAstrologer: astrologerId,
@@ -182,17 +183,9 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
             status: 'success',
             description: `Gift sent: ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName}`,
         });
-
-        // Record in Transaction history for astrologer earning (CREDIT)
-        // This creates an explicit audit trail for the astrologer's income
-        await Transaction.create({
-            fromUser: userId,
-            toAstrologer: astrologerId,
-            amount: astrologerAmount,
-            type: 'credit',
-            status: 'success',
-            description: `Gift earned: ${giftItem.emoji} ${giftItem.name} from ${updatedUser.name || 'User'} (Commission: ₹${commissionAmount})`,
-        });
+        // Note: No separate credit Transaction for the astrologer — GiftTransaction already
+        // records the full breakdown (astrologerAmount, commissionAmount). Creating a credit
+        // Transaction with fromUser = userId would pollute the user's wallet history.
 
         // Verify the update actually happened
         const verifyAstrologer = await Astrologer.findById(astrologerId);
