@@ -2278,7 +2278,6 @@ export const getGstStats = async (req: Request, res: Response) => {
         const filter = {
             status: 'success',
             type: 'credit',
-            gstAmount: { $gt: 0 },
             createdAt: { $gte: startDate, $lte: endDate }
         };
 
