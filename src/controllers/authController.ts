@@ -860,13 +860,19 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             // Use the same paymentId unique guard — if verify-payment already ran,
             // the insert will throw 11000 and we just ack without double-crediting.
             try {
+                const gstRate = await getSettingValue('gstRate', 18);
+                const gstAmountValue = (baseAmount * gstRate) / 100;
+                const totalPaidValue = baseAmount + gstAmountValue;
+
                 await Transaction.create({
                     paymentId,
                     fromUser: userId,
                     amount: baseAmount,
+                    gstAmount: gstAmountValue,
+                    totalPaid: totalPaidValue,
                     type: 'credit',
                     status: 'success',
-                    description: `Wallet Recharge via Webhook: ₹${baseAmount.toFixed(2)} (Txn: ${paymentId})`
+                    description: `Wallet Recharge via Webhook: ₹${baseAmount.toFixed(2)} + ${gstRate}% GST (Total: ₹${totalPaidValue.toFixed(2)}) (Txn: ${paymentId})`
                 });
 
                 await User.findByIdAndUpdate(userId, {

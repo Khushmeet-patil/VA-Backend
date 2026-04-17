@@ -2301,6 +2301,81 @@ export const getGstStats = async (req: Request, res: Response) => {
     }
 };
 
+// Get Earnings Stats for Admin Dashboard
+export const getEarningsStats = async (req: Request, res: Response) => {
+    try {
+        const { timeframe, month, year, startDate: qStartDate } = req.query;
+        const now = new Date();
+        let startDate = new Date();
+        let endDate = new Date();
+
+        if (timeframe === 'custom' && qStartDate) {
+            startDate = new Date(qStartDate as string);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(qStartDate as string);
+            endDate.setHours(23, 59, 59, 999);
+        } else {
+            switch (timeframe) {
+                case 'today':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(now.getDate() - 1);
+                    startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+                    endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+                    break;
+                case 'monthly':
+                    startDate = new Date(Number(year), Number(month), 1);
+                    endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
+                    break;
+                case 'yearly':
+                    startDate = new Date(Number(year), 0, 1);
+                    endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+                    break;
+                default:
+                    startDate = new Date(2000, 0, 1);
+                    endDate = new Date(2100, 0, 1);
+            }
+        }
+
+        const result = await Transaction.aggregate([
+            {
+                $match: {
+                    status: 'success',
+                    type: 'credit',
+                    createdAt: { $gte: startDate, $lte: endDate }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalEarnings: { $sum: '$amount' },
+                    totalGst: { $sum: '$gstAmount' },
+                    totalPaid: { $sum: '$totalPaid' },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const data = result[0] || { totalEarnings: 0, totalGst: 0, totalPaid: 0, count: 0 };
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                totalEarnings: data.totalEarnings,
+                totalGst: data.totalGst,
+                totalPaid: data.totalPaid,
+                count: data.count
+            }
+        });
+    } catch (error: any) {
+        console.error('getEarningsStats error:', error);
+        return res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
 // --- Review Management ---
 
 /**

@@ -55,6 +55,7 @@ import {
     resetAstrologerWarnings,
     getChatStats,
     getGstStats,
+    getEarningsStats,
     getPendingReviews,
     getAllReviews,
     approveReview,
@@ -78,6 +79,7 @@ router.use(adminMiddleware);
 router.get('/dashboard', getDashboardStats);
 router.get('/chat-stats', getChatStats);
 router.get('/finances/gst', getGstStats);
+router.get('/finances/earnings', getEarningsStats);
 
 // Users
 router.get('/users', getAllUsers);
