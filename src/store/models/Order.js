@@ -278,6 +278,16 @@ const orderSchema = new mongoose.Schema(
 
     /* ================= META ================= */
     notes: String,
+
+    /* ================= KWIKSHIP DATA ================= */
+    kwikship: {
+      waybill: String,
+      courierName: String,
+      shippingLabel: String,
+      routingCode: String,
+      status: String,
+      lastUpdated: Date,
+    },
   },
   { timestamps: true }
 );

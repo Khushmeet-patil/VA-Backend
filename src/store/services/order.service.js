@@ -15,7 +15,7 @@ const mongoose = require("mongoose");
 const Vendor = require("../models/Vendor");
 const { validateAndApplyCoupon } = require("./coupon.service");
 const CouponUsage = require("../models/CouponUsage");
-const { default: ShiprocketService, createFullShipment } = require("./shiprocket.service");
+const { default: KwikshipService, createFullShipment } = require("./kwikship.service");
 
 /* =====================================================
    CREATE ORDER
@@ -270,6 +270,7 @@ exports.getVendorOrders = async (vendorId) => {
       })),
 
     shippingAddress: order.shippingAddress,
+    kwikship: order.kwikship,
   }));
 };
 
@@ -675,14 +676,14 @@ exports.confirmOrder = async (orderId, vendorId) => {
   }
 
   // 6️⃣ Prevent duplicate shipment
-  if (order.shiprocket?.shipmentId) {
+  if (order.kwikship?.waybill) {
     return {
       success: true,
-      message: "Order already sent to Shiprocket",
+      message: "Order already sent to Kwikship",
     };
   }
 
-  // 7️⃣ Shiprocket call
+  // 7️⃣ Kwikship call
   await createFullShipment(order._id);
 
   return {
