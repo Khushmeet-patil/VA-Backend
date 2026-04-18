@@ -58,69 +58,26 @@ export const sendGift = async (req: AuthRequest, res: Response) => {
         // This prevents double-spend: only deduct if balance is sufficient
         const giftAmount = giftItem.amount;
 
-        // Deduct from real wallet first, then bonus — atomically via findOneAndUpdate with $inc
-        // First try to deduct purely from walletBalance
-        let updatedUser = await User.findOneAndUpdate(
+        // Deduct ONLY from real wallet — bonus money NOT allowed for gifts
+        const updatedUser = await User.findOneAndUpdate(
             { _id: userId, walletBalance: { $gte: giftAmount } },
             { $inc: { walletBalance: -giftAmount } },
             { new: true }
         );
 
+        if (!updatedUser) {
+            const user = await User.findById(userId);
+            return res.status(400).json({
+                success: false,
+                message: 'Insufficient wallet balance. Gifts can only be sent using real money.',
+                code: 'INSUFFICIENT_BALANCE',
+                required: giftAmount,
+                available: user?.walletBalance || 0,
+            });
+        }
+
         let deductFromReal = giftAmount;
         let deductFromBonus = 0;
-
-        if (!updatedUser) {
-            // Not enough in walletBalance alone — check combined balance
-            const user = await User.findById(userId);
-            if (!user) {
-                return res.status(404).json({ success: false, message: 'User not found' });
-            }
-
-            const realBalance = user.walletBalance || 0;
-            const bonusBalance = user.bonusBalance || 0;
-            const totalBalance = realBalance + bonusBalance;
-
-            if (totalBalance < giftAmount) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Insufficient balance',
-                    code: 'INSUFFICIENT_BALANCE',
-                    required: giftAmount,
-                    available: totalBalance,
-                });
-            }
-
-            // Deduct real first, remainder from bonus
-            deductFromReal = realBalance;
-            deductFromBonus = giftAmount - realBalance;
-
-            // Atomic deduct: set walletBalance to 0, deduct remainder from bonus
-            updatedUser = await User.findOneAndUpdate(
-                {
-                    _id: userId,
-                    walletBalance: { $gte: deductFromReal },
-                    bonusBalance: { $gte: deductFromBonus },
-                },
-                {
-                    $inc: {
-                        walletBalance: -deductFromReal,
-                        bonusBalance: -deductFromBonus,
-                    }
-                },
-                { new: true }
-            );
-
-            if (!updatedUser) {
-                // Race condition: balance changed between read and write
-                return res.status(400).json({
-                    success: false,
-                    message: 'Insufficient balance',
-                    code: 'INSUFFICIENT_BALANCE',
-                    required: giftAmount,
-                    available: totalBalance,
-                });
-            }
-        }
 
         // Calculate commission
         const settings = await getGiftSettings();

@@ -169,8 +169,10 @@ exports.vendorConfirmOrder = async (req, res) => {
   try {
     const vendorId = req.user.vendorId;
     const orderId = req.params.id;
+    console.log("[VendorConfirm] orderId:", orderId, "vendorId:", vendorId);
 
     const result = await orderService.confirmOrder(orderId, vendorId);
+    console.log("[VendorConfirm] result:", JSON.stringify(result));
 
     res.json(result);
   } catch (err) {
