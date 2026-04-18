@@ -68,7 +68,8 @@ const allowedOrigins = [
   'https://vendor-vedicstore.vedicastro.co.in',
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://admin.vedicastro.co.in'
+  'https://admin.vedicastro.co.in',
+  'https://api.vedicastro.co.in' // Mobile RN socket.io-client sets this as Origin
 ];
 
 const corsOptions = {
@@ -81,6 +82,14 @@ const corsOptions = {
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    credentials: true,
+};
+
+// Mobile apps (React Native) don't enforce CORS — use a permissive config
+// for the Socket.IO handshake so WS upgrades never get rejected by Origin checks.
+const socketCorsOptions = {
+    origin: true, // Reflect any origin (mobile RN WS sets Origin to the API host)
+    methods: ['GET', 'POST'],
     credentials: true,
 };
 
@@ -100,7 +109,7 @@ app.use('/uploads', express.static('uploads'));
 // connectionStateRecovery buffers events for 2 minutes so reconnecting clients
 // automatically receive any missed events without application-level re-delivery.
 const io = new SocketIOServer(httpServer, {
-    cors: corsOptions,
+    cors: socketCorsOptions,
 
     // ── Ping / zombie detection ────────────────────────────────────────────
     pingInterval: 10000,   // Send ping every 10 s
