@@ -51,6 +51,18 @@ const returnSchema = new mongoose.Schema(
       enum: ["pending", "approved", "rejected", "completed"],
       default: "pending",
     },
+
+    /* ================= KWIKSHIP (REVERSE SHIPMENT) ================= */
+    kwikship: {
+      waybill: String,
+      courierName: String,
+      shippingLabel: String,
+      routingCode: String,
+      status: String,
+      shipmentCode: String,
+      createdAt: Date,
+      lastUpdated: Date,
+    },
   },
   { timestamps: true }
 );

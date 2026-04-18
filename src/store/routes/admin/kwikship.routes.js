@@ -3,7 +3,9 @@ const {
   addKwikshipAccount,
   getActiveKwikshipAccount,
   getTrackingStatus,
-  createShipment
+  createShipment,
+  createShipmentForVendor,
+  cancelWaybill,
 } = require("../../controllers/kwikship.controller");
 
 const router = express.Router();
@@ -12,5 +14,7 @@ router.post("/", addKwikshipAccount);
 router.get("/account", getActiveKwikshipAccount);
 router.get("/track/:waybill", getTrackingStatus);
 router.post("/ship/:orderId", createShipment);
+router.post("/ship/:orderId/vendor/:vendorId", createShipmentForVendor);
+router.post("/cancel/:waybill", cancelWaybill);
 
 module.exports = router;

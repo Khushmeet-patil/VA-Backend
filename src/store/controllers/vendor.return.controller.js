@@ -1,4 +1,5 @@
 const Return = require("../models/Return");
+const KwikshipService = require("../services/kwikship.service");
 
 exports.getVendorReturns = async (req, res) => {
   try {
@@ -24,6 +25,7 @@ exports.getVendorReturns = async (req, res) => {
 exports.updateReturnStatus = async (req, res) => {
   try {
     const { status } = req.body;
+
     const returnRequest = await Return.findOneAndUpdate(
       { _id: req.params.id, vendorId: req.user.vendorId },
       { status },
@@ -37,9 +39,29 @@ exports.updateReturnStatus = async (req, res) => {
       });
     }
 
+    /* ======================================================
+       When vendor approves return/replacement, auto-create
+       a reverse Kwikship pickup (customer → vendor).
+    ====================================================== */
+    let kwikship = null;
+    let kwikshipError = null;
+
+    if (status === "approved" && !returnRequest.kwikship?.waybill) {
+      try {
+        const updated = await KwikshipService.createReverseShipment(
+          returnRequest._id
+        );
+        kwikship = updated.kwikship;
+      } catch (err) {
+        kwikshipError = err.message;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: returnRequest,
+      kwikship,
+      kwikshipError,
     });
   } catch (error) {
     return res.status(500).json({

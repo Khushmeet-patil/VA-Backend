@@ -676,6 +676,21 @@ exports.updateVendorProfile = async (vendorId, data) => {
       "businessAddress.state",
       "businessAddress.postalCode",
       "businessAddress.country",
+
+      // Kwikship pickup address
+      "pickupAddress.name",
+      "pickupAddress.email",
+      "pickupAddress.phone",
+      "pickupAddress.alternatePhone",
+      "pickupAddress.address1",
+      "pickupAddress.address2",
+      "pickupAddress.pincode",
+      "pickupAddress.city",
+      "pickupAddress.state",
+      "pickupAddress.stateCode",
+      "pickupAddress.country",
+      "pickupAddress.countryCode",
+      "pickupAddress.gstin",
     ];
 
     const sensitiveFields = [

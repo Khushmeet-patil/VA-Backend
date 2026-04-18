@@ -15,7 +15,7 @@ const mongoose = require("mongoose");
 const Vendor = require("../models/Vendor");
 const { validateAndApplyCoupon } = require("./coupon.service");
 const CouponUsage = require("../models/CouponUsage");
-const { default: KwikshipService, createFullShipment } = require("./kwikship.service");
+const KwikshipService = require("./kwikship.service");
 
 /* =====================================================
    CREATE ORDER
@@ -675,20 +675,41 @@ exports.confirmOrder = async (orderId, vendorId) => {
     };
   }
 
-  // 6️⃣ Prevent duplicate shipment
-  if (order.kwikship?.waybill) {
+  // 6️⃣ Create Kwikship shipment for THIS vendor's items only
+  //    (multi-vendor orders get one waybill per vendor group)
+  const vendorHasWaybill = vendorItems.every((i) => i.kwikship?.waybill);
+  if (vendorHasWaybill) {
     return {
       success: true,
-      message: "Order already sent to Kwikship",
+      message: "Shipment already created for this vendor",
     };
   }
 
-  // 7️⃣ Kwikship call
-  await createFullShipment(order._id);
-
-  return {
-    success: true,
-    message: "Order confirmed & shipment created",
-  };
+  try {
+    const result = await KwikshipService.createForwardShipmentForVendor(
+      order._id,
+      vendorId
+    );
+    return {
+      success: true,
+      message: "Order confirmed & shipment created",
+      waybill: result.waybill,
+      courierName: result.courierName,
+      expectedDelivery: result.edd,
+    };
+  } catch (shipErr) {
+    logger.error("Kwikship shipment failed on vendor confirm", {
+      orderId: order._id.toString(),
+      vendorId: vendorId.toString(),
+      error: shipErr.message,
+    });
+    // Don't roll back confirmation; surface shipment failure separately so
+    // admins can retry via POST /admin/kwikship/ship/:orderId
+    return {
+      success: true,
+      message: "Order confirmed, but shipment creation failed. Please retry.",
+      shipmentError: shipErr.message,
+    };
+  }
 };
 

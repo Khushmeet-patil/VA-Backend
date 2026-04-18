@@ -79,6 +79,25 @@ const vendorSchema = new mongoose.Schema(
       country: String,
     },
 
+    /* ================= PICKUP ADDRESS (KWIKSHIP) ================= */
+    // Warehouse / pickup location used when generating Kwikship waybills.
+    // Falls back to businessAddress + storeName/storePhone when not set.
+    pickupAddress: {
+      name: String,
+      email: String,
+      phone: String,
+      alternatePhone: String,
+      address1: String,
+      address2: String,
+      pincode: String,
+      city: String,
+      state: String,
+      stateCode: String,
+      country: { type: String, default: "India" },
+      countryCode: { type: String, default: "IN" },
+      gstin: String,
+    },
+
     /* ================= BANK (APPROVED DATA) ================= */
     bankAccountName: {
       type: String,

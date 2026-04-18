@@ -138,6 +138,20 @@ const orderItemSchema = new mongoose.Schema(
       shippedAt: Date,
       deliveredAt: Date,
     },
+
+    /* ================= KWIKSHIP (PER ITEM / PER VENDOR) ================= */
+    kwikship: {
+      waybill: String,
+      courierName: String,
+      shippingLabel: String,
+      routingCode: String,
+      status: String,
+      edd: Date,
+      type: { type: String, enum: ["forward", "reverse"], default: "forward" },
+      shipmentCode: String,
+      createdAt: Date,
+      lastUpdated: Date,
+    },
   },
   { _id: true }
 );

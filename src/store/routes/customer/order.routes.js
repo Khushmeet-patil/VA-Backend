@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/order.controller");
+const kwikshipController = require("../../controllers/kwikship.controller");
 const auth = require("../../middleware/auth.middleware");
 const authorize = require("../../middleware/role.middleware");
 
@@ -9,6 +10,7 @@ router.post("/create", auth, controller.createOrder);
 router.post("/initiate-payment", controller.initiatePayment);
 router.post("/verify-payment", controller.verifyPaymentAndCreateOrder);
 router.get("/my", controller.myOrders);
+router.get("/:orderId/tracking", auth, kwikshipController.getCustomerOrderTracking);
 router.get("/:id", controller.getSingleOrderController);
 
 /* ================= VENDOR ================= */
