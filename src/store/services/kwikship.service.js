@@ -72,7 +72,13 @@ const getToken = async () => {
     await account.save();
     return account.token;
   } catch (error) {
-    console.error("Kwikship Auth Error:", error.response?.data || error.message);
+    console.error("Kwikship Auth Error Details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      url: error.config?.url,
+      sentUsername: account.username
+    });
     throw new Error("Kwikship authentication failed");
   }
 };
