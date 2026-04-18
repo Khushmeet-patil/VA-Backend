@@ -63,10 +63,24 @@ const app = express();
 const httpServer = createServer(app);
 
 // CORS Configuration for production
+const allowedOrigins = [
+  'https://vedicastro.co.in',
+  'https://vendor-vedicstore.vedicastro.co.in',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://admin.vedicastro.co.in'
+];
+
 const corsOptions = {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: (origin: any, callback: any) => {
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
     credentials: true,
 };
 
