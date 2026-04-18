@@ -25,23 +25,44 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
     chatService.initialize(io);
 
     // Authentication middleware for Socket.IO
+    // Log raw engine.io connection errors (CORS, upgrade, handshake failures)
+    io.engine.on('connection_error', (err: any) => {
+        console.error('[Socket] ENGINE connection_error:', {
+            code: err.code,
+            message: err.message,
+            context: err.context,
+            req_url: err.req?.url,
+            req_origin: err.req?.headers?.origin,
+        });
+    });
+
     io.use(async (socket: AuthenticatedSocket, next) => {
+        const origin = socket.handshake.headers.origin;
+        const transport = socket.conn.transport.name;
         try {
             const token = socket.handshake.auth.token || socket.handshake.query.token;
 
             if (!token) {
+                console.warn(`[Socket] AUTH REJECT: no token | origin=${origin} transport=${transport}`);
                 return next(new Error('Authentication required'));
             }
 
-            const decoded = jwt.verify(
-                token as string,
-                process.env.JWT_SECRET || 'secret'
-            ) as { id: string; role?: string };
+            let decoded: { id: string; role?: string };
+            try {
+                decoded = jwt.verify(
+                    token as string,
+                    process.env.JWT_SECRET || 'secret'
+                ) as { id: string; role?: string };
+            } catch (jwtErr: any) {
+                console.warn(`[Socket] AUTH REJECT: jwt.verify failed (${jwtErr?.name}: ${jwtErr?.message}) | origin=${origin} transport=${transport}`);
+                return next(new Error('Invalid token'));
+            }
 
             // Determine if user or astrologer
             if (decoded.role === 'astrologer') {
                 const astrologer = await Astrologer.findById(decoded.id);
                 if (!astrologer) {
+                    console.warn(`[Socket] AUTH REJECT: astrologer ${decoded.id} not found in DB`);
                     return next(new Error('Astrologer not found'));
                 }
                 socket.userId = decoded.id;
@@ -49,14 +70,17 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             } else {
                 const user = await User.findById(decoded.id);
                 if (!user) {
+                    console.warn(`[Socket] AUTH REJECT: user ${decoded.id} not found in DB`);
                     return next(new Error('User not found'));
                 }
                 socket.userId = decoded.id;
                 socket.userType = 'user';
             }
 
+            console.log(`[Socket] AUTH OK: ${socket.userType} ${socket.userId} | transport=${transport} origin=${origin || '(none)'}`);
             next();
-        } catch (error) {
+        } catch (error: any) {
+            console.error('[Socket] AUTH ERROR (unexpected):', error?.message || error);
             next(new Error('Invalid token'));
         }
     });
