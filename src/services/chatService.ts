@@ -250,6 +250,15 @@ class ChatService {
         }
 
         if (session.status !== 'PENDING') {
+            if (session.status === 'ENDED' && session.endReason === 'ASTROLOGER_TIMEOUT') {
+                throw new Error('Chat request expired before you could accept');
+            }
+            if (session.status === 'ENDED' && session.endReason === 'USER_CANCEL_WHILE_PENDING') {
+                throw new Error('cancelled or expired');
+            }
+            if (session.status === 'ENDED') {
+                throw new Error('cancelled or expired');
+            }
             throw new Error(`Cannot accept session with status: ${session.status}`);
         }
 
@@ -403,72 +412,71 @@ class ChatService {
                 userName: user.name || 'User',
             });
 
-            // BRIDGE CHECK (Backward Compatible):
-            // We check if the user has at least one active socket connection. 
-            // This works for ALL app versions. 
-            try {
-                const userSockets = await this.io.in(`user:${session.userId}`).fetchSockets();
-                
-                if (userSockets.length === 0) {
-                   console.log(`[ChatService] User 0 sockets found for session: ${sessionId}. Rolling back.`);
-                   throw new Error('NO_USER_SOCKETS');
-                }
-                
-                console.log(`[ChatService] User is reachable (${userSockets.length} sockets). Proceeding.`);
+            // BRIDGE CHECK (Non-blocking):
+            // Run socket reachability check asynchronously so the ack returns to the
+            // astrologer immediately after CHAT_STARTED. If the user is unreachable,
+            // we roll back and send CHAT_CANCELLED — both parties handle this gracefully.
+            void (async () => {
+                try {
+                    const userSockets = await this.io!.in(`user:${session.userId}`).fetchSockets();
 
-                // Force-join all sockets of both parties into the session room.
-                // This is the WhatsApp-style "chat room": a single room that both
-                // participants are in for the lifetime of the session.  Messages will
-                // be broadcast here, eliminating delivery gaps caused by reconnect
-                // timing where a socket hasn't re-subscribed to user/astrologer rooms yet.
-                await this.joinSessionRoom(sessionId, session.userId.toString(), session.astrologerId.toString());
+                    if (userSockets.length === 0) {
+                        console.log(`[ChatService] User 0 sockets found for session: ${sessionId}. Rolling back.`);
 
-                // Attempt optional verification check for new apps (Non-blocking for old apps)
-                this.io.timeout(2000).to(`user:${session.userId}`).emitWithAck('BRIDGE_VERIFY', { sessionId })
-                    .then(acks => {
-                        if (acks && acks.length > 0) console.log(`[ChatService] Bridge verified via ACK for session: ${sessionId}`);
-                    })
-                    .catch(() => { /* Ignore timeout for backward compatibility */ });
+                        void this.invalidateSessionCache(sessionId);
+                        await ChatSession.findOneAndUpdate(
+                            { sessionId },
+                            {
+                                status: 'ENDED',
+                                endReason: 'USER_UNREACHABLE_AT_START',
+                                errorDescription: 'User has 0 active sockets at the moment of acceptance'
+                            }
+                        );
 
-            } catch (err) {
-                console.warn(`[ChatService] User is PROPERLY unreachable for session: ${sessionId}. Rolling back.`);
-                
-                // ROLLBACK: User is confirmed not connected
-                void this.invalidateSessionCache(sessionId);
-                await ChatSession.findOneAndUpdate(
-                    { sessionId },
-                    {
-                        status: 'ENDED',
-                        endReason: 'USER_UNREACHABLE_AT_START',
-                        errorDescription: 'User has 0 active sockets at the moment of acceptance'
+                        await Astrologer.findOneAndUpdate(
+                            { _id: session.astrologerId, activeSessionId: sessionId },
+                            { $set: { isBusy: false, activeSessionId: undefined } }
+                        );
+
+                        const billingTimer = this.billingTimers.get(sessionId);
+                        if (billingTimer) {
+                            clearTimeout(billingTimer);
+                            this.billingTimers.delete(sessionId);
+                        }
+
+                        const trialTimer = this.freeTrialTimers.get(sessionId);
+                        if (trialTimer) {
+                            clearInterval(trialTimer);
+                            this.freeTrialTimers.delete(sessionId);
+                        }
+
+                        this.io!.to(`astrologer:${session.astrologerId}`).emit('CHAT_CANCELLED', {
+                            sessionId,
+                            reason: 'User is no longer connected. Chat cancelled.'
+                        });
+                        this.io!.to(`user:${session.userId}`).emit('CHAT_CANCELLED', {
+                            sessionId,
+                            reason: 'Chat cancelled — connection issue.'
+                        });
+                        return;
                     }
-                );
 
-                await Astrologer.findOneAndUpdate(
-                    { _id: session.astrologerId, activeSessionId: sessionId },
-                    { $set: { isBusy: false, activeSessionId: undefined } }
-                );
+                    console.log(`[ChatService] User is reachable (${userSockets.length} sockets). Proceeding.`);
 
-                // Stop any running timers
-                const billingTimer = this.billingTimers.get(sessionId);
-                if (billingTimer) {
-                    clearTimeout(billingTimer);
-                    this.billingTimers.delete(sessionId);
+                    // Force-join all sockets of both parties into the session room.
+                    await this.joinSessionRoom(sessionId, session.userId.toString(), session.astrologerId.toString());
+
+                    // Optional verification for new apps (non-blocking)
+                    this.io!.timeout(2000).to(`user:${session.userId}`).emitWithAck('BRIDGE_VERIFY', { sessionId })
+                        .then(acks => {
+                            if (acks && acks.length > 0) console.log(`[ChatService] Bridge verified via ACK for session: ${sessionId}`);
+                        })
+                        .catch(() => { /* Ignore timeout for backward compatibility */ });
+
+                } catch (err) {
+                    console.warn(`[ChatService] Bridge check error for session ${sessionId}:`, err);
                 }
-                
-                const trialTimer = this.freeTrialTimers.get(sessionId);
-                if (trialTimer) {
-                    clearInterval(trialTimer);
-                    this.freeTrialTimers.delete(sessionId);
-                }
-
-                this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_CANCELLED', {
-                    sessionId,
-                    reason: 'User is no longer connected. Chat cancelled.'
-                });
-
-                throw new Error('User is no longer reachable. Please try another request.');
-            }
+            })();
 
             // Also emit TIMER_STARTED immediately with duration
             const realBalance = user.walletBalance || 0;

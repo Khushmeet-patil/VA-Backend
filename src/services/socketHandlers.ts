@@ -578,14 +578,29 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
                 // Check if this is a "cancelled or expired" error - handle gracefully
                 if (error.message && error.message.includes('cancelled or expired')) {
-                    const res = { 
-                        success: false, 
+                    const res = {
+                        success: false,
                         code: 'CANCELLED',
-                        message: 'User cancelled the request before you could accept' 
+                        message: 'User cancelled the request before you could accept'
                     };
                     if (callback) callback(res);
-                    
+
                     // Still emit CHAT_ACCEPT_FAILED for legacy compatibility if needed
+                    socket.emit('CHAT_ACCEPT_FAILED', {
+                        sessionId: data.sessionId,
+                        reason: res.message
+                    });
+                } else if (
+                    (error.message && error.message.includes('Cannot accept session with status: ENDED')) ||
+                    (error.message && error.message.includes('expired'))
+                ) {
+                    // Session timed out (ASTROLOGER_TIMEOUT) or was already ended before accept
+                    const res = {
+                        success: false,
+                        code: 'EXPIRED',
+                        message: 'This request has already expired. The user will need to send a new request.'
+                    };
+                    if (callback) callback(res);
                     socket.emit('CHAT_ACCEPT_FAILED', {
                         sessionId: data.sessionId,
                         reason: res.message
