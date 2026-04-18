@@ -24,6 +24,16 @@ const storeAccount = async ({
 };
 
 const getActiveAccount = async () => {
+  // Try environment variables first
+  if (process.env.KWIKSHIP_USERNAME && process.env.KWIKSHIP_PASSWORD) {
+    return {
+      username: process.env.KWIKSHIP_USERNAME,
+      password: encrypt(process.env.KWIKSHIP_PASSWORD), // Encrypt for consistency with token fetch logic
+      isDev: process.env.KWIKSHIP_MODE === "dev",
+      save: async () => {} // Mock save for token caching if needed (though token won't persist across restarts if only using .env)
+    };
+  }
+
   const account = await KwikshipAccount.findOne({ isActive: true });
   if (!account) throw new Error("Kwikship account not configured");
   return account;
