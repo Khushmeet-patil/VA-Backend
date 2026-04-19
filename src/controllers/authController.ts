@@ -847,13 +847,29 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
             if (!payment) return res.status(200).json({ received: true });
 
             const paymentId: string = payment.id;
-            const notes = payment.notes || {};
+
+            // Notes were set on the ORDER (see createOrder above), not on the payment.
+            // Razorpay does not auto-copy order notes onto the payment entity, and the
+            // mobile checkout options don't set payment notes either — so payment.notes
+            // is typically empty. Read from order.notes (webhook payload), and fall back
+            // to fetching the order from the API if the payload omits it.
+            let notes: any = (event.payload?.order?.entity?.notes) || payment.notes || {};
+
+            if ((!notes.userId || !notes.baseAmount) && payment.order_id) {
+                try {
+                    const fetchedOrder: any = await razorpay.orders.fetch(payment.order_id);
+                    notes = fetchedOrder?.notes || notes;
+                } catch (fetchErr: any) {
+                    console.warn('[Webhook] Failed to fetch order for notes:', fetchErr?.message);
+                }
+            }
+
             const userId: string = notes.userId;
             const baseAmount = Number(notes.baseAmount);
             const bonusAmount = Number(notes.bonusAmount) || 0;
 
             if (!userId || !baseAmount || baseAmount <= 0) {
-                console.warn('[Webhook] Missing notes on payment:', paymentId);
+                console.warn('[Webhook] Missing notes on payment/order:', paymentId);
                 return res.status(200).json({ received: true });
             }
 
