@@ -14,6 +14,7 @@ import {
     createNotification,
     getScheduledNotifications,
     deleteNotification,
+    toggleNotification,
     deleteUser,
     clearUserDevice,
     clearAstrologerDevice,
@@ -125,6 +126,7 @@ router.delete('/reviews/:reviewId', deleteReview);
 // Notifications
 router.post('/notifications', createNotification);
 router.get('/notifications/scheduled', getScheduledNotifications);
+router.patch('/notifications/:id/toggle', toggleNotification);
 router.delete('/notifications/:id', deleteNotification);
 
 // Banners

@@ -1298,14 +1298,42 @@ export const createNotification = async (req: Request, res: Response) => {
     }
 };
 
-// Get all active scheduled notifications
+// Get all scheduled notifications (both active and inactive)
 export const getScheduledNotifications = async (req: Request, res: Response) => {
     try {
         const notifications = await Notification.find({
-            isScheduled: true,
-            isActive: true
+            isScheduled: true
         }).sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: notifications });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Toggle enable/disable a scheduled notification
+export const toggleNotification = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const notification = await Notification.findById(id);
+
+        if (!notification) {
+            return res.status(404).json({ success: false, message: 'Notification not found' });
+        }
+
+        notification.isActive = !notification.isActive;
+        await notification.save();
+
+        if (notification.isActive) {
+            scheduledNotificationService.scheduleJob(notification);
+        } else {
+            scheduledNotificationService.cancelJob(id);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Notification ${notification.isActive ? 'enabled' : 'disabled'} successfully`,
+            data: notification
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
