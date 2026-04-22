@@ -65,7 +65,8 @@ import {
     createStartPopup,
     getStartPopups,
     updateStartPopup,
-    deleteStartPopup
+    deleteStartPopup,
+    setGlobalAstrologerRate
 } from '../controllers/adminController';
 import { getAvailabilityLogs } from '../controllers/astrologerPanelController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
@@ -100,6 +101,7 @@ router.delete('/users/:userId', deleteUser);
 // Astrologers
 router.post('/astrologers', adminAddAstrologer);
 router.get('/astrologers', getAstrologers);
+router.put('/astrologers/global-rate', setGlobalAstrologerRate); // Must be before :astrologerId route
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);

@@ -2698,3 +2698,23 @@ export const deleteStartPopup = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };
+
+export const setGlobalAstrologerRate = async (req: Request, res: Response) => {
+    try {
+        const { pricePerMin } = req.body;
+
+        if (typeof pricePerMin !== 'number' || pricePerMin <= 0) {
+            return res.status(400).json({ success: false, message: 'pricePerMin must be a positive number' });
+        }
+
+        const result = await Astrologer.updateMany({}, { $set: { pricePerMin } });
+
+        res.status(200).json({
+            success: true,
+            message: `Global rate updated for ${result.modifiedCount} astrologers`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
