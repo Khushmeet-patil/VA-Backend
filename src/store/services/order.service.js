@@ -698,11 +698,7 @@ exports.confirmOrder = async (orderId, vendorId) => {
       expectedDelivery: result.edd,
     };
   } catch (shipErr) {
-    logger.error("Kwikship shipment failed on vendor confirm", {
-      orderId: order._id.toString(),
-      vendorId: vendorId.toString(),
-      error: shipErr.message,
-    });
+    console.error("[Kwikship] Shipment failed on vendor confirm:", shipErr.message, { orderId: order._id.toString(), vendorId: vendorId.toString() });
     // Don't roll back confirmation; surface shipment failure separately so
     // admins can retry via POST /admin/kwikship/ship/:orderId
     return {

@@ -176,6 +176,7 @@ exports.vendorConfirmOrder = async (req, res) => {
 
     res.json(result);
   } catch (err) {
+    console.error("[VendorConfirm] ERROR:", err.message);
     res.status(400).json({
       success: false,
       message: err.message,
