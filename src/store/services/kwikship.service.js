@@ -34,6 +34,9 @@ const DEFAULT_DIMS_MM = { length: 100, height: 100, breadth: 100 };
    IN-MEMORY TOKEN CACHE (for env-based credentials)
 ============================================================ */
 let _envTokenCache = { token: null, expiry: null };
+// Tracks last auth failure to avoid re-attempting on every call while Kwikship is unreachable
+let _authFailedAt = null;
+const AUTH_FAILURE_COOLDOWN_MS = 30_000; // 30 seconds
 
 /* ============================================================
    ACCOUNT MANAGEMENT
@@ -78,6 +81,11 @@ const getToken = async () => {
     if (_envTokenCache.token && _envTokenCache.expiry > new Date()) {
       return _envTokenCache.token;
     }
+    // Fail fast if auth recently failed — avoids a 10s hang on every call
+    if (_authFailedAt && Date.now() - _authFailedAt < AUTH_FAILURE_COOLDOWN_MS) {
+      const retryIn = Math.ceil((AUTH_FAILURE_COOLDOWN_MS - (Date.now() - _authFailedAt)) / 1000);
+      throw new Error(`Kwikship authentication failed (retry in ${retryIn}s)`);
+    }
   } else if (account.token && account.tokenExpiry > new Date()) {
     return account.token;
   }
@@ -89,7 +97,7 @@ const getToken = async () => {
     const res = await axios.post(`${baseUrl}/authToken`, {
       username: account.username,
       password: realPassword,
-    }, { timeout: 10000 });
+    }, { timeout: 15000 });
 
     if (res.data?.status !== "SUCCESS" || !res.data?.token) {
       throw new Error(res.data?.message || "Failed to fetch Kwikship token");
@@ -100,6 +108,7 @@ const getToken = async () => {
 
     if (account._env) {
       _envTokenCache = { token, expiry };
+      _authFailedAt = null; // clear failure on success
     } else {
       account.token = token;
       account.tokenExpiry = expiry;
@@ -112,6 +121,9 @@ const getToken = async () => {
       response: error.response?.data,
       status: error.response?.status,
     });
+    if (account._env) {
+      _authFailedAt = Date.now(); // record failure time for cooldown
+    }
     throw new Error("Kwikship authentication failed");
   }
 };
