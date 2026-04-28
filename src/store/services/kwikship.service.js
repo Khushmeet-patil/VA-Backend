@@ -89,7 +89,7 @@ const getToken = async () => {
     const res = await axios.post(`${baseUrl}/authToken`, {
       username: account.username,
       password: realPassword,
-    });
+    }, { timeout: 10000 });
 
     if (res.data?.status !== "SUCCESS" || !res.data?.token) {
       throw new Error(res.data?.message || "Failed to fetch Kwikship token");
@@ -293,6 +293,7 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
   try {
     const res = await axios.post(`${baseUrl}/waybill`, payload, {
       headers: { Authorization: token },
+      timeout: 10000,
     });
     data = res.data;
   } catch (error) {
@@ -467,6 +468,7 @@ const createReverseShipment = async (returnId) => {
   try {
     const res = await axios.post(`${baseUrl}/waybill`, payload, {
       headers: { Authorization: token },
+      timeout: 10000,
     });
     data = res.data;
   } catch (error) {
@@ -514,6 +516,7 @@ const fetchStatus = async (waybillOrList) => {
     const res = await axios.get(`${baseUrl}/wayBillDetails`, {
       params: { waybills },
       headers: { Authorization: token },
+      timeout: 10000,
     });
 
     if (res.data?.Status !== "SUCCESS") {

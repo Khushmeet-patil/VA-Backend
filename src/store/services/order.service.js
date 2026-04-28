@@ -335,6 +335,21 @@ exports.updateItemStatus = async ({ orderId, itemId, status, vendorId }) => {
     throw new Error("Item not found");
   }
 
+  /* ================= GOKWIK GUARD =================
+     Once a Kwikship waybill exists, status is owned by the courier.
+     Vendors may only cancel before pickup. Everything else
+     (shipped / in_transit / out_for_delivery / delivered)
+     comes from GoKwik via webhook or live tracking refresh.
+  */
+  if (item.kwikship?.waybill) {
+    const allowedManual = ["cancelled"];
+    if (!allowedManual.includes(status)) {
+      throw new Error(
+        "Status is managed by GoKwik after shipment is created. Vendor can only cancel."
+      );
+    }
+  }
+
   item.status = status;
   item.statusHistory.push({
     status,
