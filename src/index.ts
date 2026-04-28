@@ -66,6 +66,7 @@ const httpServer = createServer(app);
 const allowedOrigins = [
   'https://vedicastro.co.in',
   'https://vendor-vedicstore.vedicastro.co.in',
+  'https://admin-vedicstore.vedicastro.co.in',
   'http://localhost:3000',
   'http://localhost:3001',
   'https://admin.vedicastro.co.in',
