@@ -9,6 +9,9 @@ const corsOptions = {
     // Allow requests with no origin (Postman, mobile apps, server-to-server)
     if (!origin) return callback(null, true);
 
+    // Wildcard allows all origins
+    if (allowedOrigins.includes("*")) return callback(null, true);
+
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
