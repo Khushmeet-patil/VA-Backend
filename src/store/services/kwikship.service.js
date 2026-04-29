@@ -198,7 +198,7 @@ const validateAddress = (addr, label) => {
 const createForwardShipmentForVendor = async (orderId, vendorId) => {
   const order = await Order.findById(orderId).populate(
     "customerId",
-    "email firstName lastName phone"
+    "email firstName lastName mobile"
   );
   if (!order) throw new Error("Order not found");
 
@@ -224,6 +224,9 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
   const pickup = buildVendorPickupAddress(vendor);
   const delivery = buildCustomerAddress(order.shippingAddress || {});
   delivery.email = delivery.email || order.customerId?.email || "";
+  delivery.phone = delivery.phone || order.customerId?.mobile || "";
+  delivery.alternatePhone = delivery.alternatePhone || delivery.phone;
+  delivery.name = delivery.name || `${order.customerId?.firstName || ""} ${order.customerId?.lastName || ""}`.trim();
 
   validateAddress(pickup, "Vendor pickup address");
   validateAddress(delivery, "Customer delivery address");
@@ -392,7 +395,7 @@ const createShipmentsForOrder = async (orderId) => {
 const createReverseShipment = async (returnId) => {
   const ret = await Return.findById(returnId)
     .populate("orderId")
-    .populate("customerId", "email firstName lastName phone");
+    .populate("customerId", "email firstName lastName mobile");
   if (!ret) throw new Error("Return request not found");
   if (ret.kwikship?.waybill) return ret; // idempotent
 
@@ -409,6 +412,9 @@ const createReverseShipment = async (returnId) => {
   const vendorAddr = buildVendorPickupAddress(vendor);
   const customerAddr = buildCustomerAddress(order.shippingAddress || {});
   customerAddr.email = customerAddr.email || ret.customerId?.email || "";
+  customerAddr.phone = customerAddr.phone || ret.customerId?.mobile || "";
+  customerAddr.alternatePhone = customerAddr.alternatePhone || customerAddr.phone;
+  customerAddr.name = customerAddr.name || `${ret.customerId?.firstName || ""} ${ret.customerId?.lastName || ""}`.trim();
 
   validateAddress(vendorAddr, "Vendor (reverse delivery) address");
   validateAddress(customerAddr, "Customer (reverse pickup) address");
