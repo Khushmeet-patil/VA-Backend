@@ -3,12 +3,13 @@ const checkoutService = require("../services/checkout.service");
 exports.cartCheckout = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { couponCode, shippingAddress, selectedItems } = req.body;
+    const { couponCode, shippingAddress, addressId, selectedItems } = req.body;
 
     const result = await checkoutService.cartCheckout({
       userId,
       couponCode,
       shippingAddress,
+      addressId,
       selectedItems,
     });
 

@@ -16,6 +16,7 @@ const Vendor = require("../models/Vendor");
 const { validateAndApplyCoupon } = require("./coupon.service");
 const CouponUsage = require("../models/CouponUsage");
 const KwikshipService = require("./kwikship.service");
+const { resolveShippingAddress } = require("./shippingAddress.service");
 
 /* =====================================================
    CREATE ORDER
@@ -24,6 +25,7 @@ exports.createOrder = async ({
   customerId,
   items,
   shippingAddress,
+  addressId,
   paymentMethod = "razorpay",
   notes,
   couponCode,
@@ -34,6 +36,14 @@ exports.createOrder = async ({
   if (!items || !items.length) {
     throw new Error("No items in order");
   }
+
+  // Resolve + validate shipping address before doing any other work.
+  // This guarantees the saved snapshot has every field Kwikship requires.
+  const resolvedShippingAddress = await resolveShippingAddress({
+    customerId,
+    addressId,
+    shippingAddress,
+  });
 
   const orderNumber = await generateOrderNumber();
 
@@ -127,7 +137,7 @@ exports.createOrder = async ({
     paymentStatus,
     orderStatus,
     razorpay: razorpayData,
-    shippingAddress,
+    shippingAddress: resolvedShippingAddress,
     notes,
     paidAt: paymentStatus === "paid" ? new Date() : null,
   });
@@ -554,6 +564,7 @@ exports.verifyPaymentAndCreateOrder = async ({
   razorpay_signature,
   items,
   shippingAddress,
+  addressId,
   couponCode,
   notes,
 }) => {
@@ -576,6 +587,7 @@ exports.verifyPaymentAndCreateOrder = async ({
     customerId,
     items,
     shippingAddress,
+    addressId,
     couponCode,
     notes,
     paymentMethod: "razorpay",
@@ -627,8 +639,8 @@ exports.verifyPaymentAndCreateOrder = async ({
         vendorName: data.vendorName,
         orderNumber: order.orderNumber,
         products: data.items,
-        customerName: shippingAddress.fullName,
-        shippingAddress: `${shippingAddress.addressLine1}, ${shippingAddress.city}`,
+        customerName: order.shippingAddress.fullName,
+        shippingAddress: `${order.shippingAddress.addressLine1}, ${order.shippingAddress.city}`,
         platformName: "Your Platform",
         supportEmail: "support@yourplatform.com",
         year: new Date().getFullYear(),

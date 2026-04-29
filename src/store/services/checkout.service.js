@@ -3,8 +3,16 @@ const Product = require("../models/Product");
 const Order = require("../models/Order");
 const Coupon = require("../models/Coupon");
 const { createOrder } = require("./order.service");
+const { resolveShippingAddress } = require("./shippingAddress.service");
 
-exports.cartCheckout = async ({ userId, couponCode, shippingAddress, selectedItems }) => {
+exports.cartCheckout = async ({ userId, couponCode, shippingAddress, addressId, selectedItems }) => {
+  // Validate the shipping address up front so we never create an order with
+  // an incomplete snapshot that would later break Kwikship.
+  const resolvedShippingAddress = await resolveShippingAddress({
+    customerId: userId,
+    addressId,
+    shippingAddress,
+  });
   const cart = await Cart.findOne({ userId });
 
   if (!cart || cart.items.length === 0) {
@@ -74,7 +82,7 @@ exports.cartCheckout = async ({ userId, couponCode, shippingAddress, selectedIte
       totalAmount,
     },
     coupon: appliedCoupon,
-    shippingAddress,
+    shippingAddress: resolvedShippingAddress,
     orderStatus: "placed",
   });
 
@@ -89,6 +97,7 @@ exports.buyNowCheckout = async ({
   productId,
   quantity,
   shippingAddress,
+  addressId,
   paymentMethod = "razorpay",
 }) => {
   if (!productId || !quantity) {
@@ -104,6 +113,7 @@ exports.buyNowCheckout = async ({
       },
     ],
     shippingAddress,
+    addressId,
     paymentMethod,
     notes: "Buy Now Order",
   });
