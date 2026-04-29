@@ -67,7 +67,7 @@ const getActiveAccount = async () => {
 
 const getBaseUrl = (account) =>
   account.isDev
-    ? "https://dev-gk-kwik-ship.dev.gokwik.io"
+    ? "https://api-gw-v4.dev.gokwik.io/kwikship"
     : "https://api.gokwik.co/kwikship";
 
 /* ============================================================
