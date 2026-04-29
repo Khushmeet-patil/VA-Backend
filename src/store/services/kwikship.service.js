@@ -134,57 +134,160 @@ const getToken = async () => {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad = (n) => String(n).padStart(2, "0");
 
+/* Indian state name → ISO 3166-2 state code (without "IN-" prefix). */
+const STATE_CODE_MAP = {
+  "andhra pradesh": "AP",
+  "arunachal pradesh": "AR",
+  "assam": "AS",
+  "bihar": "BR",
+  "chhattisgarh": "CT",
+  "chhattishgarh": "CT",
+  "goa": "GA",
+  "gujarat": "GJ",
+  "haryana": "HR",
+  "himachal pradesh": "HP",
+  "jharkhand": "JH",
+  "karnataka": "KA",
+  "kerala": "KL",
+  "madhya pradesh": "MP",
+  "maharashtra": "MH",
+  "manipur": "MN",
+  "meghalaya": "ML",
+  "mizoram": "MZ",
+  "nagaland": "NL",
+  "odisha": "OR",
+  "orissa": "OR",
+  "punjab": "PB",
+  "rajasthan": "RJ",
+  "sikkim": "SK",
+  "tamil nadu": "TN",
+  "tamilnadu": "TN",
+  "telangana": "TG",
+  "tripura": "TR",
+  "uttar pradesh": "UP",
+  "uttarakhand": "UT",
+  "uttaranchal": "UT",
+  "west bengal": "WB",
+  // Union Territories
+  "andaman and nicobar islands": "AN",
+  "andaman & nicobar islands": "AN",
+  "chandigarh": "CH",
+  "dadra and nagar haveli and daman and diu": "DH",
+  "dadra and nagar haveli": "DH",
+  "daman and diu": "DH",
+  "delhi": "DL",
+  "new delhi": "DL",
+  "jammu and kashmir": "JK",
+  "jammu & kashmir": "JK",
+  "ladakh": "LA",
+  "lakshadweep": "LD",
+  "puducherry": "PY",
+  "pondicherry": "PY",
+};
+
+const resolveStateCode = (stateOrCode) => {
+  if (!stateOrCode) return "";
+  const s = String(stateOrCode).trim();
+  // Already a 2-letter code
+  if (/^[A-Z]{2}$/.test(s)) return s;
+  return STATE_CODE_MAP[s.toLowerCase()] || "";
+};
+
 /** Kwikship date format: dd-MMM-yyyy HH:mm:ss */
 const formatKwikshipDate = (date) => {
   const d = new Date(date);
   return `${pad(d.getDate())}-${MONTHS[d.getMonth()]}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+/* ----- Field normalizers ----- */
+
+/** Strip non-digits, drop +91 / 91 / 0 prefix, return last 10 digits. */
+const normalizePhone = (raw) => {
+  if (!raw) return "";
+  const digits = String(raw).replace(/\D/g, "");
+  if (digits.length === 10) return digits;
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  return digits.slice(-10); // fallback: take last 10 digits
+};
+
+/** Strip non-digits, return only if exactly 6 digits. */
+const normalizePincode = (raw) => {
+  if (!raw) return "";
+  const digits = String(raw).replace(/\D/g, "");
+  return digits.length === 6 ? digits : "";
+};
+
+/** GSTIN must be 15 chars in format: 2 digits + 10 PAN + 1 digit + 1 char + 1 digit/char. */
+const normalizeGstin = (raw) => {
+  if (!raw) return "";
+  const v = String(raw).trim().toUpperCase();
+  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/.test(v) ? v : "";
+};
+
+/** Basic email format check. */
+const normalizeEmail = (raw) => {
+  if (!raw) return "";
+  const v = String(raw).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v : "";
+};
+
+/** Trim a string, collapse whitespace. */
+const cleanStr = (raw) => String(raw || "").replace(/\s+/g, " ").trim();
+
 /** Build a valid pickupAddressDetails object from a Vendor doc. */
 const buildVendorPickupAddress = (vendor) => {
   const pa = vendor.pickupAddress || {};
   const ba = vendor.businessAddress || {};
+  const stateName = cleanStr(pa.state || ba.state);
+  const phone = normalizePhone(pa.phone || vendor.storePhone);
   return {
-    name: pa.name || vendor.storeName || vendor.businessName || "Vendor",
-    email: pa.email || vendor.storeEmail || "",
-    phone: pa.phone || vendor.storePhone || "",
-    alternatePhone: pa.alternatePhone || vendor.storePhone || "",
-    address1: pa.address1 || ba.street || "",
-    address2: pa.address2 || "",
-    pincode: pa.pincode || ba.postalCode || "",
-    city: pa.city || ba.city || "",
-    state: pa.state || ba.state || "",
-    stateCode: pa.stateCode || "",
-    country: pa.country || ba.country || "India",
-    countryCode: pa.countryCode || "IN",
-    gstin: pa.gstin || vendor.gstNumber || "",
+    name: cleanStr(pa.name || vendor.storeName || vendor.businessName || "Vendor"),
+    email: normalizeEmail(pa.email || vendor.storeEmail),
+    phone,
+    alternatePhone: normalizePhone(pa.alternatePhone) || phone,
+    address1: cleanStr(pa.address1 || ba.street),
+    address2: cleanStr(pa.address2),
+    pincode: normalizePincode(pa.pincode || ba.postalCode),
+    city: cleanStr(pa.city || ba.city),
+    state: stateName,
+    stateCode: resolveStateCode(pa.stateCode || stateName),
+    country: cleanStr(pa.country || ba.country) || "India",
+    countryCode: cleanStr(pa.countryCode) || "IN",
+    gstin: normalizeGstin(pa.gstin || vendor.gstNumber),
   };
 };
 
 /** Build a valid customer address object from Order.shippingAddress. */
-const buildCustomerAddress = (sa) => ({
-  name: sa.fullName || "",
-  email: sa.email || "",
-  phone: sa.phone || "",
-  alternatePhone: sa.phone || "",
-  address1: [sa.addressLine1, sa.addressLine2].filter(Boolean).join(", ") || sa.addressLine1 || "",
-  address2: "",
-  pincode: sa.postalCode || "",
-  city: sa.city || "",
-  state: sa.state || "",
-  stateCode: "",
-  country: sa.country || "India",
-  countryCode: "IN",
-  gstin: "",
-});
+const buildCustomerAddress = (sa) => {
+  const phone = normalizePhone(sa.phone);
+  const stateName = cleanStr(sa.state);
+  return {
+    name: cleanStr(sa.fullName),
+    email: normalizeEmail(sa.email),
+    phone,
+    alternatePhone: phone,
+    address1: cleanStr([sa.addressLine1, sa.addressLine2].filter(Boolean).join(", ") || sa.addressLine1),
+    address2: "",
+    pincode: normalizePincode(sa.postalCode),
+    city: cleanStr(sa.city),
+    state: stateName,
+    stateCode: resolveStateCode(stateName),
+    country: cleanStr(sa.country) || "India",
+    countryCode: "IN",
+    gstin: "",
+  };
+};
 
 const validateAddress = (addr, label) => {
   const missing = [];
-  ["name", "phone", "address1", "pincode", "city", "state"].forEach((k) => {
+  ["name", "phone", "address1", "pincode", "city", "state", "stateCode"].forEach((k) => {
     if (!addr[k]) missing.push(k);
   });
+  if (addr.phone && addr.phone.length !== 10) missing.push("phone(must be 10 digits)");
+  if (addr.pincode && addr.pincode.length !== 6) missing.push("pincode(must be 6 digits)");
   if (missing.length) {
-    throw new Error(`${label} missing: ${missing.join(", ")}`);
+    throw new Error(`${label} invalid/missing: ${missing.join(", ")}`);
   }
 };
 
@@ -223,10 +326,10 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
 
   const pickup = buildVendorPickupAddress(vendor);
   const delivery = buildCustomerAddress(order.shippingAddress || {});
-  delivery.email = delivery.email || order.customerId?.email || "";
-  delivery.phone = delivery.phone || order.customerId?.mobile || "";
+  delivery.email = delivery.email || normalizeEmail(order.customerId?.email);
+  delivery.phone = delivery.phone || normalizePhone(order.customerId?.mobile);
   delivery.alternatePhone = delivery.alternatePhone || delivery.phone;
-  delivery.name = delivery.name || `${order.customerId?.firstName || ""} ${order.customerId?.lastName || ""}`.trim();
+  delivery.name = delivery.name || cleanStr(`${order.customerId?.firstName || ""} ${order.customerId?.lastName || ""}`);
 
   validateAddress(pickup, "Vendor pickup address");
   validateAddress(delivery, "Customer delivery address");
@@ -244,20 +347,24 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
   const items = vendorItems.map((it) => {
     const p = prodMap.get(it.productId.toString()) || {};
     const perUnitG = Number(p.weight) > 0 ? Number(p.weight) : DEFAULT_WEIGHT_G;
-    totalWeightG += perUnitG * it.quantity;
-    qtySum += it.quantity;
+    const qty = Math.max(1, Number(it.quantity) || 1);
+    totalWeightG += perUnitG * qty;
+    qtySum += qty;
     return {
-      name: it.name,
-      description: it.name,
-      quantity: it.quantity,
-      skuCode: p.sku || it.productId.toString(),
+      name: cleanStr(it.name) || "Item",
+      description: cleanStr(it.name) || "Item",
+      quantity: qty,
+      skuCode: cleanStr(p.sku) || it.productId.toString(),
       itemPrice: Number((it.price || 0).toFixed(2)),
       imageURL: it.image || "",
-      hsnCode: p.hsnCode || "",
-      size: it.size || "",
+      hsnCode: cleanStr(p.hsnCode),
+      size: cleanStr(it.size),
       category: "DEFAULT",
     };
   });
+
+  // Safety: weight must be > 0
+  if (!(totalWeightG > 0)) totalWeightG = DEFAULT_WEIGHT_G * Math.max(1, qtySum);
 
   const orderDate = formatKwikshipDate(order.createdAt || new Date());
   const tatDays = order.fastDelivery || DEFAULT_TAT_DAYS;
@@ -411,10 +518,10 @@ const createReverseShipment = async (returnId) => {
 
   const vendorAddr = buildVendorPickupAddress(vendor);
   const customerAddr = buildCustomerAddress(order.shippingAddress || {});
-  customerAddr.email = customerAddr.email || ret.customerId?.email || "";
-  customerAddr.phone = customerAddr.phone || ret.customerId?.mobile || "";
+  customerAddr.email = customerAddr.email || normalizeEmail(ret.customerId?.email);
+  customerAddr.phone = customerAddr.phone || normalizePhone(ret.customerId?.mobile);
   customerAddr.alternatePhone = customerAddr.alternatePhone || customerAddr.phone;
-  customerAddr.name = customerAddr.name || `${ret.customerId?.firstName || ""} ${ret.customerId?.lastName || ""}`.trim();
+  customerAddr.name = customerAddr.name || cleanStr(`${ret.customerId?.firstName || ""} ${ret.customerId?.lastName || ""}`);
 
   validateAddress(vendorAddr, "Vendor (reverse delivery) address");
   validateAddress(customerAddr, "Customer (reverse pickup) address");
@@ -683,6 +790,28 @@ const handleWebhook = async (body) => {
 };
 
 /* ============================================================
+   PICKUP-ADDRESS VALIDATION (used at vendor approval / profile update)
+============================================================ */
+/**
+ * Returns { ok, errors[], normalized } for a vendor's pickup address.
+ * Use this BEFORE marking a vendor approved or saving a pickup-address update,
+ * so we never end up with a vendor whose first order will fail at Kwikship time.
+ */
+const validateVendorPickup = (vendor) => {
+  try {
+    const built = buildVendorPickupAddress(vendor);
+    validateAddress(built, "Vendor pickup address");
+    return { ok: true, errors: [], normalized: built };
+  } catch (err) {
+    return {
+      ok: false,
+      errors: [err.message],
+      normalized: null,
+    };
+  }
+};
+
+/* ============================================================
    BACK-COMPAT WRAPPERS (existing callers)
 ============================================================ */
 const createWaybill = async (orderId) => {
@@ -710,6 +839,8 @@ module.exports = {
   cancelWaybill,
   // webhook
   handleWebhook,
+  // validation
+  validateVendorPickup,
   // back-compat
   createWaybill,
   createFullShipment,

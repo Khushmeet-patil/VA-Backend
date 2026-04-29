@@ -24,7 +24,7 @@ const forceDev = args.includes("--dev");
 const forceProd = args.includes("--prod");
 const tryWaybill = args.includes("--waybill");
 
-const DEV_URL = "https://dev-gk-kwik-ship.dev.gokwik.io";
+const DEV_URL = "https://api-gw-v4.dev.gokwik.io/kwikship";
 const PROD_URL = "https://api.gokwik.co/kwikship";
 
 const log = (label, data) =>

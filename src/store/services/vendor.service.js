@@ -16,6 +16,7 @@ const vendorReverifyRequiredTemplate = require("../utils/email/templates/vendorR
 const { getAdminEmails } = require("./admin.service");
 const vendorReverifyRejectedTemplate = require("../utils/email/templates/vendorReverifyRejectedTemplate");
 const vendorReverifyApprovedTemplate = require("../utils/email/templates/vendorReverifyApprovedTemplate");
+const { validateVendorPickup } = require("./kwikship.service");
 
 /* ================= CREATE / APPLY ================= */
 exports.createVendor = async (data) => {
@@ -288,12 +289,24 @@ exports.approveVendor = async (id, notes, commission) => {
     }
 
     if (!vendor.storeEmail || !vendor.storePhone) {
-      logger.error("CRITICAL: Vendor contact info missing", { 
+      logger.error("CRITICAL: Vendor contact info missing", {
         vendorId: id,
         email: vendor.storeEmail,
-        phone: vendor.storePhone 
+        phone: vendor.storePhone
       });
       throw new Error(`Vendor contact info missing (Email: ${vendor.storeEmail ? 'OK' : 'MISSING'}, Phone: ${vendor.storePhone ? 'OK' : 'MISSING'}). Cannot approve.`);
+    }
+
+    // 🚚 PICKUP ADDRESS CHECK — must be Kwikship-ready before approval
+    const pickupCheck = validateVendorPickup(vendor);
+    if (!pickupCheck.ok) {
+      logger.error("Vendor pickup address invalid — cannot approve", {
+        vendorId: id,
+        errors: pickupCheck.errors,
+      });
+      throw new Error(
+        `Cannot approve vendor: pickup address is incomplete. ${pickupCheck.errors.join("; ")}`
+      );
     }
 
     // 🛑 ALREADY APPROVED SAFETY
@@ -743,6 +756,31 @@ exports.updateVendorProfile = async (vendorId, data) => {
       updateData.verificationStage = "reverification";
       updateData.approvalNotes = "";
       updateData.rejectionReason = "";
+    }
+
+    /* ================= PICKUP ADDRESS — validate merged result ================= */
+    // Only when this update actually touches pickup-address fields.
+    // We merge the incoming changes onto the current vendor doc and run the
+    // same validator Kwikship will use, so we fail fast here instead of at
+    // the first order.
+    const pickupTouched = !!(updateData.pickupAddress || updateData.businessAddress);
+
+    if (pickupTouched) {
+      const current = await Vendor.findById(vendorId).lean();
+      if (current) {
+        const merged = {
+          ...current,
+          ...updateData,
+          pickupAddress: { ...(current.pickupAddress || {}), ...(updateData.pickupAddress || {}) },
+          businessAddress: { ...(current.businessAddress || {}), ...(updateData.businessAddress || {}) },
+        };
+        const pickupCheck = validateVendorPickup(merged);
+        if (!pickupCheck.ok) {
+          throw new Error(
+            `Pickup address incomplete: ${pickupCheck.errors.join("; ")}`
+          );
+        }
+      }
     }
 
     const vendor = await Vendor.findByIdAndUpdate(
