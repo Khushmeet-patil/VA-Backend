@@ -1,5 +1,6 @@
 const KwikshipService = require("../services/kwikship.service.js");
 const Order = require("../models/Order.js");
+const refundService = require("../services/refund.service.js");
 
 /* =========================
    ADMIN: ADD / UPDATE ACCOUNT
@@ -166,6 +167,34 @@ exports.cancelWaybill = async (req, res) => {
   try {
     const { waybill } = req.params;
     const result = await KwikshipService.cancelWaybill(waybill);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+/* =========================
+   ADMIN: RETRY REFUND for a Return
+   POST /store/api/admin/kwikship/return/:returnId/refund
+========================= */
+exports.retryRefund = async (req, res) => {
+  try {
+    const { returnId } = req.params;
+    const result = await refundService.issueRefundForReturn(returnId);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+/* =========================
+   ADMIN: RETRY REPLACEMENT FORWARD-SHIPMENT
+   POST /store/api/admin/kwikship/return/:returnId/replacement
+========================= */
+exports.retryReplacementForward = async (req, res) => {
+  try {
+    const { returnId } = req.params;
+    const result = await KwikshipService.createReplacementForward(returnId);
     res.json({ success: true, data: result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

@@ -625,6 +625,141 @@ const createReverseShipment = async (returnId) => {
 };
 
 /* ============================================================
+   CORE: CREATE REPLACEMENT FORWARD WAYBILL
+   --------------------------------------------------
+   Triggered after a reverse pickup of a "replace" return is delivered to
+   the vendor. Sends a NEW unit of the same item from vendor → customer.
+   Idempotent on Return.replacementShipment.waybill.
+============================================================ */
+const createReplacementForward = async (returnId) => {
+  const ret = await Return.findById(returnId)
+    .populate("orderId")
+    .populate("customerId", "email firstName lastName mobile");
+  if (!ret) throw new Error("Return not found");
+  if (ret.type !== "replace") {
+    throw new Error("Return is not a replacement");
+  }
+  if (ret.replacementShipment?.waybill) return ret; // idempotent
+
+  const order = ret.orderId;
+  if (!order) throw new Error("Order not found");
+
+  const vendor = await Vendor.findById(ret.vendorId);
+  if (!vendor) throw new Error("Vendor not found");
+
+  const token = await getToken();
+  const account = await getActiveAccount();
+  const baseUrl = getBaseUrl(account);
+
+  const pickup = buildVendorPickupAddress(vendor);
+  const delivery = buildCustomerAddress(order.shippingAddress || {});
+  delivery.email = delivery.email || normalizeEmail(ret.customerId?.email);
+  delivery.phone = delivery.phone || normalizePhone(ret.customerId?.mobile);
+  delivery.alternatePhone = delivery.alternatePhone || delivery.phone;
+  delivery.name = delivery.name || cleanStr(`${ret.customerId?.firstName || ""} ${ret.customerId?.lastName || ""}`);
+
+  validateAddress(pickup, "Vendor pickup address (replacement)");
+  validateAddress(delivery, "Customer delivery address (replacement)");
+
+  // Build items from the Return.items list — these are the units being replaced
+  const productIds = (ret.items || []).map((i) => i.productId).filter(Boolean);
+  const products = await Product.find({ _id: { $in: productIds } })
+    .select("weight hsnCode sku")
+    .lean();
+  const prodMap = new Map(products.map((p) => [p._id.toString(), p]));
+
+  let totalWeightG = 0;
+  const items = (ret.items || []).map((it) => {
+    const p = prodMap.get(it.productId?.toString()) || {};
+    const perUnitG = Number(p.weight) > 0 ? Number(p.weight) : DEFAULT_WEIGHT_G;
+    const qty = Math.max(1, Number(it.quantity) || 1);
+    totalWeightG += perUnitG * qty;
+    return {
+      name: cleanStr(it.name) || "Replacement item",
+      description: cleanStr(it.name) || "Replacement item",
+      quantity: qty,
+      skuCode: cleanStr(p.sku) || it.productId?.toString() || "",
+      itemPrice: Number((it.price || 0).toFixed(2)),
+      imageURL: it.image || "",
+      hsnCode: cleanStr(p.hsnCode),
+      category: "DEFAULT",
+    };
+  });
+  if (!totalWeightG) totalWeightG = DEFAULT_WEIGHT_G * Math.max(1, items.length);
+
+  const orderDate = formatKwikshipDate(new Date());
+  const eddDate = new Date();
+  eddDate.setDate(eddDate.getDate() + DEFAULT_TAT_DAYS);
+  const fullFillmentTat = formatKwikshipDate(eddDate);
+
+  const shipmentCode = `REP-${ret._id.toString().slice(-10)}`;
+  const totalAmount = items.reduce((s, i) => s + i.itemPrice * i.quantity, 0);
+
+  const payload = {
+    returnShipmentFlag: "false",
+    Shipment: {
+      code: shipmentCode,
+      SaleOrderCode: shipmentCode,
+      orderCode: order.orderNumber || order._id.toString(),
+      channelCode: "CUSTOM",
+      channelName: "VedicStore",
+      invoiceCode: order.orderNumber || order._id.toString(),
+      orderDate,
+      fullFillmentTat,
+      weight: Number(totalWeightG.toFixed(4)).toString(),
+      length: String(DEFAULT_DIMS_MM.length),
+      height: String(DEFAULT_DIMS_MM.height),
+      breadth: String(DEFAULT_DIMS_MM.breadth),
+      source: SOURCE,
+      numberOfBoxes: "1",
+      items,
+    },
+    deliveryAddressId: "",
+    deliveryAddressDetails: delivery,
+    pickupAddressId: "",
+    pickupAddressDetails: pickup,
+    returnAddressDetails: pickup,
+    currencyCode: "INR",
+    paymentMode: "PREPAID", // Replacements are not paid again — already settled
+    totalAmount: totalAmount.toFixed(2),
+    collectableAmount: "0.00",
+  };
+
+  let data;
+  try {
+    const res = await axios.post(`${baseUrl}/waybill`, payload, {
+      headers: { Authorization: token },
+      timeout: 10000,
+    });
+    data = res.data;
+  } catch (error) {
+    console.error("[Kwikship] Replacement Forward Error:", error.response?.data || error.message);
+    throw new Error(
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to generate replacement waybill"
+    );
+  }
+
+  if (data?.status !== "SUCCESS") {
+    throw new Error(data?.message || "Replacement waybill generation failed");
+  }
+
+  const now = new Date();
+  ret.replacementShipment = {
+    waybill: data.waybill,
+    courierName: data.courierName || "",
+    shippingLabel: data.shippingLabel || "",
+    status: "CREATED",
+    shipmentCode,
+    createdAt: now,
+    lastUpdated: now,
+  };
+  await ret.save();
+  return ret;
+};
+
+/* ============================================================
    TRACKING
 ============================================================ */
 /** Fetch status for one or more waybills (up to 20, comma-separated). */
@@ -689,10 +824,14 @@ const applyStatusUpdate = async (waybill, status, statusDate) => {
     // Map to item-level lifecycle status
     const mapped = mapKwikshipStatusToItem(status);
     if (mapped) {
+      const itemSet = { "items.$[elem].status": mapped };
+      // Pin lifecycle timestamps so refund-window math is reliable
+      if (mapped === "shipped") itemSet["items.$[elem].shipping.shippedAt"] = now;
+      if (mapped === "delivered") itemSet["items.$[elem].shipping.deliveredAt"] = now;
       await Order.updateOne(
         { _id: orderUpdate._id },
         {
-          $set: { "items.$[elem].status": mapped },
+          $set: itemSet,
           $push: {
             "items.$[elem].statusHistory": {
               status: mapped,
@@ -708,7 +847,7 @@ const applyStatusUpdate = async (waybill, status, statusDate) => {
     return { type: "order", id: orderUpdate._id };
   }
 
-  // Return (reverse shipment)
+  // Return — reverse pickup leg
   const retDoc = await Return.findOneAndUpdate(
     { "kwikship.waybill": waybill },
     { $set: { "kwikship.status": status, "kwikship.lastUpdated": now } },
@@ -717,9 +856,38 @@ const applyStatusUpdate = async (waybill, status, statusDate) => {
   if (retDoc) {
     if (/delivered|completed/i.test(status)) {
       await Return.updateOne({ _id: retDoc._id }, { $set: { status: "completed" } });
+
+      // Reverse leg delivered → trigger downstream action
+      try {
+        if (retDoc.type === "return") {
+          // Issue refund (lazy-required to avoid circular deps)
+          const refundService = require("./refund.service");
+          await refundService.issueRefundForReturn(retDoc._id);
+        } else if (retDoc.type === "replace") {
+          // Send the replacement product out
+          await createReplacementForward(retDoc._id);
+        }
+      } catch (downstreamErr) {
+        console.error(
+          `[Kwikship] downstream action failed for return ${retDoc._id}:`,
+          downstreamErr.message
+        );
+        // Don't rethrow — status update itself succeeded; admin can retry.
+      }
     }
     return { type: "return", id: retDoc._id };
   }
+
+  // Replacement — forward leg
+  const repDoc = await Return.findOneAndUpdate(
+    { "replacementShipment.waybill": waybill },
+    { $set: { "replacementShipment.status": status, "replacementShipment.lastUpdated": now } },
+    { new: true }
+  );
+  if (repDoc) {
+    return { type: "replacement", id: repDoc._id };
+  }
+
   return null;
 };
 
@@ -832,6 +1000,8 @@ module.exports = {
   createShipmentsForOrder,
   // reverse
   createReverseShipment,
+  // replacement
+  createReplacementForward,
   // tracking
   fetchStatus,
   applyStatusUpdate,

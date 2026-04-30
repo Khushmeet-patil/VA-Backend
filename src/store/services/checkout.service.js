@@ -1,25 +1,16 @@
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
-const Order = require("../models/Order");
 const Coupon = require("../models/Coupon");
 const { createOrder } = require("./order.service");
 const { resolveShippingAddress } = require("./shippingAddress.service");
 
 exports.cartCheckout = async ({ userId, couponCode, shippingAddress, addressId, selectedItems }) => {
-  // Validate the shipping address up front so we never create an order with
-  // an incomplete snapshot that would later break Kwikship.
-  const resolvedShippingAddress = await resolveShippingAddress({
-    customerId: userId,
-    addressId,
-    shippingAddress,
-  });
   const cart = await Cart.findOne({ userId });
 
   if (!cart || cart.items.length === 0) {
     throw new Error("Cart is empty");
   }
 
-  // 🔥 FILTER SELECTED ITEMS
   const filteredCartItems = selectedItems && selectedItems.length > 0
     ? cart.items.filter(item => selectedItems.includes(item.productId.toString()))
     : cart.items;
@@ -28,66 +19,27 @@ exports.cartCheckout = async ({ userId, couponCode, shippingAddress, addressId, 
     throw new Error("No selected items to checkout");
   }
 
-  let subtotal = 0;
-  const items = [];
+  const items = filteredCartItems.map(item => ({
+    productId: item.productId,
+    quantity: item.quantity,
+    size: item.size,
+  }));
 
-  for (const item of filteredCartItems) {
-    const product = await Product.findById(item.productId);
-
-    if (!product) continue;
-
-    const price = product.pricing.finalPrice;
-    const total = price * item.quantity;
-
-    subtotal += total;
-
-    items.push({
-      productId: product._id,
-      vendorId: product.vendorId,
-      name: product.name,
-      image: product.images?.[0],
-      price,
-      quantity: item.quantity,
-      totalPrice: total,
-    });
-  }
-
-  /* ===== COUPON ===== */
-  let discount = 0;
-  let appliedCoupon = null;
-
-  if (couponCode) {
-    const coupon = await Coupon.findOne({ code: couponCode, isActive: true });
-    if (!coupon) throw new Error("Invalid coupon");
-
-    discount =
-      coupon.discountType === "percentage"
-        ? (subtotal * coupon.discountValue) / 100
-        : coupon.discountValue;
-
-    appliedCoupon = {
-      code: coupon.code,
-      discountAmount: discount,
-    };
-  }
-
-  const totalAmount = subtotal - discount;
-
-  const order = await Order.create({
-    userId,
+  const { order } = await createOrder({
+    customerId: userId,
     items,
-    pricing: {
-      subtotal,
-      discount,
-      totalAmount,
-    },
-    coupon: appliedCoupon,
-    shippingAddress: resolvedShippingAddress,
-    orderStatus: "placed",
+    shippingAddress,
+    addressId,
+    couponCode,
+    paymentMethod: "razorpay",
   });
 
-  // 🔥 CLEAR CART
-  await Cart.findOneAndUpdate({ userId }, { items: [], subtotal: 0 });
+  // Clear only the checked-out items from cart
+  const checkedOutIds = new Set(filteredCartItems.map(i => i.productId.toString()));
+  await Cart.findOneAndUpdate(
+    { userId },
+    { $pull: { items: { productId: { $in: [...checkedOutIds] } } } }
+  );
 
   return order;
 };
