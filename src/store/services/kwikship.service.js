@@ -411,8 +411,6 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
     collectableAmount: Number(collectableAmount).toFixed(2),
   };
 
-  console.log("[Kwikship] Waybill Payload:", JSON.stringify(payload, null, 2));
-
   let data;
   try {
     const res = await axios.post(`${baseUrl}/waybill`, payload, {
@@ -469,7 +467,7 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
   }
 
   await order.save();
-  return { order, waybill: data.waybill, courierName: data.courierName, edd: eddDate };
+  return { order, waybill: data.waybill, courierName: data.courierName, edd: eddDate, shippingLabel: data.shippingLabel || "" };
 };
 
 /**

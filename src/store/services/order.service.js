@@ -723,6 +723,7 @@ exports.confirmOrder = async (orderId, vendorId) => {
       waybill: result.waybill,
       courierName: result.courierName,
       expectedDelivery: result.edd,
+      shippingLabel: result.shippingLabel,
     };
   } catch (shipErr) {
     console.error("[Kwikship] Shipment failed on vendor confirm:", shipErr.message, { orderId: order._id.toString(), vendorId: vendorId.toString() });

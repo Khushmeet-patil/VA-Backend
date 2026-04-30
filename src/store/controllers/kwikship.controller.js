@@ -66,6 +66,7 @@ exports.createShipmentForVendor = async (req, res) => {
       waybill: result.waybill,
       courierName: result.courierName,
       expectedDelivery: result.edd,
+      shippingLabel: result.shippingLabel,
     });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
