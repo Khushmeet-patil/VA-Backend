@@ -25,6 +25,7 @@ router.use("/kwikship", require("./kwikship.routes"));
 router.use("/reports", require("./report.routes"));
 router.use("/webhooks/shiprocket", require("../webhooks/shiprocket.webhook.routes"));
 router.use("/live-temples", require("./liveTemple.routes"));
+router.use("/purposes", require("./purpose.routes"));
 // router.use("/analytics", require("./analytics.routes"));
 // router.use("/profile", require("./profile.routes"));
 

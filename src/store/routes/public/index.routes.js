@@ -13,5 +13,6 @@ router.use("/search", require("./search.routes"))
 router.use("/categories", require("./categories.routes"))
 router.use("/site-settings", require("./site-settings.routes"))
 router.use("/live-temples", require("./liveTemple.routes"))
+router.use("/purposes", require("./purpose.routes"))
 
 module.exports = router;

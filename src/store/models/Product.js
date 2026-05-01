@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { getStoreDB } = require("../config/db");
-const PURPOSES = require("../constants/purposes");
+
 
 const productSchema = new mongoose.Schema(
   {
@@ -219,7 +219,6 @@ const productSchema = new mongoose.Schema(
     purposes: [
       {
         type: String,
-        enum: PURPOSES,
         index: true,
       },
     ],
