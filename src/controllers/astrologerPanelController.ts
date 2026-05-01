@@ -1061,3 +1061,170 @@ export const getUserProfileForAstrologer = async (req: Request, res: Response) =
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// ==========================================
+// Personalized Notifications
+// ==========================================
+
+export const getNotificationTemplates = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+
+        const templates = await getSettingValue('ASTROLOGER_NOTIFICATION_TEMPLATES', []);
+        const limitPerDay = await getSettingValue('ASTROLOGER_NOTIFICATION_LIMIT_PER_DAY', 5);
+
+        // Check if daily limit needs reset
+        const now = new Date();
+        const lastDate = astrologer.lastNotificationDate;
+        let sentToday = astrologer.notificationsSentToday || 0;
+
+        if (lastDate && (
+            lastDate.getDate() !== now.getDate() ||
+            lastDate.getMonth() !== now.getMonth() ||
+            lastDate.getFullYear() !== now.getFullYear()
+        )) {
+            sentToday = 0;
+            await Astrologer.findByIdAndUpdate(astrologerId, {
+                $set: { notificationsSentToday: 0 }
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                templates,
+                limitPerDay,
+                sentToday,
+                remainingToday: Math.max(0, limitPerDay - sentToday)
+            }
+        });
+    } catch (error: any) {
+        console.error('getNotificationTemplates error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+export const getAstrologerAudience = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+
+        // 1. Get Followers
+        // We use AstrologerFollower model (Assuming it exists, we will query User directly if they have followers array, but AstrologerFollower is standard)
+        let followerUserIds: string[] = [];
+        try {
+            const follows = await mongoose.model('AstrologerFollower').find({ astrologerId });
+            followerUserIds = follows.map((f: any) => f.userId.toString());
+        } catch (e) {
+            console.warn('AstrologerFollower model error:', e);
+        }
+
+        // 2. Get Talked Users
+        const chatSessions = await ChatSession.find({ astrologerId }).select('userId');
+        const talkedUserIds = chatSessions.map(c => c.userId.toString());
+
+        // Combine and unique
+        const uniqueUserIds = Array.from(new Set([...followerUserIds, ...talkedUserIds]));
+
+        // Fetch user names
+        const users = await User.find({ _id: { $in: uniqueUserIds } }).select('name');
+        
+        const audienceList = users.map(u => ({
+            id: u._id.toString(),
+            name: u.name || 'User'
+        }));
+
+        res.json({
+            success: true,
+            data: audienceList
+        });
+
+    } catch (error: any) {
+        console.error('getAstrologerAudience error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+export const sendPersonalizedNotification = async (req: Request, res: Response) => {
+    try {
+        const astrologerId = (req as any).userId;
+        const { targetUserIds, template } = req.body;
+
+        if (!targetUserIds || !Array.isArray(targetUserIds) || targetUserIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'Target users are required' });
+        }
+        if (!template) {
+            return res.status(400).json({ success: false, message: 'Notification template is required' });
+        }
+
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
+
+        const limitPerDay = await getSettingValue('ASTROLOGER_NOTIFICATION_LIMIT_PER_DAY', 5);
+        
+        // Reset if new day
+        const now = new Date();
+        const lastDate = astrologer.lastNotificationDate;
+        let sentToday = astrologer.notificationsSentToday || 0;
+
+        if (lastDate && (
+            lastDate.getDate() !== now.getDate() ||
+            lastDate.getMonth() !== now.getMonth() ||
+            lastDate.getFullYear() !== now.getFullYear()
+        )) {
+            sentToday = 0;
+        }
+
+        if (sentToday >= limitPerDay) {
+            return res.status(400).json({ success: false, message: 'Daily notification limit reached' });
+        }
+
+        const astrologerName = `${astrologer.firstName} ${astrologer.lastName}`;
+        const users = await User.find({ _id: { $in: targetUserIds } }).select('name fcmToken');
+
+        let successCount = 0;
+        
+        for (const user of users) {
+            const userName = user.name || 'User';
+            const personalizedMessage = template
+                .replace(/{username}/gi, userName)
+                .replace(/{astrologername}/gi, astrologerName);
+
+            // Send notification
+            // We use standard notification logic which pushes to Firebase immediately
+            // Here we assume notificationService.sendPushNotification is available or we use broadcastToUser
+            try {
+                // Using existing notification system which uses FCM internally
+                await notificationService.sendPushNotification(user._id.toString(), {
+                    title: `Message from ${astrologerName}`,
+                    body: personalizedMessage
+                }, { navigateTarget: 'AstrologerList', astrologerId: astrologerId.toString() });
+                successCount++;
+            } catch (err) {
+                console.error(`Failed to send push to ${user._id}:`, err);
+            }
+        }
+
+        // Update limit
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            $set: { 
+                notificationsSentToday: sentToday + 1,
+                lastNotificationDate: new Date()
+            }
+        });
+
+        res.json({
+            success: true,
+            message: `Notification sent to ${successCount} users.`,
+            data: {
+                sentToday: sentToday + 1,
+                remainingToday: Math.max(0, limitPerDay - (sentToday + 1))
+            }
+        });
+
+    } catch (error: any) {
+        console.error('sendPersonalizedNotification error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};

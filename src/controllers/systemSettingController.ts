@@ -82,6 +82,12 @@ export const getSettingByKey = async (req: Request, res: Response) => {
                     }
                 });
             }
+            if (key === 'ASTROLOGER_NOTIFICATION_TEMPLATES') {
+                return res.json({ success: true, data: { key, value: ['Hello {username}, I am available now!'] } });
+            }
+            if (key === 'ASTROLOGER_NOTIFICATION_LIMIT_PER_DAY') {
+                return res.json({ success: true, data: { key, value: 5 } });
+            }
             return res.status(404).json({ success: false, message: 'Setting not found' });
         }
 

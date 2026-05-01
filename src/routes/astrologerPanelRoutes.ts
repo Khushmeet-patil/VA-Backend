@@ -16,7 +16,10 @@ import {
     getPanelReviews,
     getUserProfileForAstrologer,
     requestAccountDeletion,
-    getTodayHours
+    getTodayHours,
+    getNotificationTemplates,
+    getAstrologerAudience,
+    sendPersonalizedNotification
 } from '../controllers/astrologerPanelController';
 import {
     getSchedule,
@@ -42,6 +45,11 @@ router.get('/stats', authMiddleware, getStats);
 router.get('/chats', authMiddleware, getChats);
 router.get('/reviews', authMiddleware, getPanelReviews);
 router.get('/today-hours', authMiddleware, getTodayHours);
+
+// Notification routes
+router.get('/notification-templates', authMiddleware, getNotificationTemplates);
+router.get('/audience', authMiddleware, getAstrologerAudience);
+router.post('/send-notification', authMiddleware, sendPersonalizedNotification);
 
 // Withdrawal routes
 router.post('/withdraw', authMiddleware, requestWithdrawal);

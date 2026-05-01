@@ -60,6 +60,8 @@ export interface IAstrologer extends Document {
     freeChatLimit: number;
     freeChatsToday: number;
     lastFreeChatDate?: Date;
+    notificationsSentToday: number;
+    lastNotificationDate?: Date;
     isAutoOnlineEnabled: boolean;
     isManualOverride: boolean;
     expectedScheduleState: 'online' | 'offline' | 'none';
@@ -138,6 +140,10 @@ const AstrologerSchema: Schema = new Schema({
     freeChatLimit: { type: Number, default: 0 },
     freeChatsToday: { type: Number, default: 0 }, // Track daily usage
     lastFreeChatDate: { type: Date }, // To track when the last free chat happened
+
+    // Astrologer Notification Settings
+    notificationsSentToday: { type: Number, default: 0 },
+    lastNotificationDate: { type: Date },
 
     // Auto-Online Scheduling
     isAutoOnlineEnabled: { type: Boolean, default: false },
