@@ -88,6 +88,9 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'ASTROLOGER_NOTIFICATION_LIMIT_PER_DAY') {
                 return res.json({ success: true, data: { key, value: 5 } });
             }
+            if (key === 'ASTROLOGER_NOTIFICATION_COOLDOWN_HOURS') {
+                return res.json({ success: true, data: { key, value: 24 } });
+            }
             return res.status(404).json({ success: false, message: 'Setting not found' });
         }
 

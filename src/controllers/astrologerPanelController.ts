@@ -16,6 +16,8 @@ import { sendSmsOtp } from '../services/smsService';
 import DeletionRequest from '../models/DeletionRequest';
 import availabilityService from '../services/availabilityService';
 import AstrologerAvailabilityLog from '../models/AstrologerAvailabilityLog';
+import AstrologerNotificationLog from '../models/AstrologerNotificationLog';
+import SystemSetting from '../models/SystemSetting';
 
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
@@ -1110,30 +1112,56 @@ export const getAstrologerAudience = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
 
-        // 1. Get Followers
-        // We use AstrologerFollower model (Assuming it exists, we will query User directly if they have followers array, but AstrologerFollower is standard)
-        let followerUserIds: string[] = [];
+        // 1. Get Followers with dates
+        let followers: { userId: string, date: Date, type: 'follower' }[] = [];
         try {
             const follows = await mongoose.model('AstrologerFollower').find({ astrologerId });
-            followerUserIds = follows.map((f: any) => f.userId.toString());
+            followers = follows.map((f: any) => ({
+                userId: f.userId.toString(),
+                date: f.createdAt,
+                type: 'follower'
+            }));
         } catch (e) {
             console.warn('AstrologerFollower model error:', e);
         }
 
-        // 2. Get Talked Users
-        const chatSessions = await ChatSession.find({ astrologerId }).select('userId');
-        const talkedUserIds = chatSessions.map(c => c.userId.toString());
-
-        // Combine and unique
-        const uniqueUserIds = Array.from(new Set([...followerUserIds, ...talkedUserIds]));
-
-        // Fetch user names
-        const users = await User.find({ _id: { $in: uniqueUserIds } }).select('name');
-        
-        const audienceList = users.map(u => ({
-            id: u._id.toString(),
-            name: u.name || 'User'
+        // 2. Get Talked Users with dates
+        const chatSessions = await ChatSession.find({ astrologerId }).select('userId createdAt').sort({ createdAt: -1 });
+        const chatUsers: { userId: string, date: Date, type: 'chat' }[] = chatSessions.map(c => ({
+            userId: c.userId.toString(),
+            date: (c as any).createdAt,
+            type: 'chat'
         }));
+
+        // Merge and unique (keep most recent date)
+        const userMap = new Map<string, { id: string, date: Date, types: string[] }>();
+
+        [...followers, ...chatUsers].forEach(item => {
+            const existing = userMap.get(item.userId);
+            if (existing) {
+                if (item.date && (!existing.date || item.date > existing.date)) existing.date = item.date;
+                if (!existing.types.includes(item.type)) existing.types.push(item.type);
+            } else {
+                userMap.set(item.userId, {
+                    id: item.userId,
+                    date: item.date,
+                    types: [item.type]
+                });
+            }
+        });
+
+        const uniqueUserIds = Array.from(userMap.keys());
+        const users = await User.find({ _id: { $in: uniqueUserIds } }).select('name');
+
+        const audienceList = users.map(u => {
+            const info = userMap.get(u._id.toString());
+            return {
+                id: u._id.toString(),
+                name: u.name || 'User',
+                lastInteraction: info?.date,
+                types: info?.types || []
+            };
+        });
 
         res.json({
             success: true,
@@ -1183,23 +1211,45 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
         const astrologerName = `${astrologer.firstName} ${astrologer.lastName}`;
         const users = await User.find({ _id: { $in: targetUserIds } }).select('name fcmToken');
 
+        // Fetch cooldown setting
+        const cooldownSetting = await SystemSetting.findOne({ key: 'ASTROLOGER_NOTIFICATION_COOLDOWN_HOURS' });
+        const cooldownHours = cooldownSetting ? (cooldownSetting.value as number) : 24;
+        const cooldownMs = cooldownHours * 60 * 60 * 1000;
+
         let successCount = 0;
+        let skippedCount = 0;
         
         for (const user of users) {
+            // Check cooldown for this specific user
+            const lastLog = await AstrologerNotificationLog.findOne({
+                astrologerId: astrologerId,
+                userId: user._id
+            }).sort({ sentAt: -1 });
+
+            if (lastLog && (now.getTime() - lastLog.sentAt.getTime() < cooldownMs)) {
+                skippedCount++;
+                continue;
+            }
+
             const userName = user.name || 'User';
             const personalizedMessage = template
                 .replace(/{username}/gi, userName)
                 .replace(/{astrologername}/gi, astrologerName);
 
             // Send notification
-            // We use standard notification logic which pushes to Firebase immediately
-            // Here we assume notificationService.sendPushNotification is available or we use broadcastToUser
             try {
-                // Using existing notification system which uses FCM internally
                 await notificationService.sendToUser(user._id.toString(), {
                     title: `Message from ${astrologerName}`,
                     body: personalizedMessage
                 }, { navigateTarget: 'AstrologerList', astrologerId: astrologerId.toString() });
+
+                // Log the send
+                await AstrologerNotificationLog.create({
+                    astrologerId: astrologerId,
+                    userId: user._id,
+                    sentAt: now
+                });
+
                 successCount++;
             } catch (err) {
                 console.error(`Failed to send push to ${user._id}:`, err);
@@ -1207,22 +1257,24 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
         }
 
         // Update limit
-        await Astrologer.findByIdAndUpdate(astrologerId, {
-            $set: { 
-                notificationsSentToday: sentToday + 1,
-                lastNotificationDate: new Date()
-            }
-        });
+        if (successCount > 0) {
+            await Astrologer.findByIdAndUpdate(astrologerId, {
+                $set: { 
+                    notificationsSentToday: sentToday + successCount,
+                    lastNotificationDate: now
+                }
+            });
+        }
 
         res.json({
             success: true,
-            message: `Notification sent to ${successCount} users.`,
+            message: `Notification sent to ${successCount} users.` + (skippedCount > 0 ? ` ${skippedCount} users skipped due to cooldown.` : ''),
             data: {
-                sentToday: sentToday + 1,
-                remainingToday: Math.max(0, limitPerDay - (sentToday + 1))
+                sentToday: sentToday + successCount,
+                limitPerDay: limitPerDay,
+                remainingToday: Math.max(0, limitPerDay - (sentToday + successCount))
             }
         });
-
     } catch (error: any) {
         console.error('sendPersonalizedNotification error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
