@@ -1196,7 +1196,7 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
             // Here we assume notificationService.sendPushNotification is available or we use broadcastToUser
             try {
                 // Using existing notification system which uses FCM internally
-                await notificationService.sendPushNotification(user._id.toString(), {
+                await notificationService.sendToUser(user._id.toString(), {
                     title: `Message from ${astrologerName}`,
                     body: personalizedMessage
                 }, { navigateTarget: 'AstrologerList', astrologerId: astrologerId.toString() });
