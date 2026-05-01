@@ -29,6 +29,7 @@ export const getUserNotifications = async (req: Request, res: Response) => {
 
         const query = {
             isActive: true,
+            isScheduled: { $ne: true }, // Exclude scheduled templates
             $or: audienceFilters
         };
 
@@ -105,6 +106,7 @@ export const getUnreadCount = async (req: Request, res: Response) => {
 
         const query = {
             isActive: true,
+            isScheduled: { $ne: true }, // Exclude scheduled templates
             isRead: false,
             readBy: { $ne: userId },
             $or: audienceFilters

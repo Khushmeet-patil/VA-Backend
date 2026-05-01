@@ -1349,9 +1349,8 @@ export const deleteNotification = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Notification not found' });
         }
 
-        // 1. Deactivate in DB (stops it from being initialized on restart)
-        notification.isActive = false;
-        await notification.save();
+        // 1. Delete from DB
+        await Notification.findByIdAndDelete(id);
 
         // 2. Cancel active Cron Job if running
         scheduledNotificationService.cancelJob(id);

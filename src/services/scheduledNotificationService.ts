@@ -53,6 +53,7 @@ class ScheduledNotificationService {
                         return;
                     }
 
+                    // 1. Send Push Notification
                     await notificationService.broadcast(
                         latest.audience as any,
                         { title: latest.title, body: latest.message },
@@ -61,7 +62,22 @@ class ScheduledNotificationService {
                             navigateTarget: latest.navigateTarget || ''
                         }
                     );
-                    console.log(`[ScheduledNotificationService] Broadcast completed for ${latest._id}`);
+
+                    // 2. Save a record to DB so it appears in App Notification History
+                    // This instance is NOT scheduled, it's a delivered record
+                    await Notification.create({
+                        title: latest.title,
+                        message: latest.message,
+                        type: latest.type || 'info',
+                        audience: latest.audience,
+                        isActive: true,
+                        isScheduled: false, // Delivered instance
+                        navigateType: latest.navigateType || 'none',
+                        navigateTarget: latest.navigateTarget || '',
+                        deliveredAt: new Date()
+                    });
+
+                    console.log(`[ScheduledNotificationService] Broadcast and DB record completed for ${latest._id}`);
                 } catch (err) {
                     console.error(`[ScheduledNotificationService] Execution failed for ${notification._id}:`, err);
                 }
