@@ -773,7 +773,7 @@ const fetchStatus = async (waybillOrList) => {
     : waybillOrList;
 
   try {
-    const res = await axios.get(`${baseUrl}/wayBillDetails`, {
+    const res = await axios.get(`${baseUrl}/waybillDetails`, {
       params: { waybills },
       headers: { Authorization: token },
       timeout: 10000,
