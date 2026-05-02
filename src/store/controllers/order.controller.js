@@ -1,6 +1,6 @@
 const orderService = require("../services/order.service");
 
-/* ================= INITIATE PAYMENT ================= */
+/* ================= INITIATE PAYMENT (price calc) ================= */
 exports.initiatePayment = async (req, res) => {
   try {
     const { items, couponCode } = req.body;
@@ -14,6 +14,7 @@ exports.initiatePayment = async (req, res) => {
     return res.json({
       success: true,
       payableAmount: result.payableAmount,
+      advanceCod: result.advanceCod,
       razorpay: result.razorpay,
     });
   } catch (error) {
@@ -21,6 +22,45 @@ exports.initiatePayment = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+
+/* ================= PLACE PREPAID ORDER (GoKwik) ================= */
+exports.placePrepaidOrder = async (req, res) => {
+  try {
+    const order = await orderService.placePrepaidOrder({
+      customerId: req.user._id,
+      ...req.body,
+    });
+    return res.status(201).json({ success: true, order });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/* ================= PLACE COD ORDER (GoKwik) ================= */
+exports.placeCodOrder = async (req, res) => {
+  try {
+    const order = await orderService.placeCodOrder({
+      customerId: req.user._id,
+      ...req.body,
+    });
+    return res.status(201).json({ success: true, order });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/* ================= PLACE ADVANCE COD ORDER (GoKwik) ================= */
+exports.placeAdvanceCodOrder = async (req, res) => {
+  try {
+    const order = await orderService.placeAdvanceCodOrder({
+      customerId: req.user._id,
+      ...req.body,
+    });
+    return res.status(201).json({ success: true, order });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
   }
 };
 

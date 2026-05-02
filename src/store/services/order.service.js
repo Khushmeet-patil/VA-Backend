@@ -507,11 +507,10 @@ exports.getSingleOrder = async (orderId, user = null) => {
   }
 };
 
-exports.initiatePayment = async ({ customerId, items, couponCode }) => {
-  if (!items || !items.length) {
-    throw new Error("No items");
-  }
-
+/* =====================================================
+   CALCULATE ORDER TOTAL (shared helper)
+===================================================== */
+const calculateOrderTotals = async ({ items, customerId, couponCode }) => {
   let subtotal = 0;
   let totalGst = 0;
   let totalAmount = 0;
@@ -521,11 +520,11 @@ exports.initiatePayment = async ({ customerId, items, couponCode }) => {
     if (!product) throw new Error("Product not found");
 
     const p = product.pricing;
-    const qty = item.quantity;
+    const qty = Number(item.quantity);
 
-    const discountedPrice = p.basePrice - (p.discountAmount || 0);
+    const discountedPrice = (p.discountedPrice) || (p.basePrice - (p.discountAmount || 0));
     const gst = p.gstAmount || 0;
-    const final = discountedPrice + gst;
+    const final = p.finalPrice || (discountedPrice + gst);
 
     subtotal += discountedPrice * qty;
     totalGst += gst * qty;
@@ -539,24 +538,188 @@ exports.initiatePayment = async ({ customerId, items, couponCode }) => {
   });
 
   const payableAmount = Math.max(totalAmount - discount, 0);
+  return { subtotal, totalGst, totalAmount, discount, payableAmount };
+};
 
-  const razorpayOrder = await razorpay.orders.create({
-    amount: Math.round(payableAmount * 100),
-    currency: "INR",
-    receipt: `pay_${Date.now()}`,
-  });
+/* =====================================================
+   GOKWIK: INITIATE ORDER (returns totals for display)
+   Replaces Razorpay initiatePayment — no gateway call,
+   just price calculation so frontend can show totals.
+===================================================== */
+exports.initiatePayment = async ({ customerId, items, couponCode }) => {
+  if (!items || !items.length) throw new Error("No items");
+
+  const { payableAmount } = await calculateOrderTotals({ items, customerId, couponCode });
+
+  // Advance COD: 20% upfront, rest on delivery
+  const advancePercent = Number(process.env.ADVANCE_COD_PERCENT || 20);
+  const advanceAmount = Math.round((payableAmount * advancePercent) / 100);
+  const collectableAmount = payableAmount - advanceAmount;
 
   return {
     success: true,
     payableAmount,
-    razorpay: {
-      orderId: razorpayOrder.id,
-      key: process.env.STORE_RAZORPAY_KEY_ID,
-      currency: "INR",
+    advanceCod: {
+      advanceAmount,
+      collectableAmount,
+      percent: advancePercent,
     },
+    // Legacy field kept so old clients don't break
+    razorpay: null,
   };
 };
 
+/* =====================================================
+   GOKWIK: PLACE PREPAID ORDER
+   Customer pays full amount via GoKwik's checkout.
+   For now we mark as "pending" — webhook will confirm.
+===================================================== */
+exports.placePrepaidOrder = async ({
+  customerId,
+  items,
+  shippingAddress,
+  addressId,
+  couponCode,
+  notes,
+}) => {
+  const { order, vendorMap } = await exports.createOrder({
+    customerId,
+    items,
+    shippingAddress,
+    addressId,
+    couponCode,
+    notes,
+    paymentMethod: "prepaid",
+    paymentStatus: "pending",
+    orderStatus: "pending",
+  });
+
+  await _postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
+  return order;
+};
+
+/* =====================================================
+   GOKWIK: PLACE COD ORDER
+===================================================== */
+exports.placeCodOrder = async ({
+  customerId,
+  items,
+  shippingAddress,
+  addressId,
+  couponCode,
+  notes,
+}) => {
+  const { order, vendorMap } = await exports.createOrder({
+    customerId,
+    items,
+    shippingAddress,
+    addressId,
+    couponCode,
+    notes,
+    paymentMethod: "cod",
+    paymentStatus: "pending",
+    orderStatus: "pending",
+  });
+
+  await _postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
+  return order;
+};
+
+/* =====================================================
+   GOKWIK: PLACE ADVANCE COD ORDER
+   Advance % paid now; rest collected on delivery.
+===================================================== */
+exports.placeAdvanceCodOrder = async ({
+  customerId,
+  items,
+  shippingAddress,
+  addressId,
+  couponCode,
+  notes,
+}) => {
+  const { payableAmount } = await calculateOrderTotals({ items, customerId, couponCode });
+
+  const advancePercent = Number(process.env.ADVANCE_COD_PERCENT || 20);
+  const advanceAmount = Math.round((payableAmount * advancePercent) / 100);
+  const collectableAmount = payableAmount - advanceAmount;
+
+  const { order, vendorMap } = await exports.createOrder({
+    customerId,
+    items,
+    shippingAddress,
+    addressId,
+    couponCode,
+    notes,
+    paymentMethod: "advance_cod",
+    paymentStatus: "pending",
+    orderStatus: "pending",
+  });
+
+  // Store advance COD breakdown on the order
+  order.advanceCod = {
+    advanceAmount,
+    collectableAmount,
+  };
+  await order.save();
+
+  await _postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
+  return order;
+};
+
+/* =====================================================
+   POST-ORDER CLEANUP (cart clear + vendor emails)
+===================================================== */
+async function _postOrderCleanup({ order, vendorMap, items, customerId }) {
+  // Record coupon usage
+  if (order.coupon?.couponId) {
+    await CouponUsage.create({
+      couponId: order.coupon.couponId,
+      userId: customerId,
+      orderId: order._id,
+    }).catch(() => {}); // non-blocking
+  }
+
+  // Remove purchased items from cart
+  const productIdsToRemove = items.map((i) => i.productId.toString());
+  const cart = await Cart.findOne({ userId: customerId });
+  if (cart) {
+    cart.items = cart.items.filter(
+      (item) => !productIdsToRemove.includes(item.productId.toString())
+    );
+    let subtotal = 0;
+    let totalItems = 0;
+    cart.items.forEach((item) => {
+      subtotal += (item.priceAtAdd || 0) * item.quantity;
+      totalItems += item.quantity;
+    });
+    cart.subtotal = subtotal;
+    cart.totalItems = totalItems;
+    await cart.save();
+  }
+
+  // Send vendor emails
+  for (const [email, data] of Object.entries(vendorMap)) {
+    await sendEmail({
+      to: email,
+      subject: EMAIL_SUBJECTS.VENDOR_NEW_ORDER,
+      html: newOrderReceivedTemplate({
+        vendorName: data.vendorName,
+        orderNumber: order.orderNumber,
+        products: data.items,
+        customerName: order.shippingAddress.fullName,
+        shippingAddress: `${order.shippingAddress.addressLine1}, ${order.shippingAddress.city}`,
+        platformName: "VedicStore",
+        supportEmail: "support@vedicstore.com",
+        year: new Date().getFullYear(),
+      }),
+    }).catch((e) => logger.error("Vendor email failed", { error: e.message }));
+  }
+}
+
+/* =====================================================
+   LEGACY: verifyPaymentAndCreateOrder (Razorpay compat)
+   Kept so old webhook/clients don't break immediately.
+===================================================== */
 exports.verifyPaymentAndCreateOrder = async ({
   customerId,
   razorpay_order_id,
@@ -582,7 +745,6 @@ exports.verifyPaymentAndCreateOrder = async ({
     throw new Error("Invalid payment signature");
   }
 
-  /* ✅ CREATE ORDER AFTER PAYMENT */
   const { order, vendorMap } = await exports.createOrder({
     customerId,
     items,
@@ -600,54 +762,7 @@ exports.verifyPaymentAndCreateOrder = async ({
     },
   });
 
-  /* ✅ COUPON USAGE */
-  if (order.coupon?.couponId) {
-    await CouponUsage.create({
-      couponId: order.coupon.couponId,
-      userId: customerId,
-      orderId: order._id,
-    });
-  }
-
-  /* ✅ REMOVE ONLY PURCHASED ITEMS FROM CART & UPDATE TOTALS */
-  const productIdsToRemove = items.map((i) => i.productId.toString());
-  const cart = await Cart.findOne({ userId: customerId });
-  if (cart) {
-    cart.items = cart.items.filter(
-      (item) => !productIdsToRemove.includes(item.productId.toString())
-    );
-    
-    // Recalculate totals
-    let subtotal = 0;
-    let totalItems = 0;
-    cart.items.forEach((item) => {
-      subtotal += (item.priceAtAdd || 0) * item.quantity;
-      totalItems += item.quantity;
-    });
-    cart.subtotal = subtotal;
-    cart.totalItems = totalItems;
-    
-    await cart.save();
-  }
-
-  /* ✅ SEND VENDOR EMAILS */
-  for (const [email, data] of Object.entries(vendorMap)) {
-    await sendEmail({
-      to: email,
-      subject: EMAIL_SUBJECTS.VENDOR_NEW_ORDER,
-      html: newOrderReceivedTemplate({
-        vendorName: data.vendorName,
-        orderNumber: order.orderNumber,
-        products: data.items,
-        customerName: order.shippingAddress.fullName,
-        shippingAddress: `${order.shippingAddress.addressLine1}, ${order.shippingAddress.city}`,
-        platformName: "Your Platform",
-        supportEmail: "support@yourplatform.com",
-        year: new Date().getFullYear(),
-      }),
-    });
-  }
-
+  await _postOrderCleanup({ order, vendorMap, items, customerId });
   return order;
 };
 

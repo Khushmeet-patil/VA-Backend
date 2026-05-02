@@ -214,8 +214,8 @@ const orderSchema = new mongoose.Schema(
     /* ================= PAYMENT ================= */
     paymentMethod: {
       type: String,
-      enum: ["razorpay", "cod", "RAZORPAY", "COD"],
-      default: "razorpay",
+      enum: ["razorpay", "cod", "RAZORPAY", "COD", "prepaid", "advance_cod"],
+      default: "prepaid",
     },
 
     paymentStatus: {
@@ -225,6 +225,13 @@ const orderSchema = new mongoose.Schema(
     },
 
     paidAt: Date,
+
+    // Advance COD: partial amount paid upfront, rest collected on delivery
+    advanceCod: {
+      advanceAmount: { type: Number, default: 0 },   // amount paid upfront
+      collectableAmount: { type: Number, default: 0 }, // amount to collect on delivery
+      advancePaidAt: Date,
+    },
 
     razorpay: {
       orderId: String,
