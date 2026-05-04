@@ -2717,3 +2717,61 @@ export const setGlobalAstrologerRate = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };
+
+// KYC Management
+export const getPendingKyc = async (req: Request, res: Response) => {
+    try {
+        const pendingKyc = await Astrologer.find({ kycStatus: 'pending' }).select('firstName lastName profilePhoto mobileNumber kycStatus verificationDocuments');
+        res.json({ success: true, data: pendingKyc });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
+export const processKyc = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { status, reason } = req.body; // status: 'verified' | 'rejected'
+
+        if (!['verified', 'rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        astrologer.kycStatus = status;
+        if (status === 'verified') {
+            astrologer.isVerified = true;
+            astrologer.kycRejectionReason = '';
+        } else {
+            astrologer.isVerified = false;
+            astrologer.kycRejectionReason = reason || 'Your KYC was rejected. Please contact support.';
+        }
+
+        await astrologer.save();
+
+        // Notify Astrologer
+        const title = status === 'verified' ? 'KYC Verified' : 'KYC Rejected';
+        const body = status === 'verified' 
+            ? 'Congratulations! Your KYC has been verified. You can now withdraw your earnings.'
+            : `Your KYC was rejected. Reason: ${astrologer.kycRejectionReason}`;
+
+        await notificationService.createAndSendNotification(
+            astrologer._id.toString(),
+            'astrologer',
+            { title, body },
+            { 
+                navigateType: 'screen', 
+                navigateTarget: 'Earnings' 
+            },
+            status === 'verified' ? 'info' : 'alert'
+        );
+
+        res.json({ success: true, message: `KYC ${status} successfully` });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};

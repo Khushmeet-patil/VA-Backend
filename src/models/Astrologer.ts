@@ -44,6 +44,8 @@ export interface IAstrologer extends Document {
     activeDeviceId?: string;  // Device ID of the currently logged-in device
     createdAt: Date;
     isVerified: boolean;
+    kycStatus: 'not_submitted' | 'pending' | 'verified' | 'rejected';
+    kycRejectionReason?: string;
     verificationDocuments: {
         name: string;
         url: string;
@@ -120,8 +122,14 @@ const AstrologerSchema: Schema = new Schema({
 
     // Verification
     isVerified: { type: Boolean, default: false },
+    kycStatus: { 
+        type: String, 
+        enum: ['not_submitted', 'pending', 'verified', 'rejected'], 
+        default: 'not_submitted' 
+    },
+    kycRejectionReason: { type: String, default: '' },
     verificationDocuments: [{
-        name: { type: String },
+        name: { type: String }, // 'aadhaar_front', 'aadhaar_back', 'pan_front', 'pan_back', etc.
         url: { type: String },
         uploadedAt: { type: Date, default: Date.now }
     }],

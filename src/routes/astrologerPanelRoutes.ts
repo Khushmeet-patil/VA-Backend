@@ -19,7 +19,8 @@ import {
     getTodayHours,
     getNotificationTemplates,
     getAstrologerAudience,
-    sendPersonalizedNotification
+    sendPersonalizedNotification,
+    uploadKycDocs
 } from '../controllers/astrologerPanelController';
 import {
     getSchedule,
@@ -69,5 +70,6 @@ router.put('/schedule', authMiddleware, updateSchedule);
 // Settings
 import { getSettingByKey } from '../controllers/systemSettingController';
 router.get('/settings/:key', getSettingByKey);
+router.post('/upload-kyc', authMiddleware, uploadKycDocs);
 
 export default router;

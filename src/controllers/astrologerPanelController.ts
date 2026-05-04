@@ -1280,3 +1280,50 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };
+
+export const uploadKycDocs = async (req: Request, res: Response) => {
+    try {
+        const { documentType, frontImage, backImage } = req.body;
+        const astrologerId = (req as any).user?._id;
+
+        if (!documentType || !frontImage || !backImage) {
+            return res.status(400).json({ success: false, message: 'Document type and images are required' });
+        }
+
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Upload images to R2
+        const frontUrl = await uploadBase64ToR2(frontImage, 'kyc', `${astrologerId}-${documentType}-front-${Date.now()}`);
+        const backUrl = await uploadBase64ToR2(backImage, 'kyc', `${astrologerId}-${documentType}-back-${Date.now()}`);
+
+        if (!frontUrl || !backUrl) {
+            return res.status(500).json({ success: false, message: 'Failed to upload images' });
+        }
+
+        // Update astrologer record
+        astrologer.kycStatus = 'pending';
+        // Clear previous docs if any and set new ones
+        astrologer.verificationDocuments = [
+            { name: `${documentType}_front`, url: frontUrl, uploadedAt: new Date() },
+            { name: `${documentType}_back`, url: backUrl, uploadedAt: new Date() }
+        ];
+        await astrologer.save();
+
+        // Notify Admin via Socket
+        const chatService = (await import('../services/chatService')).default;
+        if (chatService.io) {
+            chatService.io.emit('NEW_KYC_REQUEST', { 
+                astrologerId: astrologer._id, 
+                name: `${astrologer.firstName} ${astrologer.lastName}` 
+            });
+        }
+
+        res.json({ success: true, message: 'KYC documents uploaded successfully and are pending verification', data: astrologer });
+    } catch (error: any) {
+        console.error('Upload KYC error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
