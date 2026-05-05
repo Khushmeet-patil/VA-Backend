@@ -410,6 +410,8 @@ class ChatService {
                 ...chatStartedData,
                 userId: session.userId,
                 userName: user.name || 'User',
+                userRealBalance: user.walletBalance || 0,
+                userBonusBalance: user.bonusBalance || 0,
             });
 
             // SESSION ROOM JOIN (best-effort, non-blocking):
@@ -1169,7 +1171,9 @@ class ChatService {
                 sessionId,
                 minutesElapsed: session.totalMinutes,
                 amountDeducted: session.totalAmount,
-                astrologerEarnings: (session as any).astrologerNetEarnings ?? session.astrologerEarnings
+                astrologerEarnings: (session as any).astrologerNetEarnings ?? session.astrologerEarnings,
+                userRealBalance: updatedUser.walletBalance || 0,
+                userBonusBalance: updatedUser.bonusBalance || 0,
             });
         }
 
