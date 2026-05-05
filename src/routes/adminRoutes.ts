@@ -66,9 +66,7 @@ import {
     getStartPopups,
     updateStartPopup,
     deleteStartPopup,
-    setGlobalAstrologerRate,
-    getPendingKyc,
-    processKyc
+    setGlobalAstrologerRate
 } from '../controllers/adminController';
 import { getAvailabilityLogs } from '../controllers/astrologerPanelController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
@@ -172,10 +170,6 @@ router.post('/withdrawals/reject', rejectWithdrawal);
 router.put('/account-deletion/:requestId/approve', approveDeletion);
 router.put('/account-deletion/:requestId/reject', rejectDeletion);
 router.get('/account-deletion/pending', getDeletionRequests);
-
-// KYC Management
-router.get('/kyc/pending', getPendingKyc);
-router.put('/kyc/:astrologerId/process', processKyc);
 
 // Payment History
 router.get('/payment-history', getPaymentHistory);
