@@ -152,12 +152,17 @@ exports.removeOutOfStockItems = async (cartId) => {
 
   const validItems = cart.items.filter((item) => {
     const product = item.productId;
-    if (!product || !product.isVisible) return false;
+    if (!product) return false; // product deleted entirely — remove
+
     if (item.size) {
       const variant = product.variants?.find((v) => v.size === item.size);
-      return variant && variant.stock >= item.quantity;
+      if (!variant) return false; // size no longer exists — remove
+      // keep if stock is unknown (null/undefined) or sufficient
+      return variant.stock == null || variant.stock >= item.quantity;
     }
-    return product.stock >= item.quantity;
+
+    // keep if stock is unknown (null/undefined) or sufficient
+    return product.stock == null || product.stock >= item.quantity;
   });
 
   if (validItems.length !== cart.items.length) {
@@ -174,7 +179,17 @@ exports.removeOutOfStockItems = async (cartId) => {
     await cart.populate(populateOpts);
   }
 
-  return buildGokwikCart(cart);
+  const gkCart = buildGokwikCart(cart);
+
+  gkCart.available_shipping_methods =
+    gkCart.subtotal > 500 || gkCart.subtotal === 0
+      ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
+      : [
+          { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
+          { id: "standard", price: 50, title: "Standard Delivery", currency: "INR" },
+        ];
+
+  return gkCart;
 };
 
 /* ================= UPDATE ORDER FROM GOKWIK WEBHOOK ================= */
