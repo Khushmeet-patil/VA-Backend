@@ -5,7 +5,7 @@
  * authMethod is "none" per merchant config, so no JWT middleware is applied.
  * cart_id (MongoDB Cart._id) is the shared session identifier.
  *
- * Base URL configured in GoKwik dashboard: https://www.vedicastro.co.in/store/api/gokwik
+ * Base URL configured in GoKwik dashboard: https://api.vedicastro.co.in/store/api/gokwik
  */
 const express = require("express");
 const router = express.Router();
