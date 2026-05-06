@@ -16,6 +16,7 @@ const publicRoutes = require("./routes/public/index.routes");
 const customerRoutes = require("./routes/customer/index.routes");
 const uploadRoutes = require("./routes/upload.routes");
 const kwikshipWebhookRoutes = require("./routes/webhooks/kwikship.webhook.routes");
+const gokwikRoutes = require("./routes/gokwik.routes");
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/webhooks/kwikship", kwikshipWebhookRoutes);
+app.use("/api/gokwik", gokwikRoutes);
 
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "VedicStore Sub-App running" });

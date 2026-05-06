@@ -300,6 +300,13 @@ const orderSchema = new mongoose.Schema(
     /* ================= META ================= */
     notes: String,
 
+    /* ================= GOKWIK ================= */
+    gokwikCartId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
     /* ================= KWIKSHIP DATA ================= */
     kwikship: {
       waybill: String,
