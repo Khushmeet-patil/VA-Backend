@@ -23,25 +23,34 @@ const buildGokwikCart = (cart, extra = {}) => {
         quantity: item.quantity,
         mrp,
         price,
-        total: price * item.quantity,
+        total: price * item.quantity, // line total at discounted price
       };
     });
 
-  const subtotal = items.reduce((s, i) => s + i.total, 0);
-  const discountTotal = items.reduce(
-    (s, i) => s + Math.max(i.mrp - i.price, 0) * i.quantity,
-    0
-  );
-  const shippingTotal = subtotal > 500 || subtotal === 0 ? 0 : 50;
-  const platformFee = subtotal > 0 ? 3 : 0;
+  // subtotal = MRP-level total so GoKwik formula works:
+  // total = subtotal + shipping_total - discount_total + order_summary_extra_fields
+  const subtotal = items.reduce((s, i) => s + i.mrp * i.quantity, 0);
+  const discountedTotal = items.reduce((s, i) => s + i.total, 0);
+  const discountTotal = Math.max(subtotal - discountedTotal, 0);
+  const shippingTotal = discountedTotal > 500 || discountedTotal === 0 ? 0 : 50;
+  const platformFee = discountedTotal > 0 ? 3 : 0;
+  const total = subtotal - discountTotal + shippingTotal + platformFee;
 
   return {
     subtotal,
     discount_total: discountTotal,
     shipping_total: shippingTotal,
-    total: subtotal + shippingTotal + platformFee,
+    total,
     currency: "INR",
     total_tax: 0,
+    wallet_credit_used: 0,
+    membership_discount: 0,
+    discounts: [],
+    available_payment_methods: [],
+    available_coupons: [],
+    ...(platformFee > 0
+      ? { order_summary_extra_fields: [{ name: "Platform Fee", value: platformFee }] }
+      : {}),
     items,
     ...extra,
   };
@@ -68,8 +77,9 @@ exports.setShippingAddress = async (cartId) => {
   const cart = await exports.getCartByGokwikId(cartId);
   const gkCart = buildGokwikCart(cart);
 
+  const payableAmount = gkCart.subtotal - gkCart.discount_total;
   const shippingOptions =
-    gkCart.subtotal > 500
+    payableAmount > 500
       ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
       : [
           { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
