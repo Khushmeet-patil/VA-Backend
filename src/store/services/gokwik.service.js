@@ -64,6 +64,9 @@ const populateOpts = {
 /* ================= GET CART ================= */
 
 exports.getCartByGokwikId = async (cartId) => {
+  if (!cartId || !/^[a-f\d]{24}$/i.test(cartId)) {
+    throw new Error(`Invalid cart_id format: "${cartId}"`);
+  }
   const cart = await Cart.findById(cartId).populate(populateOpts);
   if (!cart) throw new Error("Cart not found");
   return cart;
