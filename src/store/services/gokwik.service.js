@@ -27,14 +27,14 @@ const buildGokwikCart = (cart, extra = {}) => {
       };
     });
 
-  // subtotal = MRP-level total so GoKwik formula works:
+  // subtotal = sum of (price × qty) — GoKwik validates this strictly
+  // discount_total = coupon/promo discounts only (MRP vs price is per-item display only)
   // total = subtotal + shipping_total - discount_total + order_summary_extra_fields
-  const subtotal = items.reduce((s, i) => s + i.mrp * i.quantity, 0);
-  const discountedTotal = items.reduce((s, i) => s + i.total, 0);
-  const discountTotal = Math.max(subtotal - discountedTotal, 0);
-  const shippingTotal = discountedTotal > 500 || discountedTotal === 0 ? 0 : 50;
-  const platformFee = discountedTotal > 0 ? 3 : 0;
-  const total = subtotal - discountTotal + shippingTotal + platformFee;
+  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const discountTotal = 0; // no coupon applied; coupons handled by GoKwik's Kwik Discount
+  const shippingTotal = subtotal > 500 || subtotal === 0 ? 0 : 50;
+  const platformFee = subtotal > 0 ? 3 : 0;
+  const total = subtotal + shippingTotal - discountTotal + platformFee;
 
   return {
     subtotal,
@@ -77,9 +77,8 @@ exports.setShippingAddress = async (cartId) => {
   const cart = await exports.getCartByGokwikId(cartId);
   const gkCart = buildGokwikCart(cart);
 
-  const payableAmount = gkCart.subtotal - gkCart.discount_total;
   const shippingOptions =
-    payableAmount > 500
+    gkCart.subtotal > 500
       ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
       : [
           { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
