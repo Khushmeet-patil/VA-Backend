@@ -1,4 +1,5 @@
 const productService = require("../services/product.service");
+const gokwikOutbound = require("../services/gokwik.outbound.service");
 const logger = require("../utils/logger");
 
 /* ================= CREATE PRODUCT (VENDOR) ================= */
@@ -145,6 +146,8 @@ exports.updateProduct = async (req, res) => {
       req.user
     );
 
+    gokwikOutbound.syncProduct(product).catch(() => {});
+
     return res.status(200).json({
       success: true,
       message: "Product updated successfully",
@@ -166,7 +169,9 @@ exports.updateProduct = async (req, res) => {
 /* ================= DELETE PRODUCT ================= */
 exports.deleteProduct = async (req, res) => {
   try {
-    await productService.deleteProduct(req.params.id, req.user);
+    const product = await productService.deleteProduct(req.params.id, req.user);
+
+    if (product) gokwikOutbound.syncProduct(product, true).catch(() => {});
 
     return res.status(200).json({
       success: true,
@@ -193,6 +198,9 @@ exports.approveProduct = async (req, res) => {
       req.user._id,
       req.user.role
     );
+
+    // Sync to GoKwik only when approved (product becomes visible)
+    gokwikOutbound.syncProduct(product).catch(() => {});
 
     return res.status(200).json({
       success: true,

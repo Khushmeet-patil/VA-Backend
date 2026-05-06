@@ -295,6 +295,7 @@ const orderSchema = new mongoose.Schema(
       },
       amount: Number,
       refundedAt: Date,
+      refundRequestDescription: String,
     },
 
     /* ================= META ================= */

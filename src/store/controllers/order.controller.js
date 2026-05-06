@@ -1,4 +1,5 @@
 const orderService = require("../services/order.service");
+const gokwikOutbound = require("../services/gokwik.outbound.service");
 
 /* ================= INITIATE PAYMENT (price calc) ================= */
 exports.initiatePayment = async (req, res) => {
@@ -175,6 +176,9 @@ exports.updateItemStatus = async (req, res) => {
       status: req.body.status,
       vendorId: req.user.vendorId,
     });
+
+    // Notify GoKwik whenever order status changes
+    gokwikOutbound.updateOrder(order).catch(() => {});
 
     return res.json({
       success: true,

@@ -86,18 +86,18 @@ exports.removeOutOfStockItems = async (req, res) => {
   }
 };
 
-/* ================= POST /order-update (GoKwik → us) ================= */
+/* ================= POST /order-update (GoKwik → us webhook) ================= */
 exports.orderUpdate = async (req, res) => {
   try {
     const { merchant_order_id } = req.body;
     if (!merchant_order_id) {
-      return res.status(400).json({ error: "merchant_order_id is required" });
+      return res.status(400).json({ status_code: 400, error: "merchant_order_id is required" });
     }
 
     await gokwikService.updateOrderFromGokwik(req.body);
-    return res.json({ success: true });
+    return res.json({ status_code: 200, success: true });
   } catch (error) {
     logger.error("GoKwik orderUpdate webhook failed", { error: error.message });
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ status_code: 500, error: error.message });
   }
 };

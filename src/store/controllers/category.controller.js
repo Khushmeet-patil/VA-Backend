@@ -1,4 +1,5 @@
 const categoryService = require("../services/category.service");
+const gokwikOutbound = require("../services/gokwik.outbound.service");
 const logger = require("../utils/logger"); // adjust path if needed
 
 /* ================= CREATE ================= */
@@ -14,6 +15,8 @@ exports.createCategory = async (req, res) => {
       categoryId: category._id,
       name: category.name,
     });
+
+    gokwikOutbound.syncCollection(category).catch(() => {});
 
     return res.status(201).json({
       message: "Category created successfully",
@@ -102,6 +105,8 @@ exports.updateCategory = async (req, res) => {
     logger.info("Category updated successfully", {
       categoryId: category._id,
     });
+
+    gokwikOutbound.syncCollection(category).catch(() => {});
 
     return res.status(200).json({
       message: "Category updated successfully",

@@ -176,16 +176,28 @@ exports.updateOrderFromGokwik = async ({
   awb_number,
   awb_status,
   shipping_provider,
+  order_note,
   refund_amount,
 }) => {
   const order = await Order.findOne({ orderNumber: merchant_order_id });
   if (!order) throw new Error(`Order not found: ${merchant_order_id}`);
 
+  // Handles both GoKwik capitalized values and Kwikship tracking values
   const statusMap = {
-    shipped: "shipped",
-    delivered: "completed",
+    Confirmed: "confirmed",
+    confirmed: "confirmed",
+    Pending: "pending",
+    pending: "pending",
+    Failed: "cancelled",
+    failed: "cancelled",
+    Cancelled: "cancelled",
     cancelled: "cancelled",
+    shipped: "shipped",
+    Shipped: "shipped",
+    delivered: "completed",
+    Delivered: "completed",
     returned: "cancelled",
+    Returned: "cancelled",
   };
 
   if (order_status && statusMap[order_status]) {
@@ -206,6 +218,7 @@ exports.updateOrderFromGokwik = async ({
     order.refund = {
       status: "pending",
       amount: Number(refund_amount),
+      refundRequestDescription: order_note || "",
     };
     order.paymentStatus = "refunded";
   }

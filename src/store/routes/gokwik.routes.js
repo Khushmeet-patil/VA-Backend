@@ -11,11 +11,28 @@ const express = require("express");
 const router = express.Router();
 const controller = require("../controllers/gokwik.controller");
 
+// Validate GoKwik webhook credentials (sent by GoKwik on webhook calls)
+const verifyGokwikWebhook = (req, res, next) => {
+  const appId = process.env.GK_APP_ID;
+  const appSecret = process.env.GK_APP_SECRET;
+
+  // Skip verification if credentials not configured yet
+  if (!appId || !appSecret) return next();
+
+  const sentId = req.headers["gk-app-id"];
+  const sentSecret = req.headers["gk-app-secret"];
+
+  if (sentId !== appId || sentSecret !== appSecret) {
+    return res.status(401).json({ status_code: 401, error: "Unauthorized" });
+  }
+  next();
+};
+
 router.post("/get-cart", controller.getCart);
 router.post("/set-shipping-address", controller.setShippingAddress);
 router.post("/place-order", controller.placeOrder);
 router.post("/check-order-exists", controller.checkOrderExists);
 router.post("/remove-out-of-stock-items", controller.removeOutOfStockItems);
-router.post("/order-update", controller.orderUpdate);
+router.post("/order-update", verifyGokwikWebhook, controller.orderUpdate);
 
 module.exports = router;
