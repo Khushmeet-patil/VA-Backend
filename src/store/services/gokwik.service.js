@@ -81,7 +81,9 @@ exports.setShippingAddress = async (cartId) => {
   const gkCart = buildGokwikCart(cart);
 
   const shippingOptions =
-    gkCart.subtotal > 500
+    gkCart.subtotal === 0
+      ? []
+      : gkCart.subtotal > 500
       ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
       : [
           { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
