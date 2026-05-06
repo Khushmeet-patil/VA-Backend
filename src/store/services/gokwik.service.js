@@ -120,10 +120,6 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       size: item.size || null,
     }));
 
-  const gkDiscounts = meta_data?.discounts || [];
-  const couponCode =
-    gkDiscounts.find((d) => d.type === "gkp-coupon")?.code || null;
-
   const { order } = await orderService.createOrder({
     customerId: cart.userId,
     items,
@@ -131,7 +127,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     paymentMethod: isCoD ? "cod" : "prepaid",
     paymentStatus: isCoD ? "pending" : "paid",
     orderStatus: isCoD ? "pending" : "confirmed",
-    couponCode,
+    couponCode: null, // GoKwik manages their own discounts; no merchant coupon to apply
     notes: meta_data?.gokwik_order_id
       ? `GoKwik Order: ${meta_data.gokwik_order_id}`
       : undefined,
