@@ -56,7 +56,11 @@ const buildGokwikCart = (cart, extra = {}) => {
     membership_discount: 0,
     cashback_amount: 0,
     discounts: [],
-    available_payment_methods: [],
+    available_payment_methods: [
+      { description: "Prepaid", id: "prepaid", price: 0 },
+      { description: "Cash on delivery", id: "cod", price: 0 },
+      { description: "Partial COD", id: "pp-cod", price: 0 },
+    ],
     available_coupons: [],
     available_shipping_methods: shippingMethods,
     ...(platformFee > 0
