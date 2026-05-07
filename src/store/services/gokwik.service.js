@@ -23,7 +23,8 @@ const buildGokwikCart = (cart, extra = {}) => {
         quantity: item.quantity,
         mrp,
         price,
-        total: price * item.quantity, // line total at discounted price
+        total: price * item.quantity,
+        stock_status: "in_stock",
       };
     });
 
@@ -36,6 +37,14 @@ const buildGokwikCart = (cart, extra = {}) => {
   const platformFee = subtotal > 0 ? 3 : 0;
   const total = subtotal + shippingTotal - discountTotal + platformFee;
 
+  const shippingMethods =
+    subtotal > 500 || subtotal === 0
+      ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
+      : [
+          { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
+          { id: "standard", price: 50, title: "Standard Delivery", currency: "INR" },
+        ];
+
   return {
     subtotal,
     discount_total: discountTotal,
@@ -45,9 +54,11 @@ const buildGokwikCart = (cart, extra = {}) => {
     total_tax: 0,
     wallet_credit_used: 0,
     membership_discount: 0,
+    cashback_amount: 0,
     discounts: [],
     available_payment_methods: [],
     available_coupons: [],
+    available_shipping_methods: shippingMethods,
     ...(platformFee > 0
       ? { order_summary_extra_fields: [{ name: "Platform Fee", value: platformFee }] }
       : {}),
@@ -78,20 +89,7 @@ exports.buildGokwikCart = buildGokwikCart;
 
 exports.setShippingAddress = async (cartId) => {
   const cart = await exports.getCartByGokwikId(cartId);
-  const gkCart = buildGokwikCart(cart);
-
-  const shippingOptions =
-    gkCart.subtotal === 0
-      ? []
-      : gkCart.subtotal > 500
-      ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
-      : [
-          { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
-          { id: "standard", price: 50, title: "Standard Delivery", currency: "INR" },
-        ];
-
-  gkCart.available_shipping_methods = shippingOptions;
-  return gkCart;
+  return buildGokwikCart(cart);
 };
 
 /* ================= PLACE ORDER ================= */
@@ -180,17 +178,7 @@ exports.removeOutOfStockItems = async (cartId) => {
     await cart.populate(populateOpts);
   }
 
-  const gkCart = buildGokwikCart(cart);
-
-  gkCart.available_shipping_methods =
-    gkCart.subtotal > 500 || gkCart.subtotal === 0
-      ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
-      : [
-          { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
-          { id: "standard", price: 50, title: "Standard Delivery", currency: "INR" },
-        ];
-
-  return gkCart;
+  return buildGokwikCart(cart);
 };
 
 /* ================= UPDATE ORDER FROM GOKWIK WEBHOOK ================= */

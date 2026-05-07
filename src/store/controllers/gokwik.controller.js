@@ -12,7 +12,7 @@ exports.getCart = async (req, res) => {
     const cart = await gokwikService.getCartByGokwikId(cart_id);
     const gkCart = gokwikService.buildGokwikCart(cart);
 
-    return res.json(gkCart);
+    return res.json({ data: { cart: gkCart } });
   } catch (error) {
     logger.error("GoKwik getCart failed", { error: error.message });
     return res.status(500).json({ error: error.message });
@@ -28,7 +28,7 @@ exports.setShippingAddress = async (req, res) => {
     }
 
     const gkCart = await gokwikService.setShippingAddress(cart_id);
-    return res.json(gkCart);
+    return res.json({ data: { cart: gkCart } });
   } catch (error) {
     logger.error("GoKwik setShippingAddress failed", { error: error.message });
     return res.status(500).json({ error: error.message });
@@ -82,7 +82,7 @@ exports.removeOutOfStockItems = async (req, res) => {
     }
 
     const gkCart = await gokwikService.removeOutOfStockItems(cart_id);
-    return res.json(gkCart);
+    return res.json({ data: { cart: gkCart } });
   } catch (error) {
     logger.error("GoKwik removeOutOfStockItems failed", { error: error.message });
     return res.status(500).json({ error: error.message });
