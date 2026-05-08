@@ -5,6 +5,12 @@ const logger = require("../utils/logger");
 exports.getCart = async (req, res) => {
   try {
     const { cart_id } = req.body;
+    logger.info("GoKwik getCart called", {
+      cart_id,
+      ip: req.ip,
+      headers: req.headers,
+    });
+
     if (!cart_id) {
       return res.status(400).json({ error: "cart_id is required" });
     }
@@ -12,9 +18,10 @@ exports.getCart = async (req, res) => {
     const cart = await gokwikService.getCartByGokwikId(cart_id);
     const gkCart = gokwikService.buildGokwikCart(cart);
 
+    logger.info("GoKwik getCart success", { cart_id, itemCount: gkCart.items?.length });
     return res.json({ data: { cart: gkCart } });
   } catch (error) {
-    logger.error("GoKwik getCart failed", { error: error.message });
+    logger.error("GoKwik getCart failed", { cart_id: req.body?.cart_id, error: error.message });
     return res.status(500).json({ error: error.message });
   }
 };
