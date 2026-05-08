@@ -14,6 +14,10 @@ const buildGokwikCart = (cart, extra = {}) => {
         product?.pricing?.basePrice ||
         item.priceAtAdd;
       const price = product?.pricing?.finalPrice || item.priceAtAdd;
+      const stockQty = item.size
+        ? product?.variants?.find((v) => v.size === item.size)?.stock ?? 99
+        : product?.stock ?? 99;
+
       return {
         product_id: (product?._id || item.productId).toString(),
         ...(item.size && { variant_id: item.size }),
@@ -21,6 +25,7 @@ const buildGokwikCart = (cart, extra = {}) => {
         title: product?.name || "Product",
         image_url: product?.images?.[0] || "",
         quantity: item.quantity,
+        salable_qty: stockQty,
         mrp,
         price,
         total: price * item.quantity,
