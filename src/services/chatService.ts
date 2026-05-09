@@ -548,6 +548,9 @@ class ChatService {
 
         console.log(`[ChatService] Chat rejected: ${sessionId}`);
 
+        // Increment missed chats counter for the astrologer
+        await this.incrementMissedChats(session.astrologerId);
+
         // Emit CHAT_REJECTED to user
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('CHAT_REJECTED', {
@@ -683,14 +686,33 @@ class ChatService {
         }
 
         if (astrologer) {
-            const newMissedChats = (astrologer.missedChats || 0) + 1;
-            const updateFields: any = { missedChats: newMissedChats };
+            await this.incrementMissedChats(astrologer._id);
+        }
+    }
+
+    /**
+     * Helper to increment missedChats and handle auto-blocking
+     */
+    private async incrementMissedChats(astrologerId: string | mongoose.Types.ObjectId): Promise<void> {
+        try {
+            // Atomic increment
+            const astrologer = await Astrologer.findByIdAndUpdate(
+                astrologerId,
+                { $inc: { missedChats: 1 } },
+                { new: true }
+            );
+
+            if (!astrologer) return;
+
+            console.log(`[ChatService] Incremented missedChats for astrologer ${astrologer._id}. New count: ${astrologer.missedChats}`);
 
             // AUTO-BLOCK: if astrologer has 2+ warnings and 3+ missed chats
-            if (astrologer.warningCount >= 2 && newMissedChats >= 3) {
+            if ((astrologer.warningCount || 0) >= 2 && (astrologer.missedChats || 0) >= 3) {
                 console.log(`[ChatService] Auto-blocking astrologer ${astrologer._id} due to 3 missed chats after 2 warnings.`);
-                updateFields.isBlocked = true;
-                updateFields.isOnline = false;
+                
+                await Astrologer.findByIdAndUpdate(astrologer._id, { 
+                    $set: { isBlocked: true, isOnline: false } 
+                });
 
                 if (this.io) {
                     this.io.to(`astrologer:${astrologer._id}`).emit('ASTROLOGER_BLOCKED', {
@@ -698,10 +720,8 @@ class ChatService {
                     });
                 }
             }
-
-            // Use findOneAndUpdate (not .save()) to target only the fields we changed
-            // and avoid running full-document validation on legacy records with empty required fields.
-            await Astrologer.findByIdAndUpdate(astrologer._id, { $set: updateFields });
+        } catch (error) {
+            console.error('[ChatService] Error incrementing missedChats:', error);
         }
     }
 
@@ -744,6 +764,21 @@ class ChatService {
                 return { cancelled: false, reason: 'already_ended' };
             }
             return { cancelled: false, reason: 'unknown' };
+        }
+
+        // If the user cancels after a long wait (e.g. 25s+), it counts as a missed chat for the astrologer.
+        // This handles the race condition where the user's app (30s timeout) cancels 
+        // just before the server's own timeout (35s) would have fired.
+        const pendingDuration = Date.now() - session.createdAt.getTime();
+        if (pendingDuration > 25000) { // 25 seconds threshold
+            console.log(`[ChatService] User cancelled after long wait (${Math.round(pendingDuration / 1000)}s). Counting as missed chat for astrologer ${session.astrologerId}`);
+            
+            // Update endReason to reflect that it was practically a timeout
+            await ChatSession.findByIdAndUpdate(session._id, { 
+                $set: { endReason: 'ASTROLOGER_TIMEOUT' } 
+            });
+
+            await this.incrementMissedChats(session.astrologerId);
         }
 
         // Clear the request timeout
