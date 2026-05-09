@@ -73,6 +73,7 @@ export interface IAstrologer extends Document {
     }[];
     isDeletionRequested: boolean;
     deletionRequestedAt?: Date;
+    blockingReason?: string;
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -156,7 +157,8 @@ const AstrologerSchema: Schema = new Schema({
         endTime: { type: String, default: '17:00' }    // "HH:mm"
     }],
     isDeletionRequested: { type: Boolean, default: false },
-    deletionRequestedAt: { type: Date }
+    deletionRequestedAt: { type: Date },
+    blockingReason: { type: String }
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

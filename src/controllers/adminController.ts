@@ -960,11 +960,13 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const {
             isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
             firstName, lastName, email, mobileNumber, experience, city, country, bio, aboutMe, specialties, profileImage,
-            language, systemKnown
+            language, systemKnown, isOnline, blockingReason
         } = req.body;
 
         const updateData: any = {};
         if (typeof isBlocked === 'boolean') updateData.isBlocked = isBlocked;
+        if (typeof isOnline === 'boolean') updateData.isOnline = isOnline;
+        if (blockingReason !== undefined) updateData.blockingReason = blockingReason;
         if (typeof priceRangeMin === 'number') updateData.priceRangeMin = priceRangeMin;
         if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
         if (typeof pricePerMin === 'number') updateData.pricePerMin = pricePerMin;
@@ -1043,7 +1045,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
                 // 2. Emit ASTROLOGER_BLOCKED socket event for instant UI update
                 if (chatService.io) {
                     chatService.io.to(`astrologer:${astrologerId}`).emit('ASTROLOGER_BLOCKED', {
-                        reason: 'Your account has been blocked by the administrator.'
+                        reason: blockingReason || 'Your account has been blocked by the administrator.'
                     });
                     console.log(`[Admin] ASTROLOGER_BLOCKED event emitted to astrologer:${astrologerId}`);
                 }
@@ -1053,7 +1055,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
                     if (astrologer.fcmToken) {
                         await notificationService.sendToUser(astrologerId, {
                             title: 'Account Blocked',
-                            body: 'Your account has been blocked. Please contact support for more information.'
+                            body: blockingReason || 'Your account has been blocked. Please contact support for more information.'
                         }, { type: 'account_blocked' });
                         console.log(`[Admin] FCM notification sent to blocked astrologer ${astrologerId}`);
                     }
