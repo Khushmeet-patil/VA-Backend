@@ -1,4 +1,5 @@
 const changeRequestService = require("../services/changeRequest.service");
+const gokwikOutbound = require("../services/gokwik.outbound.service");
 
 exports.getPendingRequests = async (req, res) => {
   try {
@@ -37,7 +38,17 @@ exports.approveRequest = async (req, res) => {
     const { id } = req.params;
     const adminId = req.user._id;
 
+    // We need the request to know the type before approving
+    const request = await changeRequestService.getRequestById(id);
     const result = await changeRequestService.approveRequest(id, adminId);
+
+    // If it's a product, sync to GoKwik
+    if (request.type === "product") {
+      gokwikOutbound.syncProduct(result).catch(() => {});
+      if (result.category) {
+        gokwikOutbound.syncCollection(result.category).catch(() => {});
+      }
+    }
 
     res.json({
       success: true,

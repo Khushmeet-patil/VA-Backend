@@ -147,6 +147,9 @@ exports.updateProduct = async (req, res) => {
     );
 
     gokwikOutbound.syncProduct(product).catch(() => {});
+    if (product.category) {
+      gokwikOutbound.syncCollection(product.category).catch(() => {});
+    }
 
     return res.status(200).json({
       success: true,
@@ -171,7 +174,12 @@ exports.deleteProduct = async (req, res) => {
   try {
     const product = await productService.deleteProduct(req.params.id, req.user);
 
-    if (product) gokwikOutbound.syncProduct(product, true).catch(() => {});
+    if (product) {
+      gokwikOutbound.syncProduct(product, true).catch(() => {});
+      if (product.category) {
+        gokwikOutbound.syncCollection(product.category).catch(() => {});
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -201,6 +209,9 @@ exports.approveProduct = async (req, res) => {
 
     // Sync to GoKwik only when approved (product becomes visible)
     gokwikOutbound.syncProduct(product).catch(() => {});
+    if (product.category) {
+      gokwikOutbound.syncCollection(product.category).catch(() => {});
+    }
 
     return res.status(200).json({
       success: true,

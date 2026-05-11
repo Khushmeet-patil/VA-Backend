@@ -91,7 +91,7 @@ const mapProductToGokwik = (product, isDeleted = false) => {
 
 const mapCategoryToGokwik = async (category) => {
   const productDocs = await Product.find(
-    { category: category._id, isVisible: true },
+    { category: category._id, status: true, "approval.status": "approved" },
     "_id"
   ).lean();
 
@@ -137,13 +137,27 @@ exports.syncProduct = async (product, isDeleted = false) => {
    SYNC COLLECTION (CATEGORY)
 ───────────────────────────────────────────── */
 
-exports.syncCollection = async (category) => {
+const mongoose = require("mongoose");
+
+exports.syncCollection = async (categoryOrId) => {
   if (!APP_ID || !APP_SECRET) {
     logger.warn("GoKwik outbound: GK_APP_ID / GK_APP_SECRET not set — skipping collection sync");
     return;
   }
 
+  const Category = require("../models/Category");
+
   try {
+    let category = categoryOrId;
+    if (typeof categoryOrId === "string" || categoryOrId instanceof mongoose.Types.ObjectId) {
+      category = await Category.findById(categoryOrId);
+    }
+
+    if (!category) {
+      logger.warn("GoKwik syncCollection: Category not found", { categoryId: categoryOrId });
+      return;
+    }
+
     const payload = await mapCategoryToGokwik(category);
     const res = await axios.post(
       `${BASE_URL}/v3/collection/update-collection`,
@@ -156,9 +170,75 @@ exports.syncCollection = async (category) => {
     });
   } catch (err) {
     logger.error("GoKwik syncCollection failed", {
-      categoryId: category._id,
+      categoryId: categoryOrId?._id || categoryOrId,
       error: err?.response?.data || err.message,
     });
+  }
+};
+
+/* ─────────────────────────────────────────────
+   SYNC ALL (FULL CATALOG)
+───────────────────────────────────────────── */
+
+exports.syncEverything = async () => {
+  if (!APP_ID || !APP_SECRET) {
+    logger.warn("GoKwik outbound: GK_APP_ID / GK_APP_SECRET not set — skipping full sync");
+    return { success: false, message: "GoKwik credentials (GK_APP_ID/GK_APP_SECRET) not configured in .env" };
+  }
+
+  const Category = require("../models/Category"); // Dynamic require to avoid circular if any
+
+  try {
+    const categories = await Category.find({}).lean();
+    const products = await Product.find({ "approval.status": "approved" });
+
+    logger.info("GoKwik full sync triggered", {
+      categoryCount: categories.length,
+      productCount: products.length,
+    });
+
+    // 1. Sync Categories
+    const catResults = [];
+    for (const cat of categories) {
+      // Use the logic from syncCollection but maybe track results
+      try {
+        const payload = await mapCategoryToGokwik(cat);
+        await axios.post(`${BASE_URL}/v3/collection/update-collection`, payload, {
+          headers: gkHeaders,
+          timeout: 8000,
+        });
+        catResults.push({ id: cat._id, success: true });
+      } catch (err) {
+        catResults.push({ id: cat._id, success: false, error: err.message });
+      }
+    }
+
+    // 2. Sync Products
+    const prodResults = [];
+    for (const prod of products) {
+      try {
+        const payload = mapProductToGokwik(prod);
+        await axios.post(`${BASE_URL}/v3/product/update-product-details`, payload, {
+          headers: gkHeaders,
+          timeout: 8000,
+        });
+        prodResults.push({ id: prod._id, success: true });
+      } catch (err) {
+        prodResults.push({ id: prod._id, success: false, error: err.message });
+      }
+    }
+
+    return {
+      success: true,
+      message: "Sync process completed",
+      details: {
+        categories: { total: categories.length, synced: catResults.filter(r => r.success).length },
+        products: { total: products.length, synced: prodResults.filter(r => r.success).length }
+      }
+    };
+  } catch (error) {
+    logger.error("GoKwik full sync process failed", { error: error.message });
+    throw error;
   }
 };
 

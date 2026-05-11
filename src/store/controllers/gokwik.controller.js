@@ -111,3 +111,17 @@ exports.orderUpdate = async (req, res) => {
     return res.status(500).json({ status_code: 500, error: error.message });
   }
 };
+
+/* ================= POST /sync-all (Admin only) ================= */
+const gokwikOutbound = require("../services/gokwik.outbound.service");
+
+exports.syncEverything = async (req, res) => {
+  try {
+    logger.info("Admin triggered GoKwik full sync");
+    const result = await gokwikOutbound.syncEverything();
+    return res.json(result);
+  } catch (error) {
+    logger.error("GoKwik syncEverything controller failed", { error: error.message });
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
