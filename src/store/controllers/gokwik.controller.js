@@ -53,8 +53,8 @@ exports.placeOrder = async (req, res) => {
     const order = await gokwikService.placeGokwikOrder(cart_id, req.body);
     const orderId = String(order?.orderNumber || order?._id || "");
     if (!orderId) throw new Error("Order created but ID could not be resolved");
-    logger.info("GoKwik placeOrder success", { cart_id, orderId });
-    return res.json({ status: "success", order_id: orderId });
+    const thank_you_url = `https://www.vedicastro.co.in/store/thank-you?order_id=${orderId}`;
+    return res.json({ status: "success", order_id: orderId, thank_you_url });
   } catch (error) {
     logger.error("GoKwik placeOrder failed", { error: error.message });
     return res.status(500).json({ status: "error", error: error.message });
