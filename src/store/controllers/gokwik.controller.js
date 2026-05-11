@@ -129,3 +129,26 @@ exports.syncEverything = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/* ================= POST /abandoned-cart ================= */
+exports.handleAbandonedCart = async (req, res) => {
+  try {
+    const { carts } = req.body;
+    logger.info("GoKwik abandoned carts received", { count: carts?.length });
+
+    if (carts && carts.length > 0) {
+      carts.forEach((cart) => {
+        logger.info("Abandoned cart details", {
+          phone: cart.customer?.phone || cart.phone,
+          total: cart.total_price,
+          itemsCount: cart.items?.length,
+        });
+      });
+    }
+
+    return res.json({ status: "success", message: "Abandoned carts processed" });
+  } catch (error) {
+    logger.error("GoKwik abandoned cart webhook failed", { error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+};

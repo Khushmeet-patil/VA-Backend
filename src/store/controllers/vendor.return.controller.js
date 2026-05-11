@@ -1,5 +1,6 @@
 const Return = require("../models/Return");
 const KwikshipService = require("../services/kwikship.service");
+const gokwikOutbound = require("../services/gokwik.outbound.service");
 
 exports.getVendorReturns = async (req, res) => {
   try {
@@ -52,6 +53,14 @@ exports.updateReturnStatus = async (req, res) => {
           returnRequest._id
         );
         kwikship = updated.kwikship;
+
+        // NEW: Sync Refund to GoKwik as per Documentation
+        const Order = require("../models/Order");
+        const order = await Order.findById(returnRequest.orderId);
+        if (order) {
+           const refundAmount = returnRequest.type === "refund" ? returnRequest.refund?.amount : null;
+           await gokwikOutbound.updateOrder(order, refundAmount);
+        }
       } catch (err) {
         kwikshipError = err.message;
       }

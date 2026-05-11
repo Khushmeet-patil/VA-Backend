@@ -34,5 +34,6 @@ router.post("/place-order", controller.placeOrder);
 router.post("/check-order-exists", controller.checkOrderExists);
 router.post("/remove-out-of-stock-items", controller.removeOutOfStockItems);
 router.post("/order-update", verifyGokwikWebhook, controller.orderUpdate);
+router.post("/abandoned-cart", verifyGokwikWebhook, controller.handleAbandonedCart);
 
 module.exports = router;
