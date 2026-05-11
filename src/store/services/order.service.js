@@ -469,9 +469,12 @@ exports.getSingleOrder = async (orderId, user = null) => {
       throw new Error("Order ID is required");
     }
 
-    const query = {
-      _id: new mongoose.Types.ObjectId(orderId),
-    };
+    const query = {};
+    if (mongoose.Types.ObjectId.isValid(orderId)) {
+      query._id = orderId;
+    } else {
+      query.orderNumber = orderId;
+    }
 
     /* ================= ROLE BASED ACCESS ================= */
 
