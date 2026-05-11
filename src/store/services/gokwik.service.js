@@ -137,9 +137,11 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     paymentStatus: isCoD ? "pending" : "paid",
     orderStatus: isCoD ? "pending" : "confirmed",
     couponCode: null, // GoKwik manages their own discounts; no merchant coupon to apply
-    notes: meta_data?.gokwik_order_id
-      ? `GoKwik Order: ${meta_data.gokwik_order_id}`
-      : undefined,
+    notes: [
+      meta_data?.gokwik_order_id ? `GoKwik Order: ${meta_data.gokwik_order_id}` : null,
+      payment_details?.payment_id ? `GK Pymt: ${payment_details.payment_id}` : null,
+      payment_details?.pg_payment_trnx_id ? `PG Txn: ${payment_details.pg_payment_trnx_id}` : null,
+    ].filter(Boolean).join(" | "),
   });
 
   await Order.findByIdAndUpdate(order._id, { gokwikCartId: cartId });

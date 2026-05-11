@@ -53,15 +53,15 @@ exports.placeOrder = async (req, res) => {
     const order = await gokwikService.placeGokwikOrder(cart_id, req.body);
     const orderId = String(order?.orderNumber || order?._id || "");
     if (!orderId) throw new Error("Order created but ID could not be resolved");
-    const isSandbox = process.env.GK_ENV === "sandbox";
-    const thank_you_url = isSandbox
-      ? "https://sandbox.pdp.gokwik.co/v4/success"
-      : "https://pdp.gokwik.co/v4/success";
-
-    return res.json({ status: "success", order_id: orderId, thank_you_url });
+    const thank_you_url = `https://www.vedicastro.co.in/store/thank-you?order_id=${orderId}`;
+    return res.json({ 
+      status: "success", 
+      order_id: orderId, 
+      thankyou_redirect_url: thank_you_url 
+    });
   } catch (error) {
     logger.error("GoKwik placeOrder failed", { error: error.message });
-    return res.status(500).json({ status: "error", error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 
