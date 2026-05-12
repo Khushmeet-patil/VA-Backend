@@ -24,7 +24,7 @@ const logger = require("../utils/logger");
    CONFIGURATION
 ───────────────────────────────────────────── */
 
-const GK_ENV = (process.env.GK_ENV || "sandbox").toLowerCase();
+const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
 const APP_ID = process.env.GK_APP_ID || "";
 const APP_SECRET = process.env.GK_APP_SECRET || "";
 const GK_MID = process.env.GK_MID || "";
@@ -177,18 +177,22 @@ exports.syncProduct = async (product, isDeleted = false) => {
   try {
     const productData = mapProductToGokwik(product, isDeleted);
     
+    const syncUrl = `${PRODUCT_SYNC_URL}/v3/product/update-product-details`;
+    const headers = buildItemHeaders();
+
     logger.info("GoKwik syncProduct initiating", { 
       productId: product._id, 
       name: product.name,
-      url: `${PRODUCT_SYNC_URL}/v3/product/update-product-details`,
+      url: syncUrl,
+      merchantId: GK_MID,
       isVisible: product.isVisible,
       isDeleted 
     });
 
     const res = await axios.post(
-      `${PRODUCT_SYNC_URL}/v3/product/update-product-details`,
+      syncUrl,
       productData,
-      { headers: buildItemHeaders(), timeout: 15000 }
+      { headers, timeout: 15000 }
     );
     
     logger.info("GoKwik syncProduct success", {
@@ -240,16 +244,20 @@ exports.syncCollection = async (categoryOrId) => {
 
     const payload = await mapCategoryToGokwik(category);
 
+    const syncUrl = `${COLLECTION_SYNC_URL}/v3/collection/update-collection`;
+    const headers = buildItemHeaders();
+
     logger.info("GoKwik syncCollection initiating", {
       categoryId: category._id,
       name: category.name,
-      url: `${COLLECTION_SYNC_URL}/v3/collection/update-collection`,
+      url: syncUrl,
+      merchantId: GK_MID,
     });
 
     const res = await axios.post(
-      `${COLLECTION_SYNC_URL}/v3/collection/update-collection`,
+      syncUrl,
       payload,
-      { headers: buildItemHeaders(), timeout: 15000 }
+      { headers, timeout: 15000 }
     );
     logger.info("GoKwik syncCollection success", {
       categoryId: category._id,
@@ -316,8 +324,9 @@ exports.syncEverything = async () => {
           productCount: payload.product_ids.length 
         });
 
+        const syncUrl = `${COLLECTION_SYNC_URL}/v3/collection/update-collection`;
         const res = await axios.post(
-          `${COLLECTION_SYNC_URL}/v3/collection/update-collection`, 
+          syncUrl, 
           payload, 
           { headers: buildItemHeaders(), timeout: 15000 }
         );
@@ -360,8 +369,9 @@ exports.syncEverything = async () => {
           price: prod.pricing?.finalPrice 
         });
 
+        const syncUrl = `${PRODUCT_SYNC_URL}/v3/product/update-product-details`;
         const res = await axios.post(
-          `${PRODUCT_SYNC_URL}/v3/product/update-product-details`, 
+          syncUrl, 
           payload, 
           { headers: buildItemHeaders(), timeout: 15000 }
         );
