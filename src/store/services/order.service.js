@@ -597,7 +597,7 @@ exports.placePrepaidOrder = async ({
     orderStatus: "pending",
   });
 
-  await _postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
+  await exports.postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
   return order;
 };
 
@@ -624,7 +624,7 @@ exports.placeCodOrder = async ({
     orderStatus: "pending",
   });
 
-  await _postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
+  await exports.postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
   return order;
 };
 
@@ -665,14 +665,14 @@ exports.placeAdvanceCodOrder = async ({
   };
   await order.save();
 
-  await _postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
+  await exports.postOrderCleanup({ order, vendorMap, items, customerId, couponCode });
   return order;
 };
 
 /* =====================================================
    POST-ORDER CLEANUP (cart clear + vendor emails)
 ===================================================== */
-async function _postOrderCleanup({ order, vendorMap, items, customerId }) {
+exports.postOrderCleanup = async function ({ order, vendorMap, items, customerId, couponCode }) {
   // Record coupon usage
   if (order.coupon?.couponId) {
     await CouponUsage.create({
@@ -682,13 +682,19 @@ async function _postOrderCleanup({ order, vendorMap, items, customerId }) {
     }).catch(() => {}); // non-blocking
   }
 
-  // Remove purchased items from cart
-  const productIdsToRemove = items.map((i) => i.productId.toString());
+  // Remove purchased items from cart precisely (match productId AND size)
   const cart = await Cart.findOne({ userId: customerId });
   if (cart) {
-    cart.items = cart.items.filter(
-      (item) => !productIdsToRemove.includes(item.productId.toString())
-    );
+    cart.items = cart.items.filter((cartItem) => {
+      const isPurchased = items.some((orderedItem) => {
+        const pMatch = orderedItem.productId.toString() === cartItem.productId.toString();
+        const sMatch = orderedItem.size === cartItem.size;
+        return pMatch && sMatch;
+      });
+      return !isPurchased;
+    });
+
+    // Recalculate totals
     let subtotal = 0;
     let totalItems = 0;
     cart.items.forEach((item) => {
@@ -765,7 +771,7 @@ exports.verifyPaymentAndCreateOrder = async ({
     },
   });
 
-  await _postOrderCleanup({ order, vendorMap, items, customerId });
+  await exports.postOrderCleanup({ order, vendorMap, items, customerId });
   return order;
 };
 

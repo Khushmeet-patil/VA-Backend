@@ -146,7 +146,7 @@ exports.getWishlist = async (userId) => {
         _id: "$wishlist._id",
         userId: "$_id",
         product: "$productDetails",
-        productId: "$productDetails._id",
+        productId: "$productDetails",
         quantity: "$wishlist.quantity",
         size: "$wishlist.size",
         createdAt: "$updatedAt"

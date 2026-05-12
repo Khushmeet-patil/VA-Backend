@@ -68,9 +68,19 @@ exports.placeAdvanceCodOrder = async (req, res) => {
 /* ================= CREATE ORDER (Direct/COD) ================= */
 exports.createOrder = async (req, res) => {
   try {
-    const { order } = await orderService.createOrder({
+    const { order, vendorMap } = await orderService.createOrder({
       customerId: req.user._id,
       ...req.body,
+    });
+
+    // Run cleanup (cart clear, vendor emails)
+    await orderService.postOrderCleanup({ 
+      order, 
+      vendorMap, 
+      items: req.body.items, 
+      customerId: req.user._id 
+    }).catch(err => {
+      console.error("Post-order cleanup failed:", err.message);
     });
 
     return res.status(201).json({
