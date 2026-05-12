@@ -35,7 +35,7 @@ const getGkConfig = () => {
   const isSandbox = env === "sandbox" || mid === "19vhta8dq0co";
   
   const productSyncUrl = isSandbox
-      ? "https://sandbox-item.dev.gokwik.io"
+      ? "https://api-gw-v4.dev.gokwik.io/sandbox"
       : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
   const collectionSyncUrl = isSandbox

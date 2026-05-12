@@ -137,7 +137,7 @@ exports.syncEverything = async (req, res) => {
       const IS_SANDBOX = GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co";
 
       const verifyUrl = IS_SANDBOX
-          ? "https://sandbox-item.dev.gokwik.io"
+          ? "https://api-gw-v4.dev.gokwik.io/sandbox"
           : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
       const verifyRes = await axios.get(
