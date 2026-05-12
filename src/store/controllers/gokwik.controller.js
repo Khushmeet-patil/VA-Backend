@@ -132,10 +132,10 @@ exports.syncEverything = async (req, res) => {
     // After sync, verify by fetching products from GoKwik sandbox
     let verification = null;
     try {
-      const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
-      const GK_MID = GK_ENV === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "").trim();
-      const GK_APP_ID = GK_ENV === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "").trim();
-      const GK_APP_SECRET = GK_ENV === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "").trim();
+      const GK_ENV = "sandbox";
+      const GK_MID = GK_ENV === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "19vhta8dq0co").trim();
+      const GK_APP_ID = GK_ENV === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "5c653033-810a-453b-8fde-b2207a158230").trim();
+      const GK_APP_SECRET = GK_ENV === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "636d4ed6-859e-4438-9c92-d0eb168e49ab").trim();
       const IS_SANDBOX = GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co";
 
       const verifyUrl = IS_SANDBOX

@@ -26,10 +26,11 @@ const logger = require("../utils/logger");
 ───────────────────────────────────────────── */
 
 const getGkConfig = () => {
-  const env = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
-  const mid = env === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "").trim();
-  const appId = env === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "").trim();
-  const appSecret = env === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "").trim();
+  // FORCE SANDBOX TEMPORARILY TO BYPASS CACHED ENV VARIABLES
+  const env = "sandbox";
+  const mid = env === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "19vhta8dq0co").trim();
+  const appId = env === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "5c653033-810a-453b-8fde-b2207a158230").trim();
+  const appSecret = env === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "636d4ed6-859e-4438-9c92-d0eb168e49ab").trim();
   
   // Force sandbox if sandbox merchant ID is detected
   const isSandbox = env === "sandbox" || mid === "19vhta8dq0co";
@@ -415,7 +416,7 @@ exports.syncEverything = async () => {
 
     const summary = {
       success: true,
-      message: "GoKwik full catalog sync completed",
+      message: "GoKwik full catalog sync completed (LOCAL)",
       environment: `${config.isSandbox ? "sandbox" : "production"} [Raw env: '${config.env}', mid: '${config.mid}']`,
       syncedAt: new Date().toISOString(),
       details: {
