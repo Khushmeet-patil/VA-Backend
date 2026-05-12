@@ -199,12 +199,17 @@ exports.syncProduct = async (product, isDeleted = false) => {
 
     return { success: true, data: res.data };
   } catch (err) {
+    const errorData = err?.response?.data;
+    const errorMessage = (typeof errorData === 'object' && errorData !== null) 
+      ? (errorData.message || JSON.stringify(errorData)) 
+      : (errorData || err.message);
+
     logger.error("GoKwik syncProduct failed", {
       productId: product?._id,
       status: err?.response?.status,
-      error: err?.response?.data || err.message,
+      error: errorMessage,
     });
-    return { success: false, error: err?.response?.data || err.message };
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -254,12 +259,17 @@ exports.syncCollection = async (categoryOrId) => {
 
     return { success: true, data: res.data };
   } catch (err) {
+    const errorData = err?.response?.data;
+    const errorMessage = (typeof errorData === 'object' && errorData !== null) 
+      ? (errorData.message || JSON.stringify(errorData)) 
+      : (errorData || err.message);
+
     logger.error("GoKwik syncCollection failed", {
       categoryId: categoryOrId?._id || categoryOrId,
       status: err?.response?.status,
-      error: err?.response?.data || err.message,
+      error: errorMessage,
     });
-    return { success: false, error: err?.response?.data || err.message };
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -320,16 +330,21 @@ exports.syncEverything = async () => {
           gkResponse: res.data 
         });
       } catch (err) {
+        const errorData = err?.response?.data;
+        const errorMessage = (typeof errorData === 'object' && errorData !== null) 
+          ? (errorData.message || JSON.stringify(errorData)) 
+          : (errorData || err.message);
+
         logger.error("Collection sync failed", { 
           id: cat._id, name: cat.name,
           status: err?.response?.status,
-          error: err?.response?.data || err.message 
+          error: errorMessage 
         });
         collectionResults.push({ 
           id: cat._id.toString(), 
           name: cat.name, 
           success: false, 
-          error: err?.response?.data || err.message 
+          error: errorMessage 
         });
       }
     }
@@ -359,16 +374,21 @@ exports.syncEverything = async () => {
           gkResponse: res.data 
         });
       } catch (err) {
+        const errorData = err?.response?.data;
+        const errorMessage = (typeof errorData === 'object' && errorData !== null) 
+          ? (errorData.message || JSON.stringify(errorData)) 
+          : (errorData || err.message);
+
         logger.error("Product sync failed during syncEverything", { 
           productId: prod._id, name: prod.name,
           status: err?.response?.status,
-          error: err?.response?.data || err.message 
+          error: errorMessage 
         });
         productResults.push({ 
           id: prod._id.toString(), 
           name: prod.name,
           success: false, 
-          error: err?.response?.data || err.message 
+          error: errorMessage 
         });
       }
     }

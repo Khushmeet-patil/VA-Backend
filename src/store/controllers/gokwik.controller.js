@@ -159,9 +159,14 @@ exports.syncEverything = async (req, res) => {
         })),
       };
     } catch (verifyErr) {
+      const errorData = verifyErr?.response?.data;
+      const errorMessage = (typeof errorData === 'object' && errorData !== null) 
+        ? (errorData.message || JSON.stringify(errorData)) 
+        : (errorData || verifyErr.message);
+
       verification = {
         status: "verification_failed",
-        error: verifyErr?.response?.data || verifyErr.message,
+        error: errorMessage,
       };
     }
 
