@@ -21,42 +21,40 @@ const Product = require("../models/Product");
 const logger = require("../utils/logger");
 
 /* ─────────────────────────────────────────────
-   CONFIGURATION
+   CONFIGURATION GETTERS
+   (Evaluated dynamically to avoid dotenv timing issues)
 ───────────────────────────────────────────── */
 
-const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
-const APP_ID = (process.env.GK_APP_ID || "").trim();
-const APP_SECRET = (process.env.GK_APP_SECRET || "").trim();
-const GK_MID = (process.env.GK_MID || "").trim();
+const getGkConfig = () => {
+  const env = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
+  const mid = (process.env.GK_MID || "").trim();
+  const appId = (process.env.GK_APP_ID || "").trim();
+  const appSecret = (process.env.GK_APP_SECRET || "").trim();
+  
+  // Force sandbox if sandbox merchant ID is detected
+  const isSandbox = env === "sandbox" || mid === "19vhta8dq0co";
+  
+  const productSyncUrl = isSandbox
+      ? "https://sandbox-item.dev.gokwik.io"
+      : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
-const IS_SANDBOX = GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co";
+  const collectionSyncUrl = isSandbox
+      ? "https://api-gw-v4.dev.gokwik.io/sandbox"
+      : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
-/**
- * GoKwik uses different base URLs for different operations in sandbox:
- *   Product sync  → https://sandbox-item.dev.gokwik.io
- *   Collection sync → https://api-gw-v4.dev.gokwik.io/sandbox
- *   Checkout/Order → https://api.gokwik.co (or GK_API_BASE_URL)
- * In production, all use the same base URL.
- */
-const PRODUCT_SYNC_URL = IS_SANDBOX
-    ? "https://sandbox-item.dev.gokwik.io"
-    : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
-
-const COLLECTION_SYNC_URL = IS_SANDBOX
+  const checkoutBaseUrl = isSandbox
     ? "https://api-gw-v4.dev.gokwik.io/sandbox"
     : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
-// Checkout / order APIs use the merchant API base URL
-const CHECKOUT_BASE_URL = IS_SANDBOX
-  ? "https://api-gw-v4.dev.gokwik.io/sandbox"
-  : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
+  return { env, mid, appId, appSecret, isSandbox, productSyncUrl, collectionSyncUrl, checkoutBaseUrl };
+};
 
 /**
  * Build the standard headers GoKwik expects for product/collection sync.
  * Uses gk-merchant-id (from curl) + app_name: checkout.
  */
-const buildItemHeaders = () => ({
-  "gk-merchant-id": GK_MID,
+const buildItemHeaders = (config) => ({
+  "gk-merchant-id": config.mid,
   "app_name": "checkout",
   "Content-Type": "application/json",
 });
@@ -64,10 +62,10 @@ const buildItemHeaders = () => ({
 /**
  * Build the standard headers GoKwik expects for checkout/order APIs.
  */
-const buildCheckoutHeaders = () => ({
-  "gk-app-id": APP_ID,
-  "gk-app-secret": APP_SECRET,
-  "gk-merchant-id": GK_MID,
+const buildCheckoutHeaders = (config) => ({
+  "gk-app-id": config.appId,
+  "gk-app-secret": config.appSecret,
+  "gk-merchant-id": config.mid,
   "app_name": "checkout",
   "Content-Type": "application/json",
 });
@@ -143,7 +141,7 @@ const mapProductToGokwik = (product, isDeleted = false) => {
     body_html: product.description || "",
     vendor: "VedicAstro",
     product_type: product.category?.name || "General",
-    merchant_id: GK_MID,
+    merchant_id: process.env.GK_MID || "", // Fallback if mapper doesn't have config
     is_deleted: isDeleted,
     variants,
     images,
@@ -171,22 +169,24 @@ const mapCategoryToGokwik = async (category) => {
 ───────────────────────────────────────────── */
 
 exports.syncProduct = async (product, isDeleted = false) => {
-  if (!GK_MID) {
+  const config = getGkConfig();
+  if (!config.mid) {
     logger.warn("GoKwik outbound: GK_MID not set — skipping product sync");
     return;
   }
 
   try {
     const productData = mapProductToGokwik(product, isDeleted);
+    productData.merchant_id = config.mid; // Override with dynamic mid
     
-    const syncUrl = `${PRODUCT_SYNC_URL}/v3/product/update-product-details`;
-    const headers = buildItemHeaders();
+    const syncUrl = `${config.productSyncUrl}/v3/product/update-product-details`;
+    const headers = buildItemHeaders(config);
 
     logger.info("GoKwik syncProduct initiating", { 
       productId: product._id, 
       name: product.name,
       url: syncUrl,
-      merchantId: GK_MID,
+      merchantId: config.mid,
       isVisible: product.isVisible,
       isDeleted 
     });
@@ -226,7 +226,8 @@ exports.syncProduct = async (product, isDeleted = false) => {
 const mongoose = require("mongoose");
 
 exports.syncCollection = async (categoryOrId) => {
-  if (!GK_MID) {
+  const config = getGkConfig();
+  if (!config.mid) {
     logger.warn("GoKwik outbound: GK_MID not set — skipping collection sync");
     return;
   }
@@ -245,15 +246,16 @@ exports.syncCollection = async (categoryOrId) => {
     }
 
     const payload = await mapCategoryToGokwik(category);
+    payload.merchant_id = config.mid; // Dynamic override
 
-    const syncUrl = `${COLLECTION_SYNC_URL}/v3/collection/update-collection`;
-    const headers = buildItemHeaders();
+    const syncUrl = `${config.collectionSyncUrl}/v3/collection/update-collection`;
+    const headers = buildItemHeaders(config);
 
     logger.info("GoKwik syncCollection initiating", {
       categoryId: category._id,
       name: category.name,
       url: syncUrl,
-      merchantId: GK_MID,
+      merchantId: config.mid,
     });
 
     const res = await axios.post(
@@ -288,11 +290,13 @@ exports.syncCollection = async (categoryOrId) => {
 ───────────────────────────────────────────── */
 
 exports.syncEverything = async () => {
-  if (!GK_MID) {
+  const config = getGkConfig();
+  if (!config.mid) {
     logger.warn("GoKwik outbound: GK_MID not set — skipping full sync");
     return { 
       success: false, 
-      message: "GoKwik credentials (GK_MID) not configured in .env" 
+      message: "GoKwik credentials (GK_MID) not configured in .env",
+      environment: config.isSandbox ? "sandbox" : "production",
     };
   }
 
@@ -303,10 +307,10 @@ exports.syncEverything = async () => {
     const products = await Product.find({ "approval.status": "approved" }).populate("category", "name");
 
     logger.info("GoKwik full sync process started", {
-      env: GK_ENV,
-      productSyncUrl: PRODUCT_SYNC_URL,
-      collectionSyncUrl: COLLECTION_SYNC_URL,
-      merchantId: GK_MID,
+      env: config.env,
+      productSyncUrl: config.productSyncUrl,
+      collectionSyncUrl: config.collectionSyncUrl,
+      merchantId: config.mid,
       categoriesFound: categories.length,
       approvedProductsFound: products.length,
     });
@@ -320,17 +324,18 @@ exports.syncEverything = async () => {
     for (const cat of categories) {
       try {
         const payload = await mapCategoryToGokwik(cat);
+        payload.merchant_id = config.mid; // Dynamic override
 
         logger.info("Syncing collection to GoKwik", { 
           id: cat._id, name: cat.name, 
           productCount: payload.product_ids.length 
         });
 
-        const syncUrl = `${COLLECTION_SYNC_URL}/v3/collection/update-collection`;
+        const syncUrl = `${config.collectionSyncUrl}/v3/collection/update-collection`;
         const res = await axios.post(
           syncUrl, 
           payload, 
-          { headers: buildItemHeaders(), timeout: 15000 }
+          { headers: buildItemHeaders(config), timeout: 15000 }
         );
 
         collectionResults.push({ 
@@ -365,17 +370,18 @@ exports.syncEverything = async () => {
     for (const prod of products) {
       try {
         const payload = mapProductToGokwik(prod);
+        payload.merchant_id = config.mid; // Dynamic override
 
         logger.info("Syncing product to GoKwik", { 
           id: prod._id, name: prod.name,
           price: prod.pricing?.finalPrice 
         });
 
-        const syncUrl = `${PRODUCT_SYNC_URL}/v3/product/update-product-details`;
+        const syncUrl = `${config.productSyncUrl}/v3/product/update-product-details`;
         const res = await axios.post(
           syncUrl, 
           payload, 
-          { headers: buildItemHeaders(), timeout: 15000 }
+          { headers: buildItemHeaders(config), timeout: 15000 }
         );
 
         productResults.push({ 
@@ -408,7 +414,7 @@ exports.syncEverything = async () => {
     const summary = {
       success: true,
       message: "GoKwik full catalog sync completed",
-      environment: IS_SANDBOX ? "sandbox" : "production",
+      environment: `${config.isSandbox ? "sandbox" : "production"} [Raw env: '${config.env}', mid: '${config.mid}']`,
       syncedAt: new Date().toISOString(),
       details: {
         collections: {
@@ -456,7 +462,8 @@ const ORDER_STATUS_MAP = {
 };
 
 exports.updateOrder = async (order, refundAmount = null) => {
-  if (!APP_ID || !APP_SECRET) {
+  const config = getGkConfig();
+  if (!config.appId || !config.appSecret) {
     logger.warn("GoKwik outbound: GK_APP_ID / GK_APP_SECRET not set — skipping order update");
     return;
   }
@@ -473,9 +480,9 @@ exports.updateOrder = async (order, refundAmount = null) => {
     };
 
     const res = await axios.post(
-      `${CHECKOUT_BASE_URL}/v3/orders/update`,
+      `${config.checkoutBaseUrl}/v3/orders/update`,
       payload,
-      { headers: buildCheckoutHeaders(), timeout: 8000 }
+      { headers: buildCheckoutHeaders(config), timeout: 8000 }
     );
     logger.info("GoKwik updateOrder success", {
       orderNumber: order.orderNumber,
