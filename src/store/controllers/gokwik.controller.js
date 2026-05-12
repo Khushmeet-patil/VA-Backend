@@ -118,17 +118,57 @@ exports.orderUpdate = async (req, res) => {
 
 /* ================= POST /sync-all (Admin only) ================= */
 const gokwikOutbound = require("../services/gokwik.outbound.service");
+const axios = require("axios");
 
 exports.syncEverything = async (req, res) => {
   try {
     logger.info("Admin triggered GoKwik full sync");
     const result = await gokwikOutbound.syncEverything();
-    
-    if (result.details.products.total === 0) {
-      logger.warn("GoKwik syncEverything: No approved products found to sync.");
+
+    if (!result.success) {
+      return res.status(400).json(result);
     }
-    
-    return res.json(result);
+
+    // After sync, verify by fetching products from GoKwik sandbox
+    let verification = null;
+    try {
+      const GK_ENV = (process.env.GK_ENV || "sandbox").toLowerCase();
+      const GK_MID = process.env.GK_MID || "";
+      const verifyUrl =
+        GK_ENV === "sandbox"
+          ? "https://sandbox-item.dev.gokwik.io"
+          : process.env.GK_API_BASE_URL || "https://api.gokwik.co";
+
+      const verifyRes = await axios.get(
+        `${verifyUrl}/v3/product/all?page=1&limit=5`,
+        {
+          headers: {
+            "gk-merchant-id": GK_MID,
+            "app_name": "checkout",
+          },
+          timeout: 10000,
+        }
+      );
+      verification = {
+        status: "verified",
+        productsOnGokwik: verifyRes.data?.data?.length || 0,
+        sampleProducts: (verifyRes.data?.data || []).slice(0, 3).map(p => ({
+          id: p.id,
+          title: p.title,
+          status: p.status,
+        })),
+      };
+    } catch (verifyErr) {
+      verification = {
+        status: "verification_failed",
+        error: verifyErr?.response?.data || verifyErr.message,
+      };
+    }
+
+    return res.json({
+      ...result,
+      verification,
+    });
   } catch (error) {
     logger.error("GoKwik syncEverything controller failed", { error: error.message });
     return res.status(500).json({ success: false, message: error.message });

@@ -1,6 +1,7 @@
 const Cart = require("../models/Cart");
 const Order = require("../models/Order");
 const orderService = require("./order.service");
+const logger = require("../utils/logger");
 
 /* ================= HELPERS ================= */
 
