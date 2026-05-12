@@ -37,17 +37,19 @@ const GK_MID = process.env.GK_MID || "";
  * In production, all use the same base URL.
  */
 const PRODUCT_SYNC_URL =
-  GK_ENV === "sandbox"
+  (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
     ? "https://sandbox-item.dev.gokwik.io"
-    : process.env.GK_API_BASE_URL || "https://api.gokwik.co";
+    : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
 const COLLECTION_SYNC_URL =
-  GK_ENV === "sandbox"
+  (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
     ? "https://api-gw-v4.dev.gokwik.io/sandbox"
-    : process.env.GK_API_BASE_URL || "https://api.gokwik.co";
+    : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
 // Checkout / order APIs use the merchant API base URL
-const CHECKOUT_BASE_URL = process.env.GK_API_BASE_URL || "https://api.gokwik.co";
+const CHECKOUT_BASE_URL = (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
+  ? "https://api-gw-v4.dev.gokwik.io/sandbox"
+  : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
 /**
  * Build the standard headers GoKwik expects for product/collection sync.

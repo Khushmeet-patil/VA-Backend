@@ -135,9 +135,9 @@ exports.syncEverything = async (req, res) => {
       const GK_ENV = (process.env.GK_ENV || "sandbox").toLowerCase();
       const GK_MID = process.env.GK_MID || "";
       const verifyUrl =
-        GK_ENV === "sandbox"
+        (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
           ? "https://sandbox-item.dev.gokwik.io"
-          : process.env.GK_API_BASE_URL || "https://api.gokwik.co";
+          : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
       const verifyRes = await axios.get(
         `${verifyUrl}/v3/product/all?page=1&limit=5`,
