@@ -250,3 +250,68 @@ exports.updateOrderFromGokwik = async ({
   await order.save();
   return order;
 };
+
+/* ================= PROCESS TRANSACTION WEBHOOK ================= */
+exports.processTransactionWebhook = async ({ event, data }) => {
+  const { merchantReferenceId, paymentId, amount, method, status } = data;
+  
+  const order = await Order.findOne({ orderNumber: merchantReferenceId });
+  if (!order) {
+    throw new Error(`Order not found for transaction: ${merchantReferenceId}`);
+  }
+
+  logger.info("Processing transaction webhook", { event, orderNumber: order.orderNumber });
+
+  if (event === "transaction.successful") {
+    order.paymentStatus = "paid";
+    order.orderStatus = "confirmed";
+    order.notes = `${order.notes || ""} | Paid via GK: ${paymentId}`.trim();
+  } else if (event === "transaction.failure") {
+    order.paymentStatus = "failed";
+    order.orderStatus = "cancelled";
+    order.notes = `${order.notes || ""} | Payment Failed GK: ${paymentId}`.trim();
+  } else if (event === "transaction.auto_refund") {
+    order.paymentStatus = "refunded";
+    order.orderStatus = "cancelled";
+    order.notes = `${order.notes || ""} | Auto-Refund Initiated GK`.trim();
+  }
+
+  await order.save();
+  return order;
+};
+
+/* ================= PROCESS REFUND WEBHOOK ================= */
+exports.processRefundWebhook = async ({ event, data }) => {
+  const { merchantReferenceId, refundId, amount, status } = data;
+
+  const order = await Order.findOne({ orderNumber: merchantReferenceId });
+  if (!order) {
+    throw new Error(`Order not found for refund: ${merchantReferenceId}`);
+  }
+
+  logger.info("Processing refund webhook", { event, orderNumber: order.orderNumber });
+
+  if (event === "refund.successful") {
+    order.paymentStatus = "refunded";
+    order.refund = {
+      status: "completed",
+      amount: amount,
+      refundId: refundId,
+      processedAt: new Date()
+    };
+  } else if (event === "refund.failure") {
+    order.refund = {
+      ...order.refund,
+      status: "failed",
+      error: data.description || "Refund failed"
+    };
+  } else if (event === "refund.pending") {
+    order.refund = {
+      ...order.refund,
+      status: "pending"
+    };
+  }
+
+  await order.save();
+  return order;
+};

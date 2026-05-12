@@ -123,6 +123,11 @@ exports.syncEverything = async (req, res) => {
   try {
     logger.info("Admin triggered GoKwik full sync");
     const result = await gokwikOutbound.syncEverything();
+    
+    if (result.details.products.total === 0) {
+      logger.warn("GoKwik syncEverything: No approved products found to sync.");
+    }
+    
     return res.json(result);
   } catch (error) {
     logger.error("GoKwik syncEverything controller failed", { error: error.message });
@@ -134,7 +139,7 @@ exports.syncEverything = async (req, res) => {
 exports.handleAbandonedCart = async (req, res) => {
   try {
     const { carts } = req.body;
-    logger.info("GoKwik abandoned carts received", { count: carts?.length });
+    logger.info("GoKwik abandoned carts received", { count: carts?.length || 0 });
 
     if (carts && carts.length > 0) {
       carts.forEach((cart) => {
@@ -150,5 +155,41 @@ exports.handleAbandonedCart = async (req, res) => {
   } catch (error) {
     logger.error("GoKwik abandoned cart webhook failed", { error: error.message });
     return res.status(500).json({ error: error.message });
+  }
+};
+
+/* ================= POST /webhooks/transaction ================= */
+exports.handleTransactionWebhook = async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    logger.info("GoKwik transaction webhook received", { event, paymentId: data?.paymentId });
+
+    if (!data?.merchantReferenceId) {
+      return res.status(400).json({ status_code: 400, error: "merchantReferenceId is required" });
+    }
+
+    await gokwikService.processTransactionWebhook(req.body);
+    return res.json({ status_code: 200, success: true });
+  } catch (error) {
+    logger.error("GoKwik transaction webhook failed", { error: error.message });
+    return res.status(500).json({ status_code: 500, error: error.message });
+  }
+};
+
+/* ================= POST /webhooks/refund ================= */
+exports.handleRefundWebhook = async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    logger.info("GoKwik refund webhook received", { event, refundId: data?.refundId });
+
+    if (!data?.merchantReferenceId) {
+      return res.status(400).json({ status_code: 400, error: "merchantReferenceId is required" });
+    }
+
+    await gokwikService.processRefundWebhook(req.body);
+    return res.json({ status_code: 200, success: true });
+  } catch (error) {
+    logger.error("GoKwik refund webhook failed", { error: error.message });
+    return res.status(500).json({ status_code: 500, error: error.message });
   }
 };

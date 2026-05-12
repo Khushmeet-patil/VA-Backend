@@ -26,6 +26,7 @@ const gkHeaders = {
   "gk-app-id": APP_ID,
   "gk-app-secret": APP_SECRET,
   "Content-Type": "application/json",
+  "app_name": "checkout", // Added per sandbox requirements
 };
 
 /* ─────────────────────────────────────────────
@@ -75,6 +76,20 @@ const mapProductToGokwik = (product, isDeleted = false) => {
     images.push({ id: "1", product_id: pid, src: "", variant_ids: [] });
   }
 
+  // Options (Required for products with variants in GoKwik)
+  const options = [];
+  if (product.variants && product.variants.length > 0) {
+    options.push({
+      name: product.variantName || "Size",
+      values: product.variants.map(v => v.size)
+    });
+  } else {
+    options.push({
+      name: "Title",
+      values: ["Default"]
+    });
+  }
+
   return {
     id: pid,
     title: product.name,
@@ -83,9 +98,13 @@ const mapProductToGokwik = (product, isDeleted = false) => {
     updated_at: (product.updatedAt || new Date()).toISOString(),
     handle: product.slug || pid,
     body_html: product.description || "",
+    vendor: "VedicAstro", // Or get from product.vendorId if available
+    product_type: product.category?.name || "General",
+    merchant_id: process.env.GK_MID || "", // Added merchant_id
     is_deleted: isDeleted,
     variants,
     images,
+    options
   };
 };
 
@@ -115,19 +134,31 @@ exports.syncProduct = async (product, isDeleted = false) => {
   }
 
   try {
-    const payload = mapProductToGokwik(product, isDeleted);
+    const productData = mapProductToGokwik(product, isDeleted);
+    // GoKwik V3 update-product-details usually expects the raw product object
+    // but some versions expect it wrapped in a "product" key.
+    // We will send the raw object but log it for debugging.
+    
+    logger.info("GoKwik syncProduct initiating", { 
+      productId: product._id, 
+      name: product.name,
+      isVisible: product.isVisible,
+      isDeleted 
+    });
+
     const res = await axios.post(
       `${BASE_URL}/v3/product/update-product-details`,
-      payload,
-      { headers: gkHeaders, timeout: 8000 }
+      productData,
+      { headers: gkHeaders, timeout: 10000 }
     );
+    
     logger.info("GoKwik syncProduct success", {
       productId: product._id,
       gkResponse: res.data,
     });
   } catch (err) {
     logger.error("GoKwik syncProduct failed", {
-      productId: product._id,
+      productId: product?._id,
       error: err?.response?.data || err.message,
     });
   }
@@ -186,26 +217,29 @@ exports.syncEverything = async () => {
     return { success: false, message: "GoKwik credentials (GK_APP_ID/GK_APP_SECRET) not configured in .env" };
   }
 
-  const Category = require("../models/Category"); // Dynamic require to avoid circular if any
+  const Category = require("../models/Category");
 
   try {
     const categories = await Category.find({}).lean();
     const products = await Product.find({ "approval.status": "approved" });
 
-    logger.info("GoKwik full sync triggered", {
-      categoryCount: categories.length,
-      productCount: products.length,
+    logger.info("GoKwik full sync process started", {
+      categoriesFound: categories.length,
+      approvedProductsFound: products.length,
     });
+
+    if (products.length === 0) {
+      logger.warn("No approved products found for GoKwik sync. Please ensure products are approved in Admin Panel.");
+    }
 
     // 1. Sync Categories
     const catResults = [];
     for (const cat of categories) {
-      // Use the logic from syncCollection but maybe track results
       try {
         const payload = await mapCategoryToGokwik(cat);
         await axios.post(`${BASE_URL}/v3/collection/update-collection`, payload, {
           headers: gkHeaders,
-          timeout: 8000,
+          timeout: 10000,
         });
         catResults.push({ id: cat._id, success: true });
       } catch (err) {
@@ -220,10 +254,14 @@ exports.syncEverything = async () => {
         const payload = mapProductToGokwik(prod);
         await axios.post(`${BASE_URL}/v3/product/update-product-details`, payload, {
           headers: gkHeaders,
-          timeout: 8000,
+          timeout: 10000,
         });
         prodResults.push({ id: prod._id, success: true });
       } catch (err) {
+        logger.error("Individual product sync failed during syncEverything", { 
+          productId: prod._id, 
+          error: err?.response?.data || err.message 
+        });
         prodResults.push({ id: prod._id, success: false, error: err.message });
       }
     }

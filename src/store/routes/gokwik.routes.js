@@ -36,4 +36,8 @@ router.post("/remove-out-of-stock-items", controller.removeOutOfStockItems);
 router.post("/order-update", verifyGokwikWebhook, controller.orderUpdate);
 router.post("/abandoned-cart", verifyGokwikWebhook, controller.handleAbandonedCart);
 
+// Payment Webhooks (Transaction & Refund)
+router.post("/webhooks/transaction", verifyGokwikWebhook, controller.handleTransactionWebhook);
+router.post("/webhooks/refund", verifyGokwikWebhook, controller.handleRefundWebhook);
+
 module.exports = router;
