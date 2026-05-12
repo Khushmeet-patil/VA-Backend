@@ -27,9 +27,9 @@ const logger = require("../utils/logger");
 
 const getGkConfig = () => {
   const env = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
-  const mid = (process.env.GK_MID || "").trim();
-  const appId = (process.env.GK_APP_ID || "").trim();
-  const appSecret = (process.env.GK_APP_SECRET || "").trim();
+  const mid = env === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "").trim();
+  const appId = env === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "").trim();
+  const appSecret = env === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "").trim();
   
   // Force sandbox if sandbox merchant ID is detected
   const isSandbox = env === "sandbox" || mid === "19vhta8dq0co";
