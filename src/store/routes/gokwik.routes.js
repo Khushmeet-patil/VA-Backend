@@ -13,9 +13,9 @@ const controller = require("../controllers/gokwik.controller");
 
 // Validate GoKwik webhook credentials (sent by GoKwik on webhook calls)
 const verifyGokwikWebhook = (req, res, next) => {
-  const env = "sandbox";
-  const appId = env === "production" ? process.env.GK_PROD_APP_ID : (process.env.GK_SANDBOX_APP_ID || "5c653033-810a-453b-8fde-b2207a158230");
-  const appSecret = env === "production" ? process.env.GK_PROD_APP_SECRET : (process.env.GK_SANDBOX_APP_SECRET || "636d4ed6-859e-4438-9c92-d0eb168e49ab");
+  const env = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
+  const appId = env === "production" ? process.env.GK_PROD_APP_ID : process.env.GK_SANDBOX_APP_ID;
+  const appSecret = env === "production" ? process.env.GK_PROD_APP_SECRET : process.env.GK_SANDBOX_APP_SECRET;
 
   // Skip verification if credentials not configured yet
   if (!appId || !appSecret) return next();
