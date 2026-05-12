@@ -30,6 +30,11 @@ const bannerSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    source: {
+      type: String,
+      enum: ["MAIN", "STORE"],
+      default: "STORE",
+    },
   },
   { timestamps: true }
 );

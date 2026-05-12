@@ -1384,7 +1384,8 @@ export const createBanner = async (req: Request, res: Response) => {
             imageUrl,
             navigationType: navigationType || 'none',
             navigationValue,
-            isActive: isActive !== undefined ? isActive : true
+            isActive: isActive !== undefined ? isActive : true,
+            source: 'MAIN'
         });
 
         res.status(201).json({ success: true, message: 'Banner created successfully', data: banner });
@@ -1397,7 +1398,7 @@ export const createBanner = async (req: Request, res: Response) => {
 // Get all banners (Admin view)
 export const getBanners = async (req: Request, res: Response) => {
     try {
-        const banners = await Banner.find().sort({ createdAt: -1 });
+        const banners = await Banner.find({ source: 'MAIN' }).sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: banners });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
@@ -1407,7 +1408,7 @@ export const getBanners = async (req: Request, res: Response) => {
 // Get active banners (App API)
 export const getActiveBanners = async (req: Request, res: Response) => {
     try {
-        const banners = await Banner.find({ isActive: true }).sort({ createdAt: -1 });
+        const banners = await Banner.find({ isActive: true, source: 'MAIN' }).sort({ createdAt: -1 });
         
         // Prevent caching for real-time banners
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
