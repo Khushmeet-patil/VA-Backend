@@ -54,6 +54,8 @@ const getGkConfig = () => {
  * Uses gk-merchant-id (from curl) + app_name: checkout.
  */
 const buildItemHeaders = (config) => ({
+  "gk-app-id": config.appId,
+  "gk-app-secret": config.appSecret,
   "gk-merchant-id": config.mid,
   "app_name": "checkout",
   "Content-Type": "application/json",
