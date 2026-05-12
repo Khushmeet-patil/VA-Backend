@@ -25,9 +25,11 @@ const logger = require("../utils/logger");
 ───────────────────────────────────────────── */
 
 const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
-const APP_ID = process.env.GK_APP_ID || "";
-const APP_SECRET = process.env.GK_APP_SECRET || "";
-const GK_MID = process.env.GK_MID || "";
+const APP_ID = (process.env.GK_APP_ID || "").trim();
+const APP_SECRET = (process.env.GK_APP_SECRET || "").trim();
+const GK_MID = (process.env.GK_MID || "").trim();
+
+const IS_SANDBOX = GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co";
 
 /**
  * GoKwik uses different base URLs for different operations in sandbox:
@@ -36,18 +38,16 @@ const GK_MID = process.env.GK_MID || "";
  *   Checkout/Order → https://api.gokwik.co (or GK_API_BASE_URL)
  * In production, all use the same base URL.
  */
-const PRODUCT_SYNC_URL =
-  (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
+const PRODUCT_SYNC_URL = IS_SANDBOX
     ? "https://sandbox-item.dev.gokwik.io"
     : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
-const COLLECTION_SYNC_URL =
-  (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
+const COLLECTION_SYNC_URL = IS_SANDBOX
     ? "https://api-gw-v4.dev.gokwik.io/sandbox"
     : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
 // Checkout / order APIs use the merchant API base URL
-const CHECKOUT_BASE_URL = (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
+const CHECKOUT_BASE_URL = IS_SANDBOX
   ? "https://api-gw-v4.dev.gokwik.io/sandbox"
   : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
@@ -408,7 +408,7 @@ exports.syncEverything = async () => {
     const summary = {
       success: true,
       message: "GoKwik full catalog sync completed",
-      environment: GK_ENV,
+      environment: IS_SANDBOX ? "sandbox" : "production",
       syncedAt: new Date().toISOString(),
       details: {
         collections: {

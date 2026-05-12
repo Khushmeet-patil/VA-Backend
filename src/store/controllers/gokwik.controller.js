@@ -132,10 +132,11 @@ exports.syncEverything = async (req, res) => {
     // After sync, verify by fetching products from GoKwik sandbox
     let verification = null;
     try {
-      const GK_ENV = (process.env.GK_ENV || "sandbox").toLowerCase();
-      const GK_MID = process.env.GK_MID || "";
-      const verifyUrl =
-        (GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co")
+      const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
+      const GK_MID = (process.env.GK_MID || "").trim();
+      const IS_SANDBOX = GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co";
+
+      const verifyUrl = IS_SANDBOX
           ? "https://sandbox-item.dev.gokwik.io"
           : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
 
