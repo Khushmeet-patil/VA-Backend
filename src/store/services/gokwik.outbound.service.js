@@ -26,7 +26,7 @@ const logger = require("../utils/logger");
 ───────────────────────────────────────────── */
 
 const getGkConfig = () => {
-  const env = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
+  const env = "sandbox"; // FORCED TO SANDBOX AS REQUESTED
   const mid = env === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "").trim();
   const appId = env === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "").trim();
   const appSecret = env === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "").trim();
