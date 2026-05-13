@@ -815,9 +815,10 @@ exports.confirmOrder = async (orderId, vendorId) => {
   await order.save();
 
   // 5️⃣ Payment check
+  const method = String(order.paymentMethod || "").toLowerCase();
   const canShip =
-    order.paymentMethod === "cod" ||
-    (order.paymentMethod !== "cod" && order.paymentStatus === "paid");
+    method === "cod" ||
+    ((method === "prepaid" || method === "razorpay" || method === "advance_cod") && order.paymentStatus === "paid");
 
   if (!canShip) {
     return {

@@ -188,8 +188,8 @@ const STATE_CODE_MAP = {
 const resolveStateCode = (stateOrCode) => {
   if (!stateOrCode) return "";
   const s = String(stateOrCode).trim();
-  // Already a 2-letter code
-  if (/^[A-Z]{2}$/.test(s)) return s;
+  // Already a 2-letter code (handle both cases)
+  if (/^[A-Za-z]{2}$/.test(s)) return s.toUpperCase();
   return STATE_CODE_MAP[s.toLowerCase()] || "";
 };
 
@@ -374,9 +374,24 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
 
   // Vendor-scoped totals
   const vendorTotal = vendorItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
-  const isCOD = String(order.paymentMethod || "").toLowerCase() === "cod";
+  const method = String(order.paymentMethod || "").toLowerCase();
+  
+  // Both 'cod' and 'advance_cod' are treated as COD by Kwikship
+  const isCOD = method === "cod" || method === "advance_cod";
   const paymentMode = isCOD ? "COD" : "PREPAID";
-  const collectableAmount = isCOD ? vendorTotal : 0;
+  
+  let collectableAmount = 0;
+  if (method === "cod") {
+    collectableAmount = vendorTotal;
+  } else if (method === "advance_cod") {
+    // For advance_cod, we only collect the remaining portion.
+    // If it's a multi-vendor order, we split the total collectableAmount 
+    // proportionally based on this vendor's share of the total order amount.
+    const totalOrderAmount = order.totalAmount || 1;
+    const vendorShare = vendorTotal / totalOrderAmount;
+    const totalRemaining = order.advanceCod?.collectableAmount || 0;
+    collectableAmount = vendorShare * totalRemaining;
+  }
 
   // Unique shipment code per vendor-group. Deterministic so retries idempotent on our side.
   const shipmentCode = `${order.orderNumber || order._id}-${vendor._id.toString().slice(-6)}`;
@@ -413,16 +428,17 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
 
   let data;
   try {
+    // logger.info("[Kwikship] Sending waybill payload", { shipmentCode, paymentMode, collectableAmount });
     const res = await axios.post(`${baseUrl}/waybill`, payload, {
       headers: { Authorization: token },
       timeout: 10000,
     });
     data = res.data;
   } catch (error) {
-    console.error("[Kwikship] Waybill Error:", error.response?.data || error.message);
+    const errorMsg = error.response?.data?.message || error.response?.data || error.message;
+    console.error("[Kwikship] Waybill Error:", errorMsg);
     throw new Error(
-      error.response?.data?.message ||
-      error.message ||
+      (typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)) ||
       "Failed to generate Kwikship waybill"
     );
   }
