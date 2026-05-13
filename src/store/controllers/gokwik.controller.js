@@ -129,10 +129,10 @@ exports.syncEverything = async (req, res) => {
       return res.status(400).json(result);
     }
 
-    // After sync, verify by fetching products from GoKwik sandbox
+    // After sync, verify by fetching products from GoKwik
     let verification = null;
     try {
-      const GK_ENV = "sandbox"; // FORCED TO SANDBOX AS REQUESTED
+      const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
       const GK_MID = GK_ENV === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "").trim();
       const GK_APP_ID = GK_ENV === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "").trim();
       const GK_APP_SECRET = GK_ENV === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "").trim();
