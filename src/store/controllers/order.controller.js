@@ -188,7 +188,12 @@ exports.updateItemStatus = async (req, res) => {
     });
 
     // Notify GoKwik whenever order status changes
-    gokwikOutbound.updateOrder(order).catch(() => {});
+    // If status is cancelled and it was a paid order, initiate full refund
+    let refundAmount = null;
+    if (req.body.status === "cancelled" && order.paymentStatus === "paid") {
+      refundAmount = order.totalAmount;
+    }
+    gokwikOutbound.updateOrder(order, refundAmount).catch(() => {});
 
     return res.json({
       success: true,

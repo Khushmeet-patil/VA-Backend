@@ -13,6 +13,7 @@ const commissionService = require("../services/commission.service");
 const logger = require("../utils/logger");
 const mongoose = require("mongoose");
 const Vendor = require("../models/Vendor");
+const gokwikOutbound = require("./gokwik.outbound.service");
 const { validateAndApplyCoupon } = require("./coupon.service");
 const CouponUsage = require("../models/CouponUsage");
 const KwikshipService = require("./kwikship.service");
@@ -347,10 +348,13 @@ exports.updateItemStatus = async ({ orderId, itemId, status, vendorId }) => {
 
   /* ================= GOKWIK GUARD =================
      Once a Kwikship waybill exists, status is owned by the courier.
-     Vendors may only cancel before pickup. Everything else
-     (shipped / in_transit / out_for_delivery / delivered)
-     comes from GoKwik via webhook or live tracking refresh.
+     Vendors may only cancel BEFORE it is shipped/delivered.
   */
+  const lockedStatuses = ["shipped", "out_for_delivery", "delivered", "completed"];
+  if (lockedStatuses.includes(item.status)) {
+    throw new Error(`Cannot modify status. Order is already ${item.status.replace(/_/g, " ")}.`);
+  }
+
   if (item.kwikship?.waybill) {
     const allowedManual = ["cancelled"];
     if (!allowedManual.includes(status)) {
@@ -846,6 +850,10 @@ exports.confirmOrder = async (orderId, vendorId) => {
       order._id,
       vendorId
     );
+
+    // Notify GoKwik that the order is confirmed and shipping is initiated
+    gokwikOutbound.updateOrder(order).catch(() => {});
+
     return {
       success: true,
       message: "Order confirmed & shipment created",
