@@ -472,29 +472,56 @@ exports.updateOrder = async (order, refundAmount = null) => {
   }
 
   try {
+    const status = ORDER_STATUS_MAP[order.orderStatus] || "Confirmed";
+    
+    // Construct payload dynamically to avoid sending empty strings
     const payload = {
+      merchant_id: config.mid,
       merchant_order_id: order.orderNumber,
-      order_status: ORDER_STATUS_MAP[order.orderStatus] || "Confirmed",
-      awb_number: order.kwikship?.waybill || "",
-      awb_status: order.kwikship?.status || "",
-      shipping_provider: order.kwikship?.courierName || "",
-      order_note: order.notes || "",
-      ...(refundAmount ? { refund_amount: Number(refundAmount) } : {}),
-      ...(order.razorpay?.paymentId ? { refund_tracking_id: order.razorpay.paymentId } : {}),
+      order_status: status,
     };
 
-    const res = await axios.post(
-      `${config.checkoutBaseUrl}/v3/orders/update`,
-      payload,
-      { headers: buildCheckoutHeaders(config), timeout: 8000 }
-    );
-    logger.info("GoKwik updateOrder success", {
+    if (order.kwikship?.waybill) {
+      payload.awb_number = order.kwikship.waybill;
+      payload.awb_status = order.kwikship.status || "pending";
+      payload.shipping_provider = order.kwikship.courierName || "Kwikship";
+    }
+
+    if (order.notes) {
+      payload.order_note = order.notes;
+    }
+
+    if (refundAmount && Number(refundAmount) > 0) {
+      payload.refund_amount = Number(refundAmount);
+    }
+
+    if (order.razorpay?.paymentId) {
+      payload.refund_tracking_id = order.razorpay.paymentId;
+    }
+
+    const url = `${config.checkoutBaseUrl}/v3/orders/update`;
+    const headers = buildCheckoutHeaders(config);
+
+    logger.info("GoKwik updateOrder initiating", {
       orderNumber: order.orderNumber,
+      status: status,
+      url: url,
+      payload: JSON.stringify(payload)
+    });
+
+    const res = await axios.post(url, payload, { headers, timeout: 10000 });
+
+    logger.info("GoKwik updateOrder response", {
+      orderNumber: order.orderNumber,
+      gkStatusCode: res.status,
       gkResponse: res.data,
     });
+
+    return res.data;
   } catch (err) {
     logger.error("GoKwik updateOrder failed", {
       orderNumber: order.orderNumber,
+      status: err?.response?.status,
       error: err?.response?.data || err.message,
     });
   }
