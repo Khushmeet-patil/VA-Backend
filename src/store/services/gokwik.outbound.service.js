@@ -453,13 +453,14 @@ exports.syncEverything = async () => {
 ───────────────────────────────────────────── */
 
 const ORDER_STATUS_MAP = {
+  created: "Pending",
+  pending: "Pending",
   confirmed: "Confirmed",
   processing: "Confirmed",
   partially_shipped: "Confirmed",
   shipped: "Confirmed",
   completed: "Confirmed",
   cancelled: "Cancelled",
-  pending: "Pending",
   failed: "Failed",
 };
 
@@ -478,7 +479,8 @@ exports.updateOrder = async (order, refundAmount = null) => {
       awb_status: order.kwikship?.status || "",
       shipping_provider: order.kwikship?.courierName || "",
       order_note: order.notes || "",
-      ...(refundAmount ? { refund_amount: String(refundAmount) } : {}),
+      ...(refundAmount ? { refund_amount: Number(refundAmount) } : {}),
+      ...(order.razorpay?.paymentId ? { refund_tracking_id: order.razorpay.paymentId } : {}),
     };
 
     const res = await axios.post(

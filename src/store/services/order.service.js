@@ -370,12 +370,16 @@ exports.updateItemStatus = async ({ orderId, itemId, status, vendorId }) => {
 
   const statuses = order.items.map((i) => i.status);
 
-  if (statuses.every((s) => s === "delivered")) {
+  if (statuses.every((s) => s === "cancelled")) {
+    order.orderStatus = "cancelled";
+  } else if (statuses.every((s) => s === "delivered")) {
     order.orderStatus = "completed";
   } else if (statuses.some((s) => s === "shipped")) {
     order.orderStatus = "shipped";
   } else if (statuses.some((s) => s === "confirmed")) {
     order.orderStatus = "confirmed";
+  } else if (statuses.some((s) => s === "pending")) {
+    order.orderStatus = "pending";
   } else {
     order.orderStatus = "created";
   }
