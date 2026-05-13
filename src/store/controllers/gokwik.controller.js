@@ -44,6 +44,12 @@ exports.setShippingAddress = async (req, res) => {
 
 /* ================= POST /place-order ================= */
 exports.placeOrder = async (req, res) => {
+  // TEMPORARY: Fail the API as requested
+  return res.status(500).json({ 
+    status_code: 500, 
+    error: "Internal Server Error (Temporary Testing Fail)" 
+  });
+
   try {
     const { cart_id } = req.body;
     if (!cart_id) {
