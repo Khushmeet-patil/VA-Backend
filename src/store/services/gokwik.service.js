@@ -143,7 +143,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     shippingAddress: shippingAddr,
     paymentMethod: isCoD ? "cod" : "prepaid",
     paymentStatus: isCoD ? "pending" : "paid",
-    orderStatus: isCoD ? "pending" : "confirmed",
+    orderStatus: "pending",
     couponCode: null, // GoKwik manages their own discounts; no merchant coupon to apply
     notes: [
       meta_data?.gokwik_order_id ? `GoKwik Order: ${meta_data.gokwik_order_id}` : null,
@@ -162,10 +162,6 @@ exports.placeGokwikOrder = async (cartId, payload) => {
 
   await Order.findByIdAndUpdate(order._id, { gokwikCartId: cartId });
 
-  // If order is confirmed (Prepaid), auto-trigger Kwikship for all vendors
-  if (order.orderStatus === "confirmed") {
-    orderService.autoConfirmOrderForAllVendors(order._id).catch(() => {});
-  }
 
   return order;
 };
@@ -299,10 +295,6 @@ exports.processTransactionWebhook = async ({ event, data }) => {
 
   await order.save();
 
-  // If transaction was successful, auto-trigger Kwikship for all vendors
-  if (event === "transaction.successful") {
-    orderService.autoConfirmOrderForAllVendors(order._id).catch(() => {});
-  }
 
   return order;
 };

@@ -24,7 +24,7 @@ exports.razorpayWebhook = async (req, res) => {
 
     if (order && order.paymentStatus !== "paid") {
       order.paymentStatus = "paid";
-      order.orderStatus = "confirmed";
+      order.orderStatus = "pending";
       order.razorpay.paymentId = payment.id;
       await order.save();
     }
