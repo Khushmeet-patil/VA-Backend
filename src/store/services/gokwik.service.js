@@ -229,10 +229,10 @@ exports.updateOrderFromGokwik = async ({
     order.orderStatus = statusMap[order_status];
   }
 
-  if (awb_number) {
+  if (awb_number || awb_status) {
     order.kwikship = {
       ...order.kwikship,
-      waybill: awb_number,
+      waybill: awb_number || order.kwikship?.waybill,
       status: awb_status || order.kwikship?.status,
       courierName: shipping_provider || order.kwikship?.courierName,
       lastUpdated: new Date(),
