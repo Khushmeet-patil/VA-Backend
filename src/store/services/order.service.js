@@ -255,7 +255,9 @@ exports.getVendorOrders = async (vendorId) => {
     orderStatus: order.orderStatus,
     paymentStatus: order.paymentStatus,
     createdAt: order.createdAt,
+    totalAmount: order.totalAmount || 0,
     customer: order.customerId,
+    customerName: order.shippingAddress?.fullName || "Customer",
 
     items: order.items
       .filter((i) => i.vendorId.toString() === vendorId.toString())
