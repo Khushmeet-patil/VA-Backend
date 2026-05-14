@@ -874,3 +874,23 @@ exports.confirmOrder = async (orderId, vendorId) => {
   }
 };
 
+/**
+ * Automatically confirms items and creates shipments for ALL vendors in an order.
+ * Used for Prepaid orders (GoKwik/Razorpay) where we want to trigger logistics immediately.
+ */
+exports.autoConfirmOrderForAllVendors = async (orderId) => {
+  const order = await Order.findById(orderId);
+  if (!order) return;
+
+  const vendorIds = [...new Set(order.items.map(item => item.vendorId.toString()))];
+  
+  for (const vendorId of vendorIds) {
+    try {
+      await exports.confirmOrder(orderId, vendorId);
+    } catch (err) {
+      console.error(`Auto-confirm failed for vendor ${vendorId} on order ${orderId}:`, err.message);
+    }
+  }
+};
+
+
