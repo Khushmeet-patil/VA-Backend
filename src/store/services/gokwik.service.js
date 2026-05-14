@@ -74,10 +74,16 @@ const buildGokwikCart = (cart, extra = {}) => {
   };
 };
 
-const populateOpts = {
-  path: "items.productId",
-  select: "name images pricing sku stock variants isVisible",
-};
+const populateOpts = [
+  {
+    path: "items.productId",
+    select: "name images pricing sku stock variants isVisible",
+  },
+  {
+    path: "userId",
+    select: "firstName lastName mobile email",
+  }
+];
 
 /* ================= GET CART ================= */
 
@@ -108,9 +114,13 @@ exports.placeGokwikOrder = async (cartId, payload) => {
 
   const isCoD = payment_details?.payment_method === "pp-cod";
 
+  const user = cart.userId;
+  const profileName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : "";
+  const profilePhone = user?.mobile || "";
+
   const shippingAddr = {
-    fullName: `${shipping_address.first_name || ""} ${shipping_address.last_name || ""}`.trim(),
-    phone: shipping_address.phone || customer_phone || "",
+    fullName: `${shipping_address.first_name || ""} ${shipping_address.last_name || ""}`.trim() || profileName,
+    phone: shipping_address.phone || customer_phone || profilePhone || "",
     addressLine1: shipping_address.address || "",
     addressLine2: "",
     city: shipping_address.city || "",
@@ -127,8 +137,8 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       size: item.size || null,
     }));
 
-  const { order } = await orderService.createOrder({
-    customerId: cart.userId,
+  const { order, vendorMap } = await orderService.createOrder({
+    customerId: user?._id || cart.userId,
     items,
     shippingAddress: shippingAddr,
     paymentMethod: isCoD ? "cod" : "prepaid",
@@ -141,6 +151,14 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       payment_details?.pg_payment_trnx_id ? `PG Txn: ${payment_details.pg_payment_trnx_id}` : null,
     ].filter(Boolean).join(" | "),
   });
+
+  // ✅ CLEAR CART & SEND VENDOR EMAILS
+  await orderService.postOrderCleanup({ 
+    order, 
+    vendorMap, 
+    items, 
+    customerId: cart.userId 
+  }).catch((e) => logger.error("GoKwik post-order cleanup failed", e));
 
   await Order.findByIdAndUpdate(order._id, { gokwikCartId: cartId });
 
