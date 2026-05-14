@@ -97,9 +97,9 @@ exports.buyNowSummary = async ({
 
   const tax = 0; // Tax is now bundled in MRP and finalPrice
   const shippingFee = 0;
-  const platformFee = 20;
+  const platformFee = 0;
   
-  const totalAmount = finalPriceTotal - couponDiscount + platformFee;
+  const totalAmount = finalPriceTotal - couponDiscount;
   const discount = totalMRP - finalPriceTotal + couponDiscount;
 
   return {
@@ -133,7 +133,7 @@ exports.cartSummary = async ({ userId, couponCode, selectedItems }) => {
       discount: 0,
       tax: 0,
       shippingFee: 0,
-      platformFee: 20,
+      platformFee: 0,
       totalAmount: 0,
     };
   }
@@ -163,8 +163,8 @@ exports.cartSummary = async ({ userId, couponCode, selectedItems }) => {
 
   const tax = 0;
   const shippingFee = 0;
-  const platformFee = 20;
-  const totalAmount = finalPriceSum - couponDiscount + platformFee;
+  const platformFee = 0;
+  const totalAmount = finalPriceSum - couponDiscount;
   const discount = totalMRP - finalPriceSum + couponDiscount;
 
   return {

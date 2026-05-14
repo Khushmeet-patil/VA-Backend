@@ -40,8 +40,8 @@ const buildGokwikCart = (cart, extra = {}) => {
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const discountTotal = 0; // no coupon applied; coupons handled by GoKwik's Kwik Discount
   const shippingTotal = subtotal > 500 || subtotal === 0 ? 0 : 50;
-  const platformFee = subtotal > 0 ? 3 : 0;
-  const total = subtotal + shippingTotal - discountTotal + platformFee;
+  const platformFee = 0;
+  const total = subtotal + shippingTotal - discountTotal;
 
   const shippingMethods =
     subtotal > 500 || subtotal === 0
@@ -69,9 +69,6 @@ const buildGokwikCart = (cart, extra = {}) => {
     ],
     available_coupons: [],
     available_shipping_methods: shippingMethods,
-    ...(platformFee > 0
-      ? { order_summary_extra_fields: [{ name: "Platform Fee", value: platformFee }] }
-      : {}),
     items,
     ...extra,
   };
