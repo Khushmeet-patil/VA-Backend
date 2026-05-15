@@ -9,6 +9,7 @@ import Transaction from '../models/Transaction';
 import notificationService from './notificationService';
 import availabilityService from './availabilityService';
 import redisClient from '../config/redis';
+import { getSettingValue } from '../controllers/systemSettingController';
 
 /**
  * ChatService - Core billing and session management
@@ -126,60 +127,39 @@ class ChatService {
             throw new Error('ASTROLOGER_BUSY_PENDING: Astrologer is currently handling another incoming request. Please stay tuned.');
         }
 
-        const ratePerMinute = astrologer.pricePerMin;
+        let ratePerMinute = astrologer.pricePerMin;
         const minRealBalanceRequired = ratePerMinute * 5;
 
-        // Check if user is eligible for free trial (first-time user)
-        // FREE TRIAL RULES:
-        //   1. User must never have used a free trial before (hasUsedFreeTrial = false)
-        //   2. User must NOT have sufficient REAL paid balance for a 5-minute session.
-        //      If the user has enough money, they get a PAID session.
-        // NOTE: Free trial is a PLATFORM USER benefit, NOT controlled per-astrologer.
-        const isEligibleForFreeTrial = !user.hasUsedFreeTrial &&
-                                      (user.walletBalance < minRealBalanceRequired);
+        // Check if user is eligible for introductory offer (first-time user)
+        // INTRO OFFER RULES:
+        //   1. User must never have used an intro rate/free trial before (hasUsedFreeTrial = false)
+        //   2. Admin must have set newUserIntroRate in SystemSetting (default 5)
+        const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
+        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
+        
+        const isEligibleForIntroRate = !user.hasUsedFreeTrial;
 
-        // Name validation for first free chat
-        if (isEligibleForFreeTrial) {
-            const nameIsUser = user.name === 'User';
-            const nameIsMobile = user.name === user.mobile;
-            const nameIsEmpty = !user.name || user.name.trim().length === 0;
-
-            if (nameIsUser || nameIsMobile || nameIsEmpty) {
-                throw new Error('NAME_REQUIRED: Please update your name in profile to start your first free chat.');
+        if (isEligibleForIntroRate) {
+            ratePerMinute = newUserIntroRate;
+            
+            // For intro rate, we require a minimum recharge/balance
+            if (user.walletBalance < newUserMinRecharge) {
+                throw new Error(`INSUFFICIENT_FOR_INTRO: Minimum ₹${newUserMinRecharge} recharge required to talk at ₹${newUserIntroRate}/min. Current balance: ₹${user.walletBalance}`);
+            }
+        } else {
+            // Check for standard balance (5 mins)
+            if (user.walletBalance < minRealBalanceRequired) {
+                throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes of chat.`);
             }
         }
 
-        // If user is eligible for free trial, enforce per-astrologer daily free chat limit
-        // (only when the global isFreeChatLimitEnabled setting is ON)
-        if (isEligibleForFreeTrial) {
-            const systemSettingModel = mongoose.model('SystemSetting');
-            const limitEnabledSetting = await systemSettingModel.findOne({ key: 'isFreeChatLimitEnabled' });
-            const isLimitEnabled = limitEnabledSetting ? (limitEnabledSetting.value === true || limitEnabledSetting.value === 'true') : false;
-
-            if (isLimitEnabled) {
-                if (!astrologer.isFreeChatAvailable) {
-                    throw new Error('FREE_CHAT_UNAVAILABLE: This astrologer does not offer free chat sessions');
-                }
-                const dailyLimit = astrologer.freeChatLimit || 0;
-                const usedToday = astrologer.freeChatsToday || 0;
-                if (dailyLimit > 0 && usedToday >= dailyLimit) {
-                    throw new Error('FREE_CHAT_LIMIT_REACHED: This astrologer has reached their daily free chat limit');
-                }
-            }
-        }
-
-        // Check if user has enough REAL balance for at least 5 mins (skip for free trial users)
-        if (!isEligibleForFreeTrial && user.walletBalance < minRealBalanceRequired) {
-            throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes of chat.`);
-        }
-
-        // Check for existing pending request from this user
+        // Check for existing pending/active request from this user
         const existingRequest = await ChatSession.findOne({
             userId,
-            status: 'PENDING'
+            status: { $in: ['PENDING', 'ACTIVE'] }
         });
         if (existingRequest) {
-            throw new Error('You already have a pending chat request');
+            throw new Error('You already have an active or pending chat request');
         }
 
 
@@ -191,9 +171,7 @@ class ChatService {
             status: 'PENDING',
             intakeDetails,
             profileId: (intakeDetails as any)?.profileId || 'default', // Save profileId
-            // Free trial for new users
-            isFreeTrialSession: isEligibleForFreeTrial,
-            freeTrialDurationSeconds: isEligibleForFreeTrial ? 120 : undefined,
+            isFreeTrialSession: false, // Legacy field, set to false
         });
 
         await session.save();

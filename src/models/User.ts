@@ -50,6 +50,7 @@ export interface IUser extends Document {
     bonusBalance: number;
     isBlocked: boolean;
     hasUsedFreeTrial: boolean;  // True after user has used their one-time free trial chat
+    hasRecharged: boolean;  // True after user has completed their first wallet recharge
     birthProfiles: IBirthProfile[];  // Saved birth profiles for chat intake
     fcmToken?: string;  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt?: Date;  // When FCM token was last updated
@@ -105,6 +106,7 @@ const UserSchema: Schema = new Schema({
     bonusBalance: { type: Number, default: 0 },
     isBlocked: { type: Boolean, default: false },
     hasUsedFreeTrial: { type: Boolean, default: false },
+    hasRecharged: { type: Boolean, default: false },
     birthProfiles: { type: [BirthProfileSchema], default: [] },
     fcmToken: { type: String, index: true },  // Firebase Cloud Messaging token
     fcmTokenUpdatedAt: { type: Date },  // When FCM token was last updated

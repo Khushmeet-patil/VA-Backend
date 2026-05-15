@@ -142,10 +142,15 @@ export const sendOtp = async (req: Request, res: Response) => {
 
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+        const bonusAmount = await getSettingValue('newUserBonusAmount', 15);
+        
         // Upsert user: create if not exists, update if exists
         await User.findOneAndUpdate(
             { mobile },
-            { mobile, otp, otpExpires },
+            { 
+                $set: { mobile, otp, otpExpires },
+                $setOnInsert: { bonusBalance: bonusAmount } 
+            },
             { upsert: true, new: true }
         );
 
@@ -474,11 +479,21 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             }
         }
 
+        const newUserBonusAmount = await getSettingValue('newUserBonusAmount', 15);
+        const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
+        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
+
         return res.status(200).json({
             success: true,
             walletBalance: user.walletBalance || 0,
             bonusBalance: user.bonusBalance || 0,
             hasUsedFreeTrial: hasUsedFreeTrial,
+            hasRecharged: user.hasRecharged || false,
+            onboarding: {
+                bonusAmount: newUserBonusAmount,
+                introRate: newUserIntroRate,
+                minRecharge: newUserMinRecharge
+            },
             profilePhoto: user.profilePhoto // Return latest profile photo (Cloudflare URL)
         });
     } catch (error) {
@@ -660,6 +675,7 @@ export const processRecharge = async (req: Request, res: Response) => {
 
         user.walletBalance = previousBalance + amount;
         user.bonusBalance = previousBonus + (bonusAmount || 0);
+        user.hasRecharged = true;
         await user.save();
 
         // Log transaction
@@ -794,7 +810,10 @@ export const verifyPayment = async (req: Request, res: Response) => {
         // 3. Transaction recorded — now update wallet atomically
         const updatedUser = await User.findByIdAndUpdate(
             userId,
-            { $inc: { walletBalance: Number(amount), bonusBalance: Number(bonusAmount) || 0 } },
+            { 
+                $inc: { walletBalance: Number(amount), bonusBalance: Number(bonusAmount) || 0 },
+                $set: { hasRecharged: true }
+            },
             { new: true }
         );
 
@@ -892,7 +911,8 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
                 });
 
                 await User.findByIdAndUpdate(userId, {
-                    $inc: { walletBalance: baseAmount, bonusBalance: bonusAmount }
+                    $inc: { walletBalance: baseAmount, bonusBalance: bonusAmount },
+                    $set: { hasRecharged: true }
                 });
 
                 console.log(`[Webhook] Wallet credited ₹${baseAmount} for user ${userId} (${paymentId})`);
