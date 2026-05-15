@@ -29,14 +29,15 @@ const maskSessionForAstrologer = (session: any) => {
     // Mask intakeDetails name
     if (sessionObj.intakeDetails && sessionObj.intakeDetails.name) {
         const name = sessionObj.intakeDetails.name;
-        const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+        // MASK if name contains 10 or more digits anywhere (to catch user7990358824)
+        const isNamePhone = /\d{10,}/.test(name.replace(/[\s-]/g, ''));
         if (isNamePhone) sessionObj.intakeDetails.name = 'User';
     }
 
     // Mask populated user
     if (sessionObj.userId && typeof sessionObj.userId === 'object') {
         const name = sessionObj.userId.name || 'User';
-        const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+        const isNamePhone = /\d{10,}/.test(name.replace(/[\s-]/g, ''));
         sessionObj.userId.name = isNamePhone ? 'User' : name;
         sessionObj.userId.mobile = ''; // Hide mobile
     }

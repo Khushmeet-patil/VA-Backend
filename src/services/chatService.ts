@@ -211,14 +211,23 @@ class ChatService {
             const roomName = `astrologer:${astrologerId}`;
 
             const rawName = user.name || 'User';
-            const isNamePhone = /^[0-9+ ]{10,15}$/.test(rawName.trim());
+            // MASK if name contains 10 or more digits anywhere (to catch user7990358824)
+            const isNamePhone = /\d{10,}/.test(rawName.replace(/[\s-]/g, ''));
             const sanitizedName = isNamePhone ? 'User' : rawName;
+
+            // Sanitize intakeDetails name
+            const sanitizedIntake = intakeDetails ? { ...intakeDetails } : {};
+            if ((sanitizedIntake as any).name) {
+                if (/\d{10,}/.test((sanitizedIntake as any).name.replace(/[\s-]/g, ''))) {
+                    (sanitizedIntake as any).name = 'User';
+                }
+            }
 
             const requestPayload = {
                 sessionId: session.sessionId,
                 userId: user._id.toString(),
                 userName: sanitizedName,
-                intakeDetails,
+                intakeDetails: sanitizedIntake,
                 ratePerMinute,
                 userMobile: '', // REDACTED for privacy
                 createdAt: session.createdAt.toISOString(),
@@ -233,7 +242,7 @@ class ChatService {
                 userName: sanitizedName,
                 userMobile: '', // REDACTED for privacy
                 ratePerMinute,
-                intakeDetails,
+                intakeDetails: sanitizedIntake,
             }).catch(e => console.error('[ChatService] FCM chat request send failed:', e));
 
             // Socket emit — fire and forget, no ACK, no retry
@@ -2316,24 +2325,37 @@ class ChatService {
         if (this.io) {
             const roomName = `astrologer:${astrologerId}`;
 
+            const rawName = user.name || 'User';
+            // MASK if name contains 10 or more digits anywhere (to catch user7990358824)
+            const isNamePhone = /\d{10,}/.test(rawName.replace(/[\s-]/g, ''));
+            const sanitizedName = isNamePhone ? 'User' : rawName;
+
+            // Sanitize intakeDetails name
+            const sanitizedIntake = previousSession.intakeDetails ? { ...previousSession.intakeDetails } : {};
+            if ((sanitizedIntake as any).name) {
+                if (/\d{10,}/.test((sanitizedIntake as any).name.replace(/[\s-]/g, ''))) {
+                    (sanitizedIntake as any).name = 'User';
+                }
+            }
+
             const requestPayload = {
                 sessionId: session.sessionId,
                 userId: user._id.toString(),
-                userName: user.name || 'User',
+                userName: sanitizedName,
                 previousSessionId,
                 ratePerMinute,
-                userMobile: user.mobile,
-                intakeDetails: previousSession.intakeDetails
+                userMobile: '', // REDACTED for privacy
+                intakeDetails: sanitizedIntake
             };
 
             // FCM wake-up (best-effort)
             notificationService.sendHighPriorityChatRequest(astrologerId, {
                 sessionId: session.sessionId,
                 userId: user._id.toString(),
-                userName: user.name || 'User',
-                userMobile: user.mobile,
+                userName: sanitizedName,
+                userMobile: '', // REDACTED for privacy
                 ratePerMinute,
-                intakeDetails: previousSession.intakeDetails,
+                intakeDetails: sanitizedIntake,
             }).catch(e => console.error('[ChatService] FCM continue chat request send failed:', e));
 
             // Socket emit — fire and forget, no ACK, no retry

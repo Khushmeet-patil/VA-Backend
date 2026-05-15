@@ -30,13 +30,13 @@ const maskUser = (user: any) => {
     const userObj = user.toObject ? user.toObject() : JSON.parse(JSON.stringify(user));
     
     const name = userObj.name || 'User';
-    // If name is a phone number (mostly digits, 10+ chars), mask it as 'User'
-    const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+    // MASK if name contains 10 or more digits anywhere (to catch user7990358824)
+    const isNamePhone = /\d{10,}/.test(name.replace(/[\s-]/g, ''));
     
     // Also mask intakeDetails if this is a session object
     if (userObj.intakeDetails && userObj.intakeDetails.name) {
         const intakeName = userObj.intakeDetails.name;
-        if (/^[0-9+ ]{10,15}$/.test(intakeName.trim())) {
+        if (/\d{10,}/.test(intakeName.replace(/[\s-]/g, ''))) {
             userObj.intakeDetails.name = 'User';
         }
     }
