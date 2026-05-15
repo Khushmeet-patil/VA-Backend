@@ -429,11 +429,8 @@ class ChatService {
             const realBalance = user.walletBalance || 0;
             const bonusBalance = user.bonusBalance || 0;
             
-            const maxBonusUsage = bonusUsagePercent >= 100 
-                ? bonusBalance 
-                : realBalance * (bonusUsagePercent / (100 - bonusUsagePercent));
-            
-            const effectiveBalance = realBalance + Math.min(bonusBalance, maxBonusUsage);
+            // Bonus is counted as real for chat start/timer
+            const effectiveBalance = realBalance + bonusBalance;
             const remainingSeconds = session.isFreeTrialSession 
                 ? (session.freeTrialDurationSeconds || 120) 
                 : Math.floor((effectiveBalance / session.ratePerMinute) * 60);
@@ -1159,14 +1156,12 @@ class ChatService {
         const bonusBalance = user.bonusBalance || 0;
 
         // Duration calculation
-        const maxBonusUsage = bonusUsagePercent >= 100 
-            ? bonusBalance 
-            : realBalance * (bonusUsagePercent / (100 - bonusUsagePercent));
-        const effectiveBalance = realBalance + Math.min(bonusBalance, maxBonusUsage);
+        // Duration calculation - 100% bonus usage allowed for user
+        const effectiveBalance = realBalance + bonusBalance;
 
         console.log(`[ChatService] Billing Cycle Diagnostic [${sessionId}]: ` +
                     `Real:₹${realBalance.toFixed(2)}, Bonus:₹${bonusBalance.toFixed(2)}, ` +
-                    `BonusUsage%: ${bonusUsagePercent}%, MaxBonus:₹${maxBonusUsage.toFixed(2)}, ` +
+                    `BonusUsage%: ${bonusUsagePercent}%, ` +
                     `Effective:₹${effectiveBalance.toFixed(2)}, Rate:₹${ratePerMinute}/min`);
 
         // Terminate if user can no longer afford even 1 minute
@@ -1260,16 +1255,14 @@ class ChatService {
             const rawAmount = amountOverride !== undefined ? amountOverride : ratePerMinute;
             const totalToDeduct = Math.round(rawAmount * 100) / 100;
 
-            // Calculate split: X% from bonus, rest from real
-            let bonusDeduction = Math.round((totalToDeduct * bonusUsagePercent / 100) * 100) / 100;
+            // Calculate split: Deduct from bonus FIRST. 
+            // Astrologer earns ONLY on the real money portion.
+            const bonusBalance = user.bonusBalance || 0;
+            let bonusDeduction = Math.min(totalToDeduct, bonusBalance);
             let realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
 
-            // Adjust if bonus wallet doesn't have enough
-            const bonusBalance = user.bonusBalance || 0;
-            if (bonusDeduction > bonusBalance) {
-                bonusDeduction = Math.round(bonusBalance * 100) / 100;
-                realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
-            }
+            // Ensure we don't have floating point issues with negative real deduction
+            if (realDeduction < 0) realDeduction = 0;
 
             // ATOMIC STEP 1: Deduct from User
             const userUpdate: any = {
