@@ -128,7 +128,7 @@ class ChatService {
         }
 
         let ratePerMinute = astrologer.pricePerMin;
-        const minRealBalanceRequired = ratePerMinute * 5;
+        const minTotalBalanceRequired = ratePerMinute * 5;
 
         // Check if user is eligible for introductory offer (first-time user)
         // INTRO OFFER RULES:
@@ -142,14 +142,16 @@ class ChatService {
         if (isEligibleForIntroRate) {
             ratePerMinute = newUserIntroRate;
             
-            // For intro rate, we require a minimum recharge/balance
-            if (user.walletBalance < newUserMinRecharge) {
-                throw new Error(`INSUFFICIENT_FOR_INTRO: Minimum ₹${newUserMinRecharge} recharge required to talk at ₹${newUserIntroRate}/min. Current balance: ₹${user.walletBalance}`);
+            // For intro rate, we require a minimum recharge/balance using combined wallets
+            const combinedBalance = user.walletBalance + (user.bonusBalance || 0);
+            if (combinedBalance < newUserMinRecharge) {
+                throw new Error(`INSUFFICIENT_FOR_INTRO: Minimum ₹${newUserMinRecharge} balance required to talk at ₹${newUserIntroRate}/min. Current total balance: ₹${combinedBalance}`);
             }
         } else {
-            // Check for standard balance (5 mins)
-            if (user.walletBalance < minRealBalanceRequired) {
-                throw new Error(`Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes of chat.`);
+            // Check for standard balance (5 mins) using combined wallets
+            const combinedBalance = user.walletBalance + (user.bonusBalance || 0);
+            if (combinedBalance < minTotalBalanceRequired) {
+                throw new Error(`Insufficient balance. Minimum ₹${minTotalBalanceRequired} required for 5 minutes of chat.`);
             }
         }
 
@@ -2241,8 +2243,9 @@ class ChatService {
         const ratePerMinute = astrologer.pricePerMin;
         const minBalanceRequired = ratePerMinute * 5; // 5 minutes minimum
 
+        const combinedBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
         // Check if user has enough balance for at least 5 minutes
-        if (user.walletBalance < minBalanceRequired) {
+        if (combinedBalance < minBalanceRequired) {
             throw new Error(`Insufficient balance. Minimum ₹${minBalanceRequired} required for 5 minutes.`);
         }
 
