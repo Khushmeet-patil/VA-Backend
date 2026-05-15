@@ -186,12 +186,14 @@ exports.getVendorWalletBreakdown = async (vendorId) => {
     { $match: { vendorId: new mongoose.Types.ObjectId(vendorId), status: "pending" } },
     { $group: { _id: null, total: { $sum: "$amount" } } }
   ]);
-
   const pendingWithdrawal = requestedAmount[0]?.total || 0;
-
+  
   return {
     totalBalance,
-    withdrawableBalance: Math.max(0, withdrawableBalance - (wallet?.totalWithdrawn || 0)),
+    // withdrawableBalance is the sum of items that passed return window
+    // We don't subtract totalWithdrawn here, we'll do it in syncVendorWallet for the model
+    // but for the UI breakdown we show what's currently available.
+    withdrawableBalance: Math.max(0, withdrawableBalance), 
     pendingBalance,
     pendingWithdrawal,
     breakdown
@@ -226,7 +228,7 @@ exports.getVendorWallet = async (vendorId) => {
 exports.syncVendorWallet = async (vendorId) => {
   if (!vendorId) throw new Error("Vendor ID is required");
 
-  // 1️⃣ Get real-time earnings from breakdown logic
+  // 1️⃣ Get real-time earnings and withdrawable amounts
   const breakdown = await exports.getVendorWalletBreakdown(vendorId);
   
   // 2️⃣ Get total paid withdrawals
@@ -237,14 +239,11 @@ exports.syncVendorWallet = async (vendorId) => {
   const totalWithdrawn = paidWithdrawals[0]?.total || 0;
 
   // 3️⃣ Recalculate balance
-  // Balance should be the sum of all "withdrawable" items minus what was already withdrawn (paid)
-  // Wait, let's be careful: breakdown.totalBalance is EVERYTHING (delivered + pending)
-  // We need to match what's in the VendorWallet model: 
-  // - balance: amount available for withdrawal (including pending returns)
-  // - totalEarned: lifetime amount earned
+  // lifetimeEarned: Sum of all non-cancelled items (Potential)
+  // balance: Sum of items where (delivered + return window passed) MINUS totalWithdrawn
   
   const recalculatedTotalEarned = breakdown.totalBalance;
-  const recalculatedBalance = Math.max(0, recalculatedTotalEarned - totalWithdrawn);
+  const recalculatedBalance = Math.max(0, breakdown.withdrawableBalance - totalWithdrawn);
 
   // 4️⃣ Update VendorWallet model
   let wallet = await VendorWallet.findOne({ vendorId });

@@ -151,6 +151,15 @@ const orderItemSchema = new mongoose.Schema(
       shipmentCode: String,
       createdAt: Date,
       lastUpdated: Date,
+      pickupAddress: {
+        name: String,
+        phone: String,
+        address1: String,
+        address2: String,
+        city: String,
+        state: String,
+        pincode: String,
+      },
     },
   },
   { _id: true }

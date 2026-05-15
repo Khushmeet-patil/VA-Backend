@@ -23,6 +23,7 @@ router.use("/site-settings", require("./site-settings.routes"));
 router.use("/shiprocket", require("./shiprocket.routes"));
 router.use("/kwikship", require("./kwikship.routes"));
 router.use("/reports", require("./report.routes"));
+router.use("/returns", require("./return.routes"));
 router.use("/gokwik", require("./gokwik.routes"));
 router.use("/webhooks/shiprocket", require("../webhooks/shiprocket.webhook.routes"));
 router.use("/live-temples", require("./liveTemple.routes"));

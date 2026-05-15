@@ -247,7 +247,7 @@ const buildVendorPickupAddress = (vendor) => {
     phone,
     alternatePhone: normalizePhone(pa.alternatePhone) || phone,
     address1: cleanStr(pa.address1 || ba.street),
-    address2: cleanStr(pa.address2),
+    address2: cleanStr(pa.address2 || ""),
     pincode: normalizePincode(pa.pincode || ba.postalCode),
     city: cleanStr(pa.city || ba.city),
     state: stateName,
@@ -267,8 +267,8 @@ const buildCustomerAddress = (sa) => {
     email: normalizeEmail(sa.email),
     phone,
     alternatePhone: phone,
-    address1: cleanStr([sa.addressLine1, sa.addressLine2].filter(Boolean).join(", ") || sa.addressLine1),
-    address2: "",
+    address1: cleanStr(sa.addressLine1),
+    address2: cleanStr(sa.addressLine2),
     pincode: normalizePincode(sa.postalCode),
     city: cleanStr(sa.city),
     state: stateName,
@@ -417,7 +417,7 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
     },
     deliveryAddressId: "",
     deliveryAddressDetails: delivery,
-    pickupAddressId: "",
+    pickupAddressId: vendor.pickupAddress?.pickupAddressId || "",
     pickupAddressDetails: pickup,
     returnAddressDetails: pickup, // forward: return goes back to vendor
     currencyCode: "INR",
@@ -462,6 +462,15 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
       shipmentCode,
       createdAt: now,
       lastUpdated: now,
+      pickupAddress: {
+        name: pickup.name,
+        phone: pickup.phone,
+        address1: pickup.address1,
+        address2: pickup.address2,
+        city: pickup.city,
+        state: pickup.state,
+        pincode: pickup.pincode,
+      },
     };
     it.shipping = it.shipping || {};
     it.shipping.awb = data.waybill;

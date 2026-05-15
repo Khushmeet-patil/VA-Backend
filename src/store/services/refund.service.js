@@ -54,60 +54,21 @@ exports.issueRefundForReturn = async (returnId) => {
     throw new Error("Refund amount is zero — nothing to refund");
   }
 
-  const isRazorpay =
-    String(order.paymentMethod || "").toLowerCase() === "razorpay" &&
-    order.razorpay?.paymentId &&
-    order.paymentStatus === "paid";
+  // All refunds are now handled manually by admin as per request
+  const refundRecord = {
+    status: "manual_pending",
+    amount,
+    method: "manual",
+    processedAt: null,
+    note: `Original Payment: ${order.paymentMethod || "N/A"} — Admin to settle manually`,
+  };
 
-  let refundRecord;
-
-  if (isRazorpay) {
-    try {
-      const rpRefund = await razorpay.payments.refund(order.razorpay.paymentId, {
-        amount: Math.round(amount * 100), // paise
-        speed: "normal",
-        notes: {
-          returnId: ret._id.toString(),
-          orderId: order._id.toString(),
-        },
-      });
-      refundRecord = {
-        status: "completed",
-        amount,
-        method: "razorpay",
-        razorpayRefundId: rpRefund.id,
-        processedAt: new Date(),
-      };
-      logger.info("Razorpay refund issued", {
-        returnId: ret._id.toString(),
-        orderId: order._id.toString(),
-        amount,
-        rpRefundId: rpRefund.id,
-      });
-    } catch (err) {
-      logger.error("Razorpay refund failed", {
-        returnId: ret._id.toString(),
-        orderId: order._id.toString(),
-        amount,
-        message: err.message,
-      });
-      throw new Error(`Razorpay refund failed: ${err.message}`);
-    }
-  } else {
-    // COD or unpaid order — refund must be handled manually
-    refundRecord = {
-      status: "manual_pending",
-      amount,
-      method: "manual",
-      processedAt: null,
-      note: "COD or unpaid order — admin to settle manually",
-    };
-    logger.info("Refund queued for manual settlement (COD)", {
-      returnId: ret._id.toString(),
-      orderId: order._id.toString(),
-      amount,
-    });
-  }
+  logger.info("Refund queued for manual settlement", {
+    returnId: ret._id.toString(),
+    orderId: order._id.toString(),
+    amount,
+    originalPaymentMethod: order.paymentMethod,
+  });
 
   // Persist on Return + Order
   ret.refund = refundRecord;

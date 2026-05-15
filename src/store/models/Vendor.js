@@ -96,6 +96,7 @@ const vendorSchema = new mongoose.Schema(
       country: { type: String, default: "India" },
       countryCode: { type: String, default: "IN" },
       gstin: String,
+      pickupAddressId: String, // GoKwik/Kwikship Warehouse ID
     },
 
     /* ================= BANK (APPROVED DATA) ================= */

@@ -2,6 +2,12 @@ const Return = require("../models/Return");
 const Report = require("../models/Report");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const Vendor = require("../models/Vendor");
+const sendEmail = require("../utils/email/sendEmail");
+const { getAdminEmails } = require("../services/admin.service");
+const returnRequestedTemplate = require("../utils/email/templates/returnRequestedTemplate");
+const activityService = require("../services/activity.service");
+const logger = require("../utils/logger");
 
 const DEFAULT_RETURN_DAYS = 7;
 
@@ -155,6 +161,63 @@ exports.submitReturnRequest = async (req, res) => {
     });
 
     await newReturn.save();
+
+    // 4. Notify Vendor and Admin via Email & Activity Log
+    try {
+      const vendor = await Vendor.findById(vendorId);
+      const adminEmails = await getAdminEmails();
+      const customerName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() || "Customer";
+
+      const emailData = {
+        vendorName: vendor?.storeName || "Vendor",
+        orderId: order._id,
+        returnType: type,
+        items: snapshotItems,
+        reason,
+        customerName,
+        platformName: "VedicStore | VedicAstro",
+        supportEmail: "support@vedicastro.co.in",
+        year: new Date().getFullYear(),
+      };
+
+      // Notify Vendor
+      if (vendor?.storeEmail) {
+        await sendEmail({
+          to: vendor.storeEmail,
+          subject: `${type === "return" ? "Refund" : "Replacement"} Requested - Order #${order._id}`,
+          html: returnRequestedTemplate(emailData),
+        });
+      }
+
+      // Notify Admins
+      for (const adminEmail of adminEmails) {
+        await sendEmail({
+          to: adminEmail,
+          subject: `ADMIN: ${type === "return" ? "Refund" : "Replacement"} Requested - Order #${order._id}`,
+          html: returnRequestedTemplate({ ...emailData, vendorName: "Admin" }),
+        });
+      }
+
+      // Log Activity
+      await activityService.logActivity({
+        type: `order_${type}`,
+        title: `${type === "return" ? "Refund" : "Replacement"} Requested`,
+        description: `Customer ${customerName} requested a ${type} for order #${order._id}`,
+        role: "admin",
+        vendorId: vendor._id,
+        metadata: {
+          orderId: order._id,
+          returnId: newReturn._id,
+          type,
+        },
+      });
+    } catch (err) {
+      logger.error("Failed to send return notification emails", {
+        error: err.message,
+        orderId: order._id,
+      });
+      // Don't fail the request if email fails
+    }
 
     return res.status(201).json({
       success: true,
