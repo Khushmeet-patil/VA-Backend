@@ -210,13 +210,17 @@ class ChatService {
         if (this.io) {
             const roomName = `astrologer:${astrologerId}`;
 
+            const rawName = user.name || 'User';
+            const isNamePhone = /^[0-9+ ]{10,15}$/.test(rawName.trim());
+            const sanitizedName = isNamePhone ? 'User' : rawName;
+
             const requestPayload = {
                 sessionId: session.sessionId,
                 userId: user._id.toString(),
-                userName: user.name || 'User',
+                userName: sanitizedName,
                 intakeDetails,
                 ratePerMinute,
-                userMobile: user.mobile,
+                userMobile: '', // REDACTED for privacy
                 createdAt: session.createdAt.toISOString(),
                 isFreeTrialSession: session.isFreeTrialSession || false,
                 freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
@@ -226,8 +230,8 @@ class ChatService {
             notificationService.sendHighPriorityChatRequest(astrologerId, {
                 sessionId: session.sessionId,
                 userId: user._id.toString(),
-                userName: user.name || 'User',
-                userMobile: user.mobile,
+                userName: sanitizedName,
+                userMobile: '', // REDACTED for privacy
                 ratePerMinute,
                 intakeDetails,
             }).catch(e => console.error('[ChatService] FCM chat request send failed:', e));
@@ -1545,11 +1549,19 @@ class ChatService {
         fileData?: { url: string; name?: string; size?: number },
         replyToId?: string
     ): Promise<any> {
+        // MASK MOBILE NUMBERS in chat text to prevent direct contact
+        let filteredText = text;
+        if (type === 'text' && text) {
+            // Matches 10 or more digits that might be separated by spaces or dashes
+            const phoneRegex = /(\d[\s-]*){10,}/g;
+            filteredText = text.replace(phoneRegex, '[NUMBER REDACTED]');
+        }
+
         const message = new ChatMessage({
             sessionId,
             senderId,
             senderType,
-            text,
+            text: filteredText,
             type,
             fileUrl: fileData?.url,
             fileName: fileData?.name,
