@@ -138,6 +138,17 @@ class ChatService {
         const isEligibleForFreeTrial = !user.hasUsedFreeTrial &&
                                       (user.walletBalance < minRealBalanceRequired);
 
+        // Name validation for first free chat
+        if (isEligibleForFreeTrial) {
+            const nameIsUser = user.name === 'User';
+            const nameIsMobile = user.name === user.mobile;
+            const nameIsEmpty = !user.name || user.name.trim().length === 0;
+
+            if (nameIsUser || nameIsMobile || nameIsEmpty) {
+                throw new Error('NAME_REQUIRED: Please update your name in profile to start your first free chat.');
+            }
+        }
+
         // If user is eligible for free trial, enforce per-astrologer daily free chat limit
         // (only when the global isFreeChatLimitEnabled setting is ON)
         if (isEligibleForFreeTrial) {

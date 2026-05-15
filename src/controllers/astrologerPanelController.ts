@@ -19,6 +19,35 @@ import AstrologerAvailabilityLog from '../models/AstrologerAvailabilityLog';
 import AstrologerNotificationLog from '../models/AstrologerNotificationLog';
 import SystemSetting from '../models/SystemSetting';
 
+/**
+ * Utility to mask user data for astrologers
+ * Admins can still see full data via adminController
+ */
+const maskUser = (user: any) => {
+    if (!user) return { name: 'User', mobile: '' };
+    
+    // Handle both Mongoose models and plain objects
+    const userObj = user.toObject ? user.toObject() : JSON.parse(JSON.stringify(user));
+    
+    const name = userObj.name || 'User';
+    // If name is a phone number (mostly digits, 10+ chars), mask it as 'User'
+    const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+    
+    // Also mask intakeDetails if this is a session object
+    if (userObj.intakeDetails && userObj.intakeDetails.name) {
+        const intakeName = userObj.intakeDetails.name;
+        if (/^[0-9+ ]{10,15}$/.test(intakeName.trim())) {
+            userObj.intakeDetails.name = 'User';
+        }
+    }
+
+    return {
+        ...userObj,
+        name: isNamePhone ? 'User' : name,
+        mobile: '' // COMPLETELY HIDE mobile number from astrologer
+    };
+};
+
 // Check if astrologer exists by mobile
 export const checkAstrologer = async (req: Request, res: Response) => {
     try {
@@ -615,11 +644,7 @@ export const getChats = async (req: Request, res: Response) => {
             return {
                 id: userIdStr, // Use userId as the unique ID
                 sessionId: hasActiveSession ? userSessions.find(s => s.status === 'ACTIVE')?.sessionId : firstSession.sessionId,
-                userId: {
-                    _id: userIdStr,
-                    name: userData.name || 'User',
-                    mobile: userData.mobile || ''
-                },
+                userId: maskUser(userData),
                 lastMessage: lastMsg ? lastMsg.text : (hasActiveSession ? 'Chat in progress...' : 'No messages'),
                 lastMessageTime: timeString,
                 unreadCount: 0,
@@ -921,12 +946,7 @@ export const getSessionHistory = async (req: Request, res: Response) => {
             return {
                 id: session._id,
                 sessionId: session.sessionId,
-                user: {
-                    id: user?._id,
-                    name: user?.name || 'User',
-                    mobile: user?.mobile || '',
-                    profilePhoto: user?.profilePhoto || null
-                },
+                user: maskUser(user),
                 duration: session.totalMinutes || 0,
                 earnings: session.astrologerEarnings || 0,
                 isFreeTrialSession: session.isFreeTrialSession || false,
@@ -1053,9 +1073,16 @@ export const getUserProfileForAstrologer = async (req: Request, res: Response) =
             };
         }
 
+        // Apply masking to targetProfile name if needed
+        const maskedProfile = { ...targetProfile };
+        if (maskedProfile.name) {
+            const isNamePhone = /^[0-9+ ]{10,15}$/.test(maskedProfile.name.trim());
+            if (isNamePhone) maskedProfile.name = 'User';
+        }
+
         res.json({
             success: true,
-            data: targetProfile
+            data: maskedProfile
         });
 
     } catch (error: any) {
@@ -1155,9 +1182,12 @@ export const getAstrologerAudience = async (req: Request, res: Response) => {
 
         const audienceList = users.map(u => {
             const info = userMap.get(u._id.toString());
+            const rawName = u.name || 'User';
+            const isNamePhone = /^[0-9+ ]{10,15}$/.test(rawName.trim());
+
             return {
                 id: u._id.toString(),
-                name: u.name || 'User',
+                name: isNamePhone ? 'User' : rawName,
                 lastInteraction: info?.date,
                 types: info?.types || []
             };

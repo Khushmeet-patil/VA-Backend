@@ -337,9 +337,16 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
                     if (!recipientConnected) {
                         // Recipient not connected via socket, send FCM notification
-                        const senderName = userType === 'user'
-                            ? (await User.findById(userId))?.name || 'User'
-                            : (await Astrologer.findById(userId))?.firstName || 'Astrologer';
+                        let senderName = 'User';
+                        if (userType === 'user') {
+                            const u = await User.findById(userId);
+                            const rawName = u?.name || 'User';
+                            const isNamePhone = /^[0-9+ ]{10,15}$/.test(rawName.trim());
+                            senderName = isNamePhone ? 'User' : rawName;
+                        } else {
+                            const a = await Astrologer.findById(userId);
+                            senderName = a ? `${a.firstName} ${a.lastName || ''}`.trim() : 'Astrologer';
+                        }
 
                         const recipientId = userType === 'user'
                             ? session.astrologerId.toString()

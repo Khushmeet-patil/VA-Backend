@@ -19,6 +19,32 @@ interface AuthRequest extends Request {
 }
 
 /**
+ * Utility to mask session and user data for astrologers
+ */
+const maskSessionForAstrologer = (session: any) => {
+    if (!session) return null;
+    
+    const sessionObj = session.toObject ? session.toObject() : JSON.parse(JSON.stringify(session));
+    
+    // Mask intakeDetails name
+    if (sessionObj.intakeDetails && sessionObj.intakeDetails.name) {
+        const name = sessionObj.intakeDetails.name;
+        const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+        if (isNamePhone) sessionObj.intakeDetails.name = 'User';
+    }
+
+    // Mask populated user
+    if (sessionObj.userId && typeof sessionObj.userId === 'object') {
+        const name = sessionObj.userId.name || 'User';
+        const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+        sessionObj.userId.name = isNamePhone ? 'User' : name;
+        sessionObj.userId.mobile = ''; // Hide mobile
+    }
+
+    return sessionObj;
+};
+
+/**
  * POST /chat/request
  * User initiates a chat request with an astrologer
  */
@@ -78,6 +104,9 @@ export const acceptChat = async (req: AuthRequest, res: Response) => {
         // Fetch user info for complete response (useful if socket event is missed)
         const user = await User.findById(updatedSession.userId);
 
+        const name = user?.name || 'User';
+        const isNamePhone = /^[0-9+ ]{10,15}$/.test(name.trim());
+
         res.json({
             message: 'Chat accepted',
             sessionId: updatedSession.sessionId,
@@ -85,8 +114,8 @@ export const acceptChat = async (req: AuthRequest, res: Response) => {
             startTime: updatedSession.startTime,
             ratePerMinute: updatedSession.ratePerMinute,
             userId: updatedSession.userId?._id || updatedSession.userId,
-            userName: user?.name || 'User',
-            userMobile: user?.mobile || '',
+            userName: isNamePhone ? 'User' : name,
+            userMobile: '', // Hide from astrologer
             intakeDetails: updatedSession.intakeDetails,
             isFreeTrialSession: updatedSession.isFreeTrialSession || false,
             freeTrialDurationSeconds: updatedSession.freeTrialDurationSeconds || 0,
@@ -276,7 +305,9 @@ export const getSession = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ message: 'Not a participant in this session' });
         }
 
-        res.json({ session });
+        res.json({ 
+            session: isAstrologer ? maskSessionForAstrologer(session) : session 
+        });
 
     } catch (error: any) {
         console.error('Get session error:', error);
@@ -358,7 +389,10 @@ export const getActiveSession = async (req: AuthRequest, res: Response) => {
             return res.json({ active: false, session: null });
         }
 
-        res.json({ active: true, session });
+        res.json({ 
+            active: true, 
+            session: userRole === 'astrologer' ? maskSessionForAstrologer(session) : session 
+        });
 
     } catch (error: any) {
         console.error('Get active session error:', error);
@@ -383,7 +417,9 @@ export const getPendingRequests = async (req: AuthRequest, res: Response) => {
             status: 'PENDING'
         }).populate('userId', 'name mobile');
 
-        res.json({ requests: pendingRequests });
+        const maskedRequests = pendingRequests.map(r => maskSessionForAstrologer(r));
+
+        res.json({ requests: maskedRequests });
 
     } catch (error: any) {
         console.error('Get pending requests error:', error);
