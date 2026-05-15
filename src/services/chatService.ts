@@ -278,9 +278,9 @@ class ChatService {
             throw new Error('User not found');
         }
 
-        const minRealBalanceRequired = session.ratePerMinute * 5;
-        if (!session.isFreeTrialSession && user.walletBalance < minRealBalanceRequired) {
-            const errorMsg = `Insufficient real balance. Minimum ₹${minRealBalanceRequired} required for 5 minutes. User has ₹${user.walletBalance}.`;
+        const combinedBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
+        if (!session.isFreeTrialSession && combinedBalance < session.ratePerMinute) {
+            const errorMsg = `Insufficient balance. Minimum ₹${session.ratePerMinute} required for 1 minute. User has ₹${combinedBalance.toFixed(2)}.`;
             // Atomic update to fail
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
