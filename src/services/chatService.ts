@@ -142,10 +142,13 @@ class ChatService {
         if (isEligibleForIntroRate) {
             ratePerMinute = newUserIntroRate;
             
-            // For intro rate, we require a minimum recharge/balance using combined wallets
+            // For intro rate, we require BOTH the Minimum Recharge AND at least 5 minutes of balance
             const combinedBalance = user.walletBalance + (user.bonusBalance || 0);
-            if (combinedBalance < newUserMinRecharge) {
-                throw new Error(`INSUFFICIENT_FOR_INTRO: Minimum ₹${newUserMinRecharge} balance required to talk at ₹${newUserIntroRate}/min. Current total balance: ₹${combinedBalance}`);
+            const fiveMinRequirement = ratePerMinute * 5;
+            const finalMinRequired = Math.max(newUserMinRecharge, fiveMinRequirement);
+            
+            if (combinedBalance < finalMinRequired) {
+                throw new Error(`Insufficient balance. Minimum ₹${finalMinRequired} required for 5 minutes of chat at intro rate. Current total balance: ₹${combinedBalance.toFixed(2)}`);
             }
         } else {
             // Check for standard balance (5 mins) using combined wallets
