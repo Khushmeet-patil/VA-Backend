@@ -8,6 +8,7 @@ export interface IStartPopup extends Document {
     targetApp: 'user' | 'astrologer'; // Target application
     isActive: boolean;         // Enable/disable pop-up
     showOnStart: boolean;      // Show pop-up when app starts
+    showOnScreens?: string[];  // Specific screens to show this popup on
     dailyLimit: number;        // Max times to show per user per day
     createdAt: Date;
     updatedAt: Date;
@@ -28,6 +29,7 @@ const StartPopupSchema: Schema = new Schema({
     },
     isActive: { type: Boolean, default: true },
     showOnStart: { type: Boolean, default: false },
+    showOnScreens: { type: [String], default: [] },
     dailyLimit: { type: Number, default: 1 },
 }, { timestamps: true });
 

@@ -2607,7 +2607,7 @@ export const getActiveStartPopups = async (req: Request, res: Response) => {
 
 export const createStartPopup = async (req: Request, res: Response) => {
     try {
-        const { imageBase64, navigationType, navigationValue, targetApp, isActive, showOnStart, dailyLimit } = req.body;
+        const { imageBase64, navigationType, navigationValue, targetApp, isActive, showOnStart, showOnScreens, dailyLimit } = req.body;
 
         if (!imageBase64) {
             return res.status(400).json({ success: false, message: 'Image is required' });
@@ -2625,6 +2625,7 @@ export const createStartPopup = async (req: Request, res: Response) => {
             targetApp: targetApp || 'user',
             isActive: isActive !== undefined ? isActive : true,
             showOnStart: showOnStart !== undefined ? showOnStart : false,
+            showOnScreens: showOnScreens || [],
             dailyLimit: dailyLimit !== undefined ? dailyLimit : 1
         });
 
@@ -2639,7 +2640,7 @@ export const createStartPopup = async (req: Request, res: Response) => {
 export const updateStartPopup = async (req: Request, res: Response) => {
     try {
         const { popupId } = req.params;
-        const { imageBase64, navigationType, navigationValue, targetApp, isActive, showOnStart, dailyLimit } = req.body;
+        const { imageBase64, navigationType, navigationValue, targetApp, isActive, showOnStart, showOnScreens, dailyLimit } = req.body;
 
         const popup = await StartPopup.findById(popupId);
         if (!popup) {
@@ -2651,6 +2652,7 @@ export const updateStartPopup = async (req: Request, res: Response) => {
             navigationValue,
             isActive: isActive !== undefined ? isActive : true,
             showOnStart: showOnStart !== undefined ? showOnStart : false,
+            showOnScreens: showOnScreens !== undefined ? showOnScreens : popup.showOnScreens,
             dailyLimit: dailyLimit !== undefined ? dailyLimit : 1
         };
 
