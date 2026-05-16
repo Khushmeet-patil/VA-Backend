@@ -419,6 +419,9 @@ class ChatService {
                 userName: user.name || 'User',
                 userRealBalance: user.walletBalance || 0,
                 userBonusBalance: user.bonusBalance || 0,
+                intakeDetails: session.intakeDetails,
+                profileId: session.profileId,
+                sharedProfiles: session.sharedProfiles || [],
             });
 
             // SESSION ROOM JOIN (best-effort, non-blocking):
