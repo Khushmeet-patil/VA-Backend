@@ -225,6 +225,35 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     }
 };
 
+// Search Users/Astrologers by Name or Mobile
+export const searchUsers = async (req: Request, res: Response) => {
+    try {
+        const { q } = req.query;
+        if (!q || typeof q !== 'string') {
+            return res.status(400).json({ success: false, message: 'Search query is required' });
+        }
+
+        const query: any = {
+            role: { $in: ['user', 'astrologer'] }
+        };
+
+        const regex = new RegExp(q, 'i');
+        query.$or = [
+            { name: regex },
+            { mobile: regex }
+        ];
+
+        const users = await User.find(query)
+            .select('name mobile role profilePhoto fcmToken')
+            .limit(20);
+
+        res.status(200).json({ success: true, data: users });
+    } catch (error) {
+        console.error('[AdminController] searchUsers error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
 // 2. User Management
 export const getAllUsers = async (req: Request, res: Response) => {
     try {
@@ -1258,7 +1287,16 @@ export const uploadVerificationDocument = async (req: Request, res: Response) =>
 // 4. Notifications
 export const createNotification = async (req: Request, res: Response) => {
     try {
-        const { title, message, type, audience, userId } = req.body;
+        const { title, message, type, audience, userId, imageBase64 } = req.body;
+
+        let imageUrl: string | undefined = undefined;
+        if (imageBase64) {
+            const uploadedUrl = await uploadBase64ToR2(imageBase64, 'notifications', `notif-${Date.now()}`);
+            if (!uploadedUrl) {
+                return res.status(500).json({ success: false, message: 'Failed to upload notification image' });
+            }
+            imageUrl = uploadedUrl;
+        }
 
         const notification = await Notification.create({
             title,
@@ -1266,6 +1304,7 @@ export const createNotification = async (req: Request, res: Response) => {
             type,
             audience,
             userId: audience === 'user' ? userId : undefined,
+            imageUrl,
             isScheduled: req.body.isScheduled || false,
             scheduledTime: req.body.scheduledTime,
             navigateType: req.body.navigateType || 'none',
@@ -1273,20 +1312,46 @@ export const createNotification = async (req: Request, res: Response) => {
         });
 
         // Case 1: Instant Push Notification (Broadcast/Targeted)
-        if (!notification.isScheduled && ['all', 'users', 'astrologers'].includes(audience)) {
-            // We fire and forget the broadcast so the admin doesn't wait for thousands of tokens
-            notificationService.broadcast(
-                audience as any,
-                { title, body: message },
-                {
-                    navigateType: notification.navigateType || 'none',
-                    navigateTarget: notification.navigateTarget || ''
-                }
-            ).then(result => {
-                console.log(`[Admin] Broadcast finished: ${result.success} success, ${result.failure} failure`);
-            }).catch(err => {
-                console.error('[Admin] Broadcast failed:', err);
-            });
+        if (!notification.isScheduled) {
+            if (['all', 'users', 'astrologers'].includes(audience)) {
+                // We fire and forget the broadcast so the admin doesn't wait for thousands of tokens
+                notificationService.broadcast(
+                    audience as any,
+                    { title, body: message, imageUrl },
+                    {
+                        navigateType: notification.navigateType || 'none',
+                        navigateTarget: notification.navigateTarget || ''
+                    }
+                ).then(result => {
+                    console.log(`[Admin] Broadcast finished: ${result.success} success, ${result.failure} failure`);
+                }).catch(err => {
+                    console.error('[Admin] Broadcast failed:', err);
+                });
+            } else if (audience === 'user' && userId) {
+                // Send instantly to a single user/astrologer based on role
+                User.findById(userId).then(async (user) => {
+                    if (!user) {
+                        console.log(`[Admin] Instant notification failed: User ${userId} not found`);
+                        return;
+                    }
+                    
+                    let success = false;
+                    const notifPayload = { title, body: message, imageUrl };
+                    const notifData = {
+                        navigateType: notification.navigateType || 'none',
+                        navigateTarget: notification.navigateTarget || ''
+                    };
+
+                    if (user.role === 'astrologer') {
+                        success = await notificationService.sendToAstrologer(userId.toString(), notifPayload, notifData);
+                    } else {
+                        success = await notificationService.sendToUser(userId.toString(), notifPayload, notifData);
+                    }
+                    console.log(`[Admin] Instant notification to user ${userId} (${user.role}): ${success ? 'Success' : 'Failure'}`);
+                }).catch(err => {
+                    console.error('[Admin] Instant notification error:', err);
+                });
+            }
         }
 
         // Case 2: Scheduled Daily Notification
@@ -1294,7 +1359,7 @@ export const createNotification = async (req: Request, res: Response) => {
             scheduledNotificationService.scheduleJob(notification);
         }
 
-        res.status(201).json({ success: true, message: 'Notification sent and broadcast triggered', data: notification });
+        res.status(201).json({ success: true, message: 'Notification processed successfully', data: notification });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
@@ -1305,7 +1370,7 @@ export const getScheduledNotifications = async (req: Request, res: Response) => 
     try {
         const notifications = await Notification.find({
             isScheduled: true
-        }).sort({ createdAt: -1 });
+        }).populate('userId', 'name mobile role').sort({ createdAt: -1 });
         res.status(200).json({ success: true, data: notifications });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import Notification from '../models/Notification';
+import User from '../models/User';
 import notificationService from './notificationService';
 
 class ScheduledNotificationService {
@@ -54,14 +55,33 @@ class ScheduledNotificationService {
                     }
 
                     // 1. Send Push Notification
-                    await notificationService.broadcast(
-                        latest.audience as any,
-                        { title: latest.title, body: latest.message },
-                        {
-                            navigateType: latest.navigateType || 'none',
-                            navigateTarget: latest.navigateTarget || ''
+                    if (latest.audience === 'user' && latest.userId) {
+                        const targetUser = await User.findById(latest.userId);
+                        if (targetUser) {
+                            const notifPayload = { title: latest.title, body: latest.message, imageUrl: latest.imageUrl };
+                            const notifData = {
+                                navigateType: latest.navigateType || 'none',
+                                navigateTarget: latest.navigateTarget || ''
+                            };
+
+                            if (targetUser.role === 'astrologer') {
+                                await notificationService.sendToAstrologer(latest.userId.toString(), notifPayload, notifData);
+                            } else {
+                                await notificationService.sendToUser(latest.userId.toString(), notifPayload, notifData);
+                            }
+                        } else {
+                            console.log(`[ScheduledNotificationService] Targeted user ${latest.userId} not found`);
                         }
-                    );
+                    } else {
+                        await notificationService.broadcast(
+                            latest.audience as any,
+                            { title: latest.title, body: latest.message, imageUrl: latest.imageUrl },
+                            {
+                                navigateType: latest.navigateType || 'none',
+                                navigateTarget: latest.navigateTarget || ''
+                            }
+                        );
+                    }
 
                     // 2. Save a record to DB so it appears in App Notification History
                     // This instance is NOT scheduled, it's a delivered record
@@ -70,6 +90,8 @@ class ScheduledNotificationService {
                         message: latest.message,
                         type: latest.type || 'info',
                         audience: latest.audience,
+                        userId: latest.audience === 'user' ? latest.userId : undefined,
+                        imageUrl: latest.imageUrl,
                         isActive: true,
                         isScheduled: false, // Delivered instance
                         navigateType: latest.navigateType || 'none',
@@ -77,7 +99,7 @@ class ScheduledNotificationService {
                         deliveredAt: new Date()
                     });
 
-                    console.log(`[ScheduledNotificationService] Broadcast and DB record completed for ${latest._id}`);
+                    console.log(`[ScheduledNotificationService] Single user / broadcast notification and DB record completed for ${latest._id}`);
                 } catch (err) {
                     console.error(`[ScheduledNotificationService] Execution failed for ${notification._id}:`, err);
                 }

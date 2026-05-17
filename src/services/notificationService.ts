@@ -144,7 +144,7 @@ class NotificationService {
      */
     async sendToUser(
         userId: string,
-        notification: { title: string; body: string },
+        notification: { title: string; body: string; imageUrl?: string },
         data?: Record<string, string>
     ): Promise<boolean> {
         if (!this.initialized) {
@@ -171,7 +171,7 @@ class NotificationService {
      */
     async sendToAstrologer(
         astrologerId: string,
-        notification: { title: string; body: string },
+        notification: { title: string; body: string; imageUrl?: string },
         data?: Record<string, string>
     ): Promise<boolean> {
         if (!this.initialized) {
@@ -566,7 +566,7 @@ class NotificationService {
      */
     private async sendNotification(
         token: string,
-        notification: { title: string; body: string },
+        notification: { title: string; body: string; imageUrl?: string },
         data?: Record<string, string>
     ): Promise<boolean> {
         try {
@@ -575,6 +575,7 @@ class NotificationService {
                 notification: {
                     title: notification.title,
                     body: notification.body,
+                    imageUrl: notification.imageUrl,
                 },
                 data: data || {},
                 android: {
@@ -583,6 +584,17 @@ class NotificationService {
                         channelId: 'chat_messages',
                         priority: 'high',
                         defaultSound: true,
+                        imageUrl: notification.imageUrl,
+                    },
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            mutableContent: notification.imageUrl ? true : false,
+                        },
+                    },
+                    fcmOptions: {
+                        imageUrl: notification.imageUrl,
                     },
                 },
             };
@@ -741,7 +753,7 @@ class NotificationService {
      */
     async broadcast(
         audience: 'all' | 'users' | 'astrologers',
-        notification: { title: string; body: string },
+        notification: { title: string; body: string; imageUrl?: string },
         data?: Record<string, string>
     ): Promise<{ success: number; failure: number }> {
         if (!this.initialized) {
@@ -790,6 +802,7 @@ class NotificationService {
                     notification: {
                         title: notification.title,
                         body: notification.body,
+                        imageUrl: notification.imageUrl,
                     },
                     data: {
                         type: 'broadcast',
@@ -801,6 +814,17 @@ class NotificationService {
                             channelId: 'general',
                             priority: 'high',
                             defaultSound: true,
+                            imageUrl: notification.imageUrl,
+                        },
+                    },
+                    apns: {
+                        payload: {
+                            aps: {
+                                mutableContent: notification.imageUrl ? true : false,
+                            },
+                        },
+                        fcmOptions: {
+                            imageUrl: notification.imageUrl,
                         },
                     },
                 };

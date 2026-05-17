@@ -6,6 +6,7 @@ export interface INotification extends Document {
     type: 'info' | 'promo' | 'alert';
     audience: 'all' | 'user' | 'users' | 'astrologers';
     userId?: mongoose.Types.ObjectId; // If audience is user
+    imageUrl?: string; // Optional image URL uploaded to R2
     isRead: boolean;
     readBy: mongoose.Types.ObjectId[];
     isScheduled: boolean;
@@ -22,6 +23,7 @@ const NotificationSchema: Schema = new Schema({
     type: { type: String, enum: ['info', 'promo', 'alert'], default: 'info' },
     audience: { type: String, enum: ['all', 'user', 'users', 'astrologers'], default: 'all' },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
+    imageUrl: { type: String },
     isRead: { type: Boolean, default: false },
     readBy: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     isScheduled: { type: Boolean, default: false },

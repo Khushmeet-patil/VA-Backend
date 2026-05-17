@@ -3,6 +3,7 @@ import express from 'express';
 import {
     getDashboardStats,
     getAllUsers,
+    searchUsers,
     updateUser,
     getUserActivity,
     addWalletBalance,
@@ -85,6 +86,7 @@ router.get('/finances/earnings', getEarningsStats);
 
 // Users
 router.get('/users', getAllUsers);
+router.get('/users/search', searchUsers);
 router.get('/users/:userId', getUserDetails);
 router.put('/users/:userId', updateUser);
 router.put('/users/:userId/clear-device', clearUserDevice);
