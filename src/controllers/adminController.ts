@@ -1287,7 +1287,7 @@ export const uploadVerificationDocument = async (req: Request, res: Response) =>
 // 4. Notifications
 export const createNotification = async (req: Request, res: Response) => {
     try {
-        const { title, message, type, audience, userId, imageBase64 } = req.body;
+        const { title, message, type, audience, userId, userIds, imageBase64 } = req.body;
 
         let imageUrl: string | undefined = undefined;
         if (imageBase64) {
@@ -1296,6 +1296,55 @@ export const createNotification = async (req: Request, res: Response) => {
                 return res.status(500).json({ success: false, message: 'Failed to upload notification image' });
             }
             imageUrl = uploadedUrl;
+        }
+
+        // Case 0: Multiple selected target users
+        if (audience === 'user' && Array.isArray(userIds) && userIds.length > 0) {
+            const notifications = [];
+            for (const id of userIds) {
+                const notification = await Notification.create({
+                    title,
+                    message,
+                    type,
+                    audience,
+                    userId: id,
+                    imageUrl,
+                    isScheduled: false,
+                    navigateType: req.body.navigateType || 'none',
+                    navigateTarget: req.body.navigateTarget
+                });
+                notifications.push(notification);
+
+                // Send push instantly
+                User.findById(id).then(async (user) => {
+                    if (!user) {
+                        console.log(`[Admin] Instant notification failed: User ${id} not found`);
+                        return;
+                    }
+                    
+                    let success = false;
+                    const notifPayload = { title, body: message, imageUrl };
+                    const notifData = {
+                        navigateType: notification.navigateType || 'none',
+                        navigateTarget: notification.navigateTarget || ''
+                    };
+
+                    if (user.role === 'astrologer') {
+                        success = await notificationService.sendToAstrologer(id.toString(), notifPayload, notifData);
+                    } else {
+                        success = await notificationService.sendToUser(id.toString(), notifPayload, notifData);
+                    }
+                    console.log(`[Admin] Instant notification to user ${id} (${user.role}): ${success ? 'Success' : 'Failure'}`);
+                }).catch(err => {
+                    console.error(`[Admin] Instant notification error for user ${id}:`, err);
+                });
+            }
+
+            return res.status(201).json({ 
+                success: true, 
+                message: `${notifications.length} notifications processed successfully`, 
+                data: notifications[0] 
+            });
         }
 
         const notification = await Notification.create({
