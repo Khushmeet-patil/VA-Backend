@@ -1206,7 +1206,7 @@ export const getAstrologerChats = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
         // Group by user or just list sessions? For admin audit, list sessions is fine.
-        const chats = await ChatSession.find({ astrologerId }).populate('userId', 'name mobile').sort({ createdAt: -1 }).limit(50);
+        const chats = await ChatSession.find({ astrologerId }).populate('userId', 'name mobile').sort({ createdAt: -1 });
         res.json({ success: true, data: chats });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
