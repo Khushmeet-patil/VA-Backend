@@ -1356,6 +1356,8 @@ export const createNotification = async (req: Request, res: Response) => {
             imageUrl,
             isScheduled: req.body.isScheduled || false,
             scheduledTime: req.body.scheduledTime,
+            startDate: typeof req.body.startDate === 'string' && req.body.startDate.trim() !== "" ? new Date(req.body.startDate) : undefined,
+            endDate: typeof req.body.endDate === 'string' && req.body.endDate.trim() !== "" ? new Date(req.body.endDate) : undefined,
             navigateType: req.body.navigateType || 'none',
             navigateTarget: req.body.navigateTarget
         });

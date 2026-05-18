@@ -19,7 +19,21 @@ class ScheduledNotificationService {
 
             console.log(`[ScheduledNotificationService] Found ${activeSchedules.length} active schedules`);
 
+            const dFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+            const todayStr = dFormat.format(new Date());
+
             for (const notification of activeSchedules) {
+                // If it has expired, disable it and don't schedule
+                if (notification.endDate) {
+                    const endStr = dFormat.format(new Date(notification.endDate));
+                    if (todayStr > endStr) {
+                        console.log(`[ScheduledNotificationService] Job ${notification._id} has expired (today ${todayStr} > end ${endStr}) on initialization. Disabling.`);
+                        notification.isActive = false;
+                        await notification.save();
+                        continue;
+                    }
+                }
+
                 this.scheduleJob(notification);
             }
         } catch (error) {
@@ -35,6 +49,19 @@ class ScheduledNotificationService {
 
         // Cancel existing job if any
         this.cancelJob(notification._id.toString());
+
+        // Check if expired before scheduling
+        if (notification.endDate) {
+            const dFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+            const todayStr = dFormat.format(new Date());
+            const endStr = dFormat.format(new Date(notification.endDate));
+            if (todayStr > endStr) {
+                console.log(`[ScheduledNotificationService] Attempted to schedule expired job ${notification._id}. Disabling.`);
+                notification.isActive = false;
+                notification.save().catch((err: any) => console.error('[ScheduledNotificationService] Error saving inactive state:', err));
+                return;
+            }
+        }
 
         try {
             const [hours, minutes] = notification.scheduledTime.split(':');
@@ -52,6 +79,30 @@ class ScheduledNotificationService {
                         console.log(`[ScheduledNotificationService] Job ${notification._id} is no longer active, skipping.`);
                         this.cancelJob(notification._id.toString());
                         return;
+                    }
+
+                    const dFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+                    const todayStr = dFormat.format(new Date());
+
+                    // Check Start Date
+                    if (latest.startDate) {
+                        const startStr = dFormat.format(new Date(latest.startDate));
+                        if (todayStr < startStr) {
+                            console.log(`[ScheduledNotificationService] Job ${notification._id} is not yet active (today ${todayStr} < start ${startStr}), skipping execution.`);
+                            return;
+                        }
+                    }
+
+                    // Check End Date
+                    if (latest.endDate) {
+                        const endStr = dFormat.format(new Date(latest.endDate));
+                        if (todayStr > endStr) {
+                            console.log(`[ScheduledNotificationService] Job ${notification._id} has expired (today ${todayStr} > end ${endStr}), disabling.`);
+                            latest.isActive = false;
+                            await latest.save();
+                            this.cancelJob(notification._id.toString());
+                            return;
+                        }
                     }
 
                     // 1. Send Push Notification
