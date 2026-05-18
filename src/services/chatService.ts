@@ -1263,13 +1263,34 @@ class ChatService {
             const rawAmount = amountOverride !== undefined ? amountOverride : ratePerMinute;
             const totalToDeduct = Math.round(rawAmount * 100) / 100;
 
-            // Calculate split: Deduct from bonus FIRST. 
-            // Astrologer earns ONLY on the real money portion.
+            // Calculate target split based on bonus usage percentage
+            const realBalance = user.walletBalance || 0;
             const bonusBalance = user.bonusBalance || 0;
-            let bonusDeduction = Math.min(totalToDeduct, bonusBalance);
-            let realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
 
-            // Ensure we don't have floating point issues with negative real deduction
+            const targetBonusDeduction = totalToDeduct * (bonusUsagePercent / 100);
+            const targetRealDeduction = totalToDeduct - targetBonusDeduction;
+
+            let bonusDeduction = 0;
+            let realDeduction = 0;
+
+            if (targetBonusDeduction > bonusBalance) {
+                // Bonus balance is insufficient to cover the target portion.
+                // Deduct all remaining bonus, and charge the rest from real cash.
+                bonusDeduction = bonusBalance;
+                realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
+            } else if (targetRealDeduction > realBalance) {
+                // Real cash is insufficient to cover the target portion.
+                // Deduct all remaining real cash, and charge the rest from bonus.
+                realDeduction = realBalance;
+                bonusDeduction = Math.round((totalToDeduct - realDeduction) * 100) / 100;
+            } else {
+                // Both balances are sufficient to cover their target portions.
+                bonusDeduction = Math.round(targetBonusDeduction * 100) / 100;
+                realDeduction = Math.round((totalToDeduct - bonusDeduction) * 100) / 100;
+            }
+
+            // Ensure no negative values due to rounding or other edge cases
+            if (bonusDeduction < 0) bonusDeduction = 0;
             if (realDeduction < 0) realDeduction = 0;
 
             // ATOMIC STEP 1: Deduct from User
