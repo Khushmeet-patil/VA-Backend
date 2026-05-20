@@ -1205,9 +1205,46 @@ export const getAstrologerWithdrawals = async (req: Request, res: Response) => {
 export const getAstrologerChats = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
-        // Group by user or just list sessions? For admin audit, list sessions is fine.
         const chats = await ChatSession.find({ astrologerId }).populate('userId', 'name mobile').sort({ createdAt: -1 });
-        res.json({ success: true, data: chats });
+
+        // Aggregate real/bonus/astro breakdown per session from Transaction records
+        // Transaction descriptions follow: "Chat: {sessionId} - Min {N} (Real: ₹{X}, Bonus: ₹{Y}, Astro: ₹{Z})"
+        const transactions = await Transaction.find({
+            toAstrologer: astrologerId,
+            type: 'debit',
+            description: { $regex: /^Chat:/ }
+        }).select('description');
+
+        const sessionBreakdown: Record<string, { totalReal: number; totalBonus: number; totalAstro: number }> = {};
+        const breakdownRegex = /Chat:\s*([\w-]+)\s*-\s*Min\s*\d+\s*\(Real:\s*₹([\d.]+),\s*Bonus:\s*₹([\d.]+),\s*Astro:\s*₹([\d.]+)\)/;
+
+        for (const tx of transactions) {
+            if (!tx.description) continue;
+            const match = tx.description.match(breakdownRegex);
+            if (match) {
+                const sid = match[1];
+                if (!sessionBreakdown[sid]) {
+                    sessionBreakdown[sid] = { totalReal: 0, totalBonus: 0, totalAstro: 0 };
+                }
+                sessionBreakdown[sid].totalReal += parseFloat(match[2]) || 0;
+                sessionBreakdown[sid].totalBonus += parseFloat(match[3]) || 0;
+                sessionBreakdown[sid].totalAstro += parseFloat(match[4]) || 0;
+            }
+        }
+
+        // Enrich chat sessions with breakdown data
+        const enrichedChats = chats.map(c => {
+            const chatObj = c.toObject();
+            const breakdown = sessionBreakdown[chatObj.sessionId] || { totalReal: 0, totalBonus: 0, totalAstro: 0 };
+            return {
+                ...chatObj,
+                totalRealDeducted: Math.round(breakdown.totalReal * 100) / 100,
+                totalBonusDeducted: Math.round(breakdown.totalBonus * 100) / 100,
+                totalAstroFromBreakdown: Math.round(breakdown.totalAstro * 100) / 100
+            };
+        });
+
+        res.json({ success: true, data: enrichedChats });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
