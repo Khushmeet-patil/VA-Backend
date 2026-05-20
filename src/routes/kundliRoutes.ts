@@ -41,5 +41,7 @@ router.post('/sadhesati-current-status', authMiddleware, kundliController.getSad
 // Horoscope Predictions
 router.post('/sun-sign-prediction/:type/:zodiacName', authMiddleware, kundliController.getSunSignPrediction);
 router.post('/numero-prediction', authMiddleware, kundliController.getNumeroPrediction);
+router.post('/numero-table', authMiddleware, kundliController.getNumeroTable);
+router.post('/lal-kitab-remedies/:planetName', authMiddleware, kundliController.getLalKitabRemedies);
 
 export default router;

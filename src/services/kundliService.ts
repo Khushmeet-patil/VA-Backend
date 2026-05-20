@@ -357,6 +357,29 @@ export const getNumeroPrediction = async (input: any) => {
     }
 };
 
+export const getLalKitabRemedies = async (input: any, planetName: string) => {
+    try {
+        const pName = planetName.toLowerCase();
+        console.log(`[KundliService] Astrology API /lalkitab_remedies/${pName} input:`, JSON.stringify(input));
+        const response = await api.post(`/lalkitab_remedies/${pName}`, input);
+        return response.data;
+    } catch (error: any) {
+        console.error(`Astrology API LalKitabRemedies (${planetName}) Error:`, error.response?.data || error.message);
+        throw error;
+    }
+};
+
+export const getNumeroTable = async (input: any) => {
+    try {
+        console.log('[KundliService] Astrology API /numero_table input:', JSON.stringify(input));
+        const response = await api.post('/numero_table', input);
+        return response.data;
+    } catch (error: any) {
+        console.error('Astrology API NumeroTable Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -385,5 +408,7 @@ export default {
     getSadhesatiLifeDetails,
     getSadhesatiCurrentStatus,
     getSunSignPrediction,
-    getNumeroPrediction
+    getNumeroPrediction,
+    getLalKitabRemedies,
+    getNumeroTable
 };

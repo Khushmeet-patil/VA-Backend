@@ -6,9 +6,15 @@ import axios from 'axios';
 const TEST_NUMBERS = ['7990358824', '1234567890', '9374742346', '7990358821', '2345678901', '9999999999'];
 
 export const sendSmsOtp = async (mobile: string, otp: string, appName: string = 'VedicAstro'): Promise<boolean> => {
+    // Sanitize mobile: remove non-digits, and strip leading '91' if it has 12 digits
+    let sanitizedMobile = mobile.replace(/\D/g, '');
+    if (sanitizedMobile.startsWith('91') && sanitizedMobile.length === 12) {
+        sanitizedMobile = sanitizedMobile.slice(2);
+    }
+
     // Dev Bypass: skip fast2sms for test numbers (OTP is already set to 1234 by the controller)
-    if (TEST_NUMBERS.includes(mobile)) {
-        console.log(`[SMS Bypass] Test number ${mobile} — OTP: ${otp} (App: ${appName})`);
+    if (TEST_NUMBERS.includes(sanitizedMobile) || TEST_NUMBERS.includes(mobile)) {
+        console.log(`[SMS Bypass] Test number ${mobile} (sanitized: ${sanitizedMobile}) — OTP: ${otp} (App: ${appName})`);
         return true;
     }
 
@@ -30,10 +36,10 @@ export const sendSmsOtp = async (mobile: string, otp: string, appName: string = 
             message,
             variables_values,
             flash,
-            numbers: mobile,
+            numbers: sanitizedMobile,
         };
 
-        console.log(`[Fast2SMS] Sending OTP to ${mobile} for ${appName}`);
+        console.log(`[Fast2SMS] Sending OTP to ${mobile} (sanitized: ${sanitizedMobile}) for ${appName}`);
 
         const response = await axios.get(url, { params });
         console.log('[Fast2SMS] Full Response Data:', JSON.stringify(response.data, null, 2));

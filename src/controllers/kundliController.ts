@@ -312,6 +312,29 @@ export const getNumeroPrediction = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const getLalKitabRemedies = async (req: AuthRequest, res: Response) => {
+    try {
+        const { planetName } = req.params;
+        console.log(`[KundliController] Received LalKitabRemedies request for ${planetName}:`, JSON.stringify(req.body));
+        const data = await kundliService.getLalKitabRemedies(req.body, planetName);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] LalKitabRemedies Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch Lal Kitab remedies' });
+    }
+};
+
+export const getNumeroTable = async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('[KundliController] Received NumeroTable request:', JSON.stringify(req.body));
+        const data = await kundliService.getNumeroTable(req.body);
+        return res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('[KundliController] NumeroTable Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Failed to fetch numerology table data' });
+    }
+};
+
 export default {
     getBirthDetails,
     getManglik,
@@ -340,5 +363,7 @@ export default {
     getSadhesatiLifeDetails,
     getSadhesatiCurrentStatus,
     getSunSignPrediction,
-    getNumeroPrediction
+    getNumeroPrediction,
+    getLalKitabRemedies,
+    getNumeroTable
 };

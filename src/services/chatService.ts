@@ -283,9 +283,37 @@ class ChatService {
             throw new Error('User not found');
         }
 
-        const combinedBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
-        if (!session.isFreeTrialSession && combinedBalance < session.ratePerMinute) {
-            const errorMsg = `Insufficient balance. Minimum ₹${session.ratePerMinute} required for 1 minute. User has ₹${combinedBalance.toFixed(2)}.`;
+        // Fetch bonus usage setting for split calculations
+        const systemSettingModel = mongoose.model('SystemSetting');
+        const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
+        const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20);
+
+        const realBalance = user.walletBalance || 0;
+        const bonusBalance = user.bonusBalance || 0;
+        const ratePerMinute = session.ratePerMinute;
+
+        // Calculate split deductions exactly matching processPayment logic
+        const targetBonusDeduction = ratePerMinute * (bonusUsagePercent / 100);
+        const targetRealDeduction = ratePerMinute - targetBonusDeduction;
+
+        let bonusDeduction = 0;
+        let realDeduction = 0;
+
+        if (targetBonusDeduction > bonusBalance) {
+            bonusDeduction = bonusBalance;
+            realDeduction = Math.round((ratePerMinute - bonusDeduction) * 100) / 100;
+        } else if (targetRealDeduction > realBalance) {
+            realDeduction = realBalance;
+            bonusDeduction = Math.round((ratePerMinute - realDeduction) * 100) / 100;
+        } else {
+            bonusDeduction = Math.round(targetBonusDeduction * 100) / 100;
+            realDeduction = Math.round((ratePerMinute - bonusDeduction) * 100) / 100;
+        }
+
+        const isEligible = realBalance >= realDeduction && bonusBalance >= bonusDeduction && (realBalance + bonusBalance) >= ratePerMinute;
+
+        if (!session.isFreeTrialSession && !isEligible) {
+            const errorMsg = `Insufficient balance. Minimum ₹${ratePerMinute} required for 1 minute (Real: ₹${realDeduction}, Bonus: ₹${bonusDeduction}). User has Real: ₹${realBalance.toFixed(2)}, Bonus: ₹${bonusBalance.toFixed(2)}.`;
             // Atomic update to fail
             await ChatSession.findOneAndUpdate(
                 { sessionId, status: 'PENDING' },
@@ -389,10 +417,7 @@ class ChatService {
             console.log(`[ChatService] Chat accepted and BILLING STARTED: ${sessionId}`);
         }
 
-        // Fetch bonus usage setting for timer calculation
-        const systemSettingModel = mongoose.model('SystemSetting');
-        const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
-        const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20);
+
 
         // Emit CHAT_STARTED to both user and astrologer
         if (this.io) {
