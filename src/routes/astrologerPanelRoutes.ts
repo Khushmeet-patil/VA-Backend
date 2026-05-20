@@ -26,6 +26,7 @@ import {
     updateSchedule
 } from '../controllers/astrologerController';
 import { authMiddleware } from '../middleware/auth';
+import { getPrewrittenMessages } from '../controllers/prewrittenMessageController';
 
 const router = express.Router();
 
@@ -61,6 +62,9 @@ router.get('/sessions', authMiddleware, getSessionHistory);
 
 // Get User Profile for Chat
 router.get('/user-profile/:userId/:profileId?', authMiddleware, getUserProfileForAstrologer);
+
+// Prewritten Messages
+router.get('/prewritten-messages', authMiddleware, getPrewrittenMessages);
 
 // Schedule routes (Explicitly redefined)
 router.get('/schedule', authMiddleware, getSchedule);

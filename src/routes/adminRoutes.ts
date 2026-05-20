@@ -71,6 +71,12 @@ import {
 } from '../controllers/adminController';
 import { getAvailabilityLogs } from '../controllers/astrologerPanelController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
+import {
+    getPrewrittenMessages,
+    createPrewrittenMessage,
+    updatePrewrittenMessage,
+    deletePrewrittenMessage
+} from '../controllers/prewrittenMessageController';
 
 const router = express.Router();
 
@@ -151,6 +157,12 @@ router.get('/skills', getSkills);
 router.post('/skills', addSkill);
 router.put('/skills/:skillId', updateSkill);
 router.delete('/skills/:skillId', deleteSkill);
+
+// Prewritten Messages
+router.get('/prewritten-messages', getPrewrittenMessages);
+router.post('/prewritten-messages', createPrewrittenMessage);
+router.put('/prewritten-messages/:id', updatePrewrittenMessage);
+router.delete('/prewritten-messages/:id', deletePrewrittenMessage);
 
 // Settings
 import { getAllSettings, updateSetting, getSettingByKey } from '../controllers/systemSettingController';
