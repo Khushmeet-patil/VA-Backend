@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import kundliService from '../services/kundliService';
+import FeatureUsage from '../models/FeatureUsage';
 
 interface AuthRequest extends Request {
     userId?: string;
@@ -306,6 +307,10 @@ export const getSunSignPrediction = async (req: AuthRequest, res: Response) => {
 export const getNumeroPrediction = async (req: AuthRequest, res: Response) => {
     try {
         const data = await kundliService.getNumeroPrediction(req.body);
+        
+        // Track usage asynchronously
+        FeatureUsage.create({ feature: 'numerology', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+
         return res.json({ success: true, data });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
@@ -317,6 +322,10 @@ export const getLalKitabRemedies = async (req: AuthRequest, res: Response) => {
         const { planetName } = req.params;
         console.log(`[KundliController] Received LalKitabRemedies request for ${planetName}:`, JSON.stringify(req.body));
         const data = await kundliService.getLalKitabRemedies(req.body, planetName);
+        
+        // Track usage asynchronously
+        FeatureUsage.create({ feature: 'lal_kitab', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+
         return res.json({ success: true, data });
     } catch (error: any) {
         console.error('[KundliController] LalKitabRemedies Error:', error);
@@ -328,6 +337,10 @@ export const getNumeroTable = async (req: AuthRequest, res: Response) => {
     try {
         console.log('[KundliController] Received NumeroTable request:', JSON.stringify(req.body));
         const data = await kundliService.getNumeroTable(req.body);
+
+        // Track usage asynchronously
+        FeatureUsage.create({ feature: 'numerology', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+
         return res.json({ success: true, data });
     } catch (error: any) {
         console.error('[KundliController] NumeroTable Error:', error);

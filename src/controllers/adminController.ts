@@ -20,7 +20,7 @@ import notificationService from '../services/notificationService';
 import scheduledNotificationService from '../services/scheduledNotificationService';
 import ChatMessage from '../models/ChatMessage';
 import DeletionRequest from '../models/DeletionRequest';
-
+import FeatureUsage from '../models/FeatureUsage';
 
 // 1. Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
@@ -217,6 +217,10 @@ export const getDashboardStats = async (req: Request, res: Response) => {
                     totalAddedByUser: totalAddedByUser[0]?.total || 0,
                     totalPaidToAstrologers: totalPaidToAstrologers[0]?.total || 0,
                     totalPayable: totalPayable
+                },
+                featureUsage: {
+                    numerology: await FeatureUsage.countDocuments({ feature: 'numerology' }),
+                    lalKitab: await FeatureUsage.countDocuments({ feature: 'lal_kitab' })
                 }
             }
         });
