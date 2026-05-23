@@ -1359,8 +1359,16 @@ class ChatService {
                 return { success: false };
             }
 
+            // Re-fetch astrologer for freshest TDS tracking data & custom commission
+            const freshAstrologer = await Astrologer.findById(astrologer._id);
+            if (!freshAstrologer) throw new Error('Astrologer not found');
+
+            const activeCommission = (freshAstrologer.commissionPercentage !== undefined && freshAstrologer.commissionPercentage !== null)
+                ? freshAstrologer.commissionPercentage
+                : astrologerCommission;
+
             // ATOMIC STEP 2: Add to Astrologer Earnings
-            const astrologerShare = Math.round((realDeduction * astrologerCommission / 100) * 100) / 100;
+            const astrologerShare = Math.round((realDeduction * activeCommission / 100) * 100) / 100;
 
             // ============ TDS CALCULATION LOGIC ============
             const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
@@ -1371,10 +1379,6 @@ class ChatService {
             const now = new Date();
             const currentFYStart = new Date(now.getFullYear(), 3, 1);
             if (now.getMonth() < 3) currentFYStart.setFullYear(now.getFullYear() - 1);
-
-            // Re-fetch astrologer for freshest TDS tracking data
-            const freshAstrologer = await Astrologer.findById(astrologer._id);
-            if (!freshAstrologer) throw new Error('Astrologer not found');
 
             let fyResetUpdate: any = {};
             if (!freshAstrologer.yearlyEarningsStartDate || new Date(freshAstrologer.yearlyEarningsStartDate) < currentFYStart) {

@@ -4,11 +4,18 @@ import FeatureUsage from '../models/FeatureUsage';
 
 interface AuthRequest extends Request {
     userId?: string;
+    userRole?: string;
 }
 
 export const getBirthDetails = async (req: AuthRequest, res: Response) => {
     try {
         console.log('[KundliController] Received BirthDetails request:', JSON.stringify(req.body));
+
+        // Track usage for user role only (excluding astrologers)
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'kundli', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        }
+
         const data = await kundliService.getBirthDetails(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -31,6 +38,12 @@ export const getManglik = async (req: AuthRequest, res: Response) => {
 export const getBasicPanchang = async (req: AuthRequest, res: Response) => {
     try {
         console.log('[KundliController] Received AdvancedPanchang (Basic Tab) request:', JSON.stringify(req.body));
+
+        // Track usage for user role only (excluding astrologers)
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'panchang', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        }
+
         const data = await kundliService.getAdvancedPanchang(req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -297,6 +310,12 @@ export const getSunSignPrediction = async (req: AuthRequest, res: Response) => {
     try {
         const { zodiacName, type } = req.params;
         console.log(`[KundliController] SunSignPrediction: ${zodiacName}, ${type}`, JSON.stringify(req.body));
+
+        // Track usage for user role only (excluding astrologers)
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'horoscope', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        }
+
         const data = await kundliService.getSunSignPrediction(zodiacName, type as any, req.body);
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -308,8 +327,10 @@ export const getNumeroPrediction = async (req: AuthRequest, res: Response) => {
     try {
         const data = await kundliService.getNumeroPrediction(req.body);
         
-        // Track usage asynchronously
-        FeatureUsage.create({ feature: 'numerology', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        // Track usage asynchronously for user role only (excluding astrologers)
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'numerology', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        }
 
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -323,8 +344,10 @@ export const getLalKitabRemedies = async (req: AuthRequest, res: Response) => {
         console.log(`[KundliController] Received LalKitabRemedies request for ${planetName}:`, JSON.stringify(req.body));
         const data = await kundliService.getLalKitabRemedies(req.body, planetName);
         
-        // Track usage asynchronously
-        FeatureUsage.create({ feature: 'lal_kitab', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        // Track usage asynchronously for user role only (excluding astrologers)
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'lal_kitab', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        }
 
         return res.json({ success: true, data });
     } catch (error: any) {
@@ -338,8 +361,10 @@ export const getNumeroTable = async (req: AuthRequest, res: Response) => {
         console.log('[KundliController] Received NumeroTable request:', JSON.stringify(req.body));
         const data = await kundliService.getNumeroTable(req.body);
 
-        // Track usage asynchronously
-        FeatureUsage.create({ feature: 'numerology', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        // Track usage asynchronously for user role only (excluding astrologers)
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'numerology', userId: req.userId }).catch(err => console.error('Failed to log feature usage:', err));
+        }
 
         return res.json({ success: true, data });
     } catch (error: any) {

@@ -8,6 +8,8 @@ import {
     getUserActivity,
     addWalletBalance,
     deductWalletBalance,
+    addAstrologerEarnings,
+    deductAstrologerEarnings,
     getAstrologers,
     updateAstrologerStatus,
     updateAstrologer,
@@ -67,7 +69,8 @@ import {
     getStartPopups,
     updateStartPopup,
     deleteStartPopup,
-    setGlobalAstrologerRate
+    setGlobalAstrologerRate,
+    getAnalysisStats
 } from '../controllers/adminController';
 import { getAvailabilityLogs } from '../controllers/astrologerPanelController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
@@ -87,6 +90,7 @@ router.use(adminMiddleware);
 // Dashboard
 router.get('/dashboard', getDashboardStats);
 router.get('/chat-stats', getChatStats);
+router.get('/analysis-stats', getAnalysisStats);
 router.get('/finances/gst', getGstStats);
 router.get('/finances/earnings', getEarningsStats);
 
@@ -124,6 +128,8 @@ router.get('/astrologers/:astrologerId/earnings', getAstrologerEarnings);
 router.get('/astrologers/:astrologerId/withdrawals', getAstrologerWithdrawals);
 router.get('/astrologers/:astrologerId/chats', getAstrologerChats);
 router.get('/astrologers/:astrologerId/availability', getAvailabilityLogs);
+router.post('/astrologers/:astrologerId/wallet/add', addAstrologerEarnings);
+router.post('/astrologers/:astrologerId/wallet/deduct', deductAstrologerEarnings);
 
 // Reviews
 router.get('/reviews/pending', getPendingReviews);

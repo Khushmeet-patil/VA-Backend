@@ -217,10 +217,6 @@ export const getDashboardStats = async (req: Request, res: Response) => {
                     totalAddedByUser: totalAddedByUser[0]?.total || 0,
                     totalPaidToAstrologers: totalPaidToAstrologers[0]?.total || 0,
                     totalPayable: totalPayable
-                },
-                featureUsage: {
-                    numerology: await FeatureUsage.countDocuments({ feature: 'numerology' }),
-                    lalKitab: await FeatureUsage.countDocuments({ feature: 'lal_kitab' })
                 }
             }
         });
@@ -712,6 +708,128 @@ export const deductWalletBalance = async (req: Request, res: Response) => {
     }
 };
 
+// Add balance to astrologer wallet (Admin action)
+export const addAstrologerEarnings = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { amount, reason } = req.body;
+
+        // Validate amount
+        if (!amount || typeof amount !== 'number' || amount <= 0) {
+            return res.status(400).json({ success: false, message: 'Valid positive amount is required' });
+        }
+
+        // Find astrologer
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        const previousBalance = astrologer.earnings || 0;
+        const safeAmount = Math.round(amount * 100) / 100;
+        const newBalance = Math.round((previousBalance + safeAmount) * 100) / 100;
+
+        // Update astrologer's earnings
+        astrologer.earnings = newBalance;
+        await astrologer.save();
+
+        // Create a transaction record for audit trail
+        await Transaction.create({
+            fromUser: astrologer.userId,
+            toAstrologer: astrologer._id,
+            type: 'credit',
+            amount: safeAmount,
+            description: reason || 'Admin manual balance addition',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `₹${safeAmount} added to astrologer wallet successfully`,
+            data: {
+                previousBalance,
+                amountAdded: safeAmount,
+                newBalance,
+                astrologer: {
+                    _id: astrologer._id,
+                    firstName: astrologer.firstName,
+                    lastName: astrologer.lastName,
+                    earnings: astrologer.earnings
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Add astrologer earnings error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+// Deduct balance from astrologer wallet (Admin action)
+export const deductAstrologerEarnings = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId } = req.params;
+        const { amount, reason } = req.body;
+
+        // Validate amount
+        if (!amount || typeof amount !== 'number' || amount <= 0) {
+            return res.status(400).json({ success: false, message: 'Valid positive amount is required' });
+        }
+
+        // Find astrologer
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        const previousBalance = astrologer.earnings || 0;
+
+        // Check if astrologer has sufficient balance
+        if (previousBalance < amount) {
+            return res.status(400).json({
+                success: false,
+                message: `Insufficient balance. Current: ₹${previousBalance}`
+            });
+        }
+
+        const safeAmount = Math.round(amount * 100) / 100;
+        const newBalance = Math.round((previousBalance - safeAmount) * 100) / 100;
+
+        // Update astrologer's earnings
+        astrologer.earnings = newBalance;
+        await astrologer.save();
+
+        // Create a transaction record for audit trail
+        await Transaction.create({
+            fromUser: astrologer.userId,
+            toAstrologer: astrologer._id,
+            type: 'debit',
+            amount: safeAmount,
+            description: reason || 'Admin manual balance deduction',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `₹${safeAmount} deducted from astrologer wallet successfully`,
+            data: {
+                previousBalance,
+                amountDeducted: safeAmount,
+                newBalance,
+                astrologer: {
+                    _id: astrologer._id,
+                    firstName: astrologer.firstName,
+                    lastName: astrologer.lastName,
+                    earnings: astrologer.earnings
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Deduct astrologer earnings error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+
 // Add User (Admin)
 export const addUser = async (req: Request, res: Response) => {
     try {
@@ -993,7 +1111,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         const {
             isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
             firstName, lastName, email, mobileNumber, experience, city, country, bio, aboutMe, specialties, profileImage,
-            language, systemKnown, isOnline, blockingReason
+            language, systemKnown, isOnline, blockingReason, commissionPercentage
         } = req.body;
 
         const updateData: any = {};
@@ -1030,6 +1148,20 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         }
         if (typeof req.body.freeChatLimit === 'number') {
             updateData.freeChatLimit = req.body.freeChatLimit;
+        }
+
+        // Commission Settings
+        if (commissionPercentage !== undefined) {
+            if (commissionPercentage === null || commissionPercentage === '') {
+                updateData.commissionPercentage = null;
+            } else {
+                const commissionVal = Number(commissionPercentage);
+                if (!isNaN(commissionVal) && commissionVal >= 0 && commissionVal <= 100) {
+                    updateData.commissionPercentage = commissionVal;
+                } else {
+                    return res.status(400).json({ success: false, message: 'Commission percentage must be a number between 0 and 100' });
+                }
+            }
         }
 
         // Image Upload
@@ -2879,3 +3011,76 @@ export const setGlobalAstrologerRate = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };
+
+export const getAnalysisStats = async (req: Request, res: Response) => {
+    try {
+        const getISTDate = () => new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+        
+        const nowIST = getISTDate();
+        const todayStartIST = new Date(nowIST);
+        todayStartIST.setUTCHours(0, 0, 0, 0);
+        const todayStart = new Date(todayStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+
+        // Get lifetime totals for each feature
+        const lifetime = {
+            kundli: await FeatureUsage.countDocuments({ feature: 'kundli' }),
+            horoscope: await FeatureUsage.countDocuments({ feature: 'horoscope' }),
+            panchang: await FeatureUsage.countDocuments({ feature: 'panchang' }),
+            lalKitab: await FeatureUsage.countDocuments({ feature: 'lal_kitab' }),
+            numerology: await FeatureUsage.countDocuments({ feature: 'numerology' })
+        };
+
+        // Get today's totals for each feature
+        const today = {
+            kundli: await FeatureUsage.countDocuments({ feature: 'kundli', createdAt: { $gte: todayStart } }),
+            horoscope: await FeatureUsage.countDocuments({ feature: 'horoscope', createdAt: { $gte: todayStart } }),
+            panchang: await FeatureUsage.countDocuments({ feature: 'panchang', createdAt: { $gte: todayStart } }),
+            lalKitab: await FeatureUsage.countDocuments({ feature: 'lal_kitab', createdAt: { $gte: todayStart } }),
+            numerology: await FeatureUsage.countDocuments({ feature: 'numerology', createdAt: { $gte: todayStart } })
+        };
+
+        // 7-day chronological daily trend (visits per feature grouped by date)
+        const trend = [];
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        for (let i = 6; i >= 0; i--) {
+            const dateCursorIST = new Date(todayStartIST);
+            dateCursorIST.setUTCDate(dateCursorIST.getUTCDate() - i);
+            
+            const startOfDay = new Date(dateCursorIST.getTime() - (5.5 * 60 * 60 * 1000));
+            const endOfDay = new Date(startOfDay.getTime() + (24 * 60 * 60 * 1000));
+
+            const dayLabel = `${dateCursorIST.getUTCDate()} ${monthNames[dateCursorIST.getUTCMonth()]}`;
+
+            const [kundli, horoscope, panchang, lalKitab, numerology] = await Promise.all([
+                FeatureUsage.countDocuments({ feature: 'kundli', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+                FeatureUsage.countDocuments({ feature: 'horoscope', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+                FeatureUsage.countDocuments({ feature: 'panchang', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+                FeatureUsage.countDocuments({ feature: 'lal_kitab', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+                FeatureUsage.countDocuments({ feature: 'numerology', createdAt: { $gte: startOfDay, $lt: endOfDay } })
+            ]);
+
+            trend.push({
+                date: dayLabel,
+                kundli,
+                horoscope,
+                panchang,
+                lalKitab: lalKitab, // align matching keys
+                numerology
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                lifetime,
+                today,
+                trend
+            }
+        });
+    } catch (error) {
+        console.error('Get analysis stats error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
