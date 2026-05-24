@@ -239,14 +239,30 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
 export const logoutAstrologer = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
+        const { deviceId } = req.body;
         const astrologer = await Astrologer.findById(astrologerId);
-        if (astrologer && astrologer.isOnline) {
-            await availabilityService.recordOffline(astrologerId);
+        
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
-        await Astrologer.findByIdAndUpdate(astrologerId, {
-            $unset: { activeDeviceId: 1 },
-            $set: { isOnline: false }
-        });
+
+        // Only clear active device ID, offline status, and FCM token if the logging-out device is the active one
+        // or if no device ID was provided (fallback for older client versions)
+        const isCurrentDevice = !deviceId || astrologer.activeDeviceId === deviceId;
+
+        if (isCurrentDevice) {
+            if (astrologer.isOnline) {
+                await availabilityService.recordOffline(astrologerId);
+            }
+            await Astrologer.findByIdAndUpdate(astrologerId, {
+                $unset: { activeDeviceId: 1, fcmToken: 1, fcmTokenUpdatedAt: 1 },
+                $set: { isOnline: false }
+            });
+            console.log(`[Logout] Cleared active device ID, offline status, and FCM token for astrologer ${astrologerId}`);
+        } else {
+            console.log(`[Logout] Ignored active device/FCM clearance for astrologer ${astrologerId} because logging-out device (${deviceId}) does not match active device (${astrologer.activeDeviceId})`);
+        }
+
         return res.status(200).json({ success: true, message: 'Logged out successfully' });
     } catch (error) {
         return res.status(500).json({ success: false, message: 'Server error', error });

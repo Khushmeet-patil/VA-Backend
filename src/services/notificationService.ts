@@ -674,10 +674,11 @@ class NotificationService {
      */
     async clearAstrologerToken(userId: string): Promise<void> {
         try {
-            await Astrologer.findOneAndUpdate({ userId }, {
-                $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 }
-            });
-            console.log(`[NotificationService] Cleared FCM token for astrologer user ${userId}`);
+            await Astrologer.findOneAndUpdate(
+                { $or: [{ _id: userId }, { userId }] },
+                { $unset: { fcmToken: 1, fcmTokenUpdatedAt: 1 } }
+            );
+            console.log(`[NotificationService] Cleared FCM token for astrologer user/id ${userId}`);
         } catch (error) {
             console.error('[NotificationService] Error clearing astrologer token:', error);
         }
@@ -727,8 +728,22 @@ class NotificationService {
     async registerAstrologerToken(astrologerId: string, fcmToken: string): Promise<boolean> {
         try {
             const updatedAt = new Date();
-            // 1. Update Astrologer doc (using Astrologer _id)
-            const astrologer = await Astrologer.findByIdAndUpdate(astrologerId, { fcmToken, fcmTokenUpdatedAt: updatedAt }, { new: true });
+            
+            // 1. Update Astrologer doc (using Astrologer _id first)
+            let astrologer = await Astrologer.findByIdAndUpdate(
+                astrologerId,
+                { fcmToken, fcmTokenUpdatedAt: updatedAt },
+                { new: true }
+            );
+
+            // Fallback to userId if _id doesn't match
+            if (!astrologer) {
+                astrologer = await Astrologer.findOneAndUpdate(
+                    { userId: astrologerId },
+                    { fcmToken, fcmTokenUpdatedAt: updatedAt },
+                    { new: true }
+                );
+            }
             
             // 2. STRICT SEPARATION: Ensure this token is NOT present in the User doc for this person
             if (astrologer && astrologer.userId) {
@@ -738,8 +753,13 @@ class NotificationService {
                 );
             }
 
-            console.log(`[NotificationService] Astrologer app token registered for astrologer ${astrologerId}`);
-            return true;
+            if (astrologer) {
+                console.log(`[NotificationService] Astrologer app token registered for astrologer ${astrologer._id}`);
+                return true;
+            }
+
+            console.error(`[NotificationService] Astrologer not found to register token: ${astrologerId}`);
+            return false;
         } catch (error) {
             console.error(`[NotificationService] Error registering astrologer token:`, error);
             return false;
