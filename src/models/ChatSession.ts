@@ -19,13 +19,7 @@ export interface IChatSession extends Document {
     astrologerEarnings: number;         // Gross earnings (after commission, before TDS)
     astrologerNetEarnings: number;      // Net earnings (after commission and TDS)
     endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT' | 'FREE_TRIAL_ENDED' | 'ASTROLOGER_REJECTED' | 'ASTROLOGER_TIMEOUT' | 'USER_CANCEL_WHILE_PENDING' | 'ASTROLOGER_OFFLINE_DURING_REQUEST' | 'INSUFFICIENT_BALANCE_AT_ACCEPT';
-    intakeDetails?: {                   // User's intake form data
-        name?: string;
-        gender?: string;
-        dob?: string;
-        tob?: string;
-        pob?: string;
-    };
+    intakeDetails?: Record<string, any>; // User's intake form data (Mixed)
     userJoined: boolean;
     astrologerJoined: boolean;
     lastBilledAt?: Date;                // Time of last billing cycle completion
@@ -97,13 +91,7 @@ const ChatSessionSchema: Schema = new Schema({
             'INSUFFICIENT_BALANCE_AT_ACCEPT'
         ]
     },
-    intakeDetails: {
-        name: { type: String },
-        gender: { type: String },
-        dob: { type: String },
-        tob: { type: String },
-        pob: { type: String }
-    },
+    intakeDetails: { type: Schema.Types.Mixed },
     userJoined: { type: Boolean, default: false },
     astrologerJoined: { type: Boolean, default: false },
     lastBilledAt: { type: Date },
