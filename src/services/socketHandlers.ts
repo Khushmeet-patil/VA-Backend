@@ -429,9 +429,9 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
-        // Handle share profile logic
-        socket.on('share_profile', async (data: { sessionId: string, profile: any, text?: string }) => {
-            console.log('[Socket] share_profile event received:', data);
+        // Handle share profile logic (unified for both lowercase and uppercase events)
+        const handleShareProfileEvent = async (data: { sessionId: string, profile: any, text?: string }) => {
+            console.log('[Socket] share_profile/SHARE_PROFILE event received:', data);
             try {
                 const { sessionId, profile } = data;
                 if (!sessionId || !profile) return;
@@ -510,19 +510,10 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             } catch (error) {
                 console.error('[Socket] Share profile error:', error);
             }
-        });
-        // Handle SHARE_PROFILE (uppercase alias) — delegates to share_profile handler
-        socket.on('SHARE_PROFILE', async (data: { sessionId: string, profile: any, text?: string }) => {
-            try {
-                const { sessionId, profile } = data;
-                if (!sessionId || !profile) return;
+        };
 
-                // Directly call chatService instead of emitting back to client
-                await chatService.shareProfile(sessionId, profile, data.text);
-            } catch (error) {
-                console.error('[Socket] SHARE_PROFILE error:', error);
-            }
-        });
+        socket.on('share_profile', handleShareProfileEvent);
+        socket.on('SHARE_PROFILE', handleShareProfileEvent);
 
         // Handle join chat (handshake)
         socket.on('join_chat', async (data: { sessionId: string }) => {
