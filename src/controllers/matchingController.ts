@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import matchingService from '../services/matchingService';
+import FeatureUsage from '../models/FeatureUsage';
 
 interface AuthRequest extends Request {
     userId?: string;
@@ -18,6 +19,11 @@ export const getDetailedMatchingReport = async (req: AuthRequest, res: Response)
         }
 
         const reportData = await matchingService.getDetailedMatchingReport(req.body);
+
+        // Log matchmaking feature usage asynchronously
+        FeatureUsage.create({ feature: 'matching', userId }).catch(err => 
+            console.error('Failed to log matchmaking feature usage:', err)
+        );
 
         return res.json({
             success: true,

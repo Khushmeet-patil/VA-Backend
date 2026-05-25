@@ -3027,7 +3027,8 @@ export const getAnalysisStats = async (req: Request, res: Response) => {
             horoscope: await FeatureUsage.countDocuments({ feature: 'horoscope' }),
             panchang: await FeatureUsage.countDocuments({ feature: 'panchang' }),
             lalKitab: await FeatureUsage.countDocuments({ feature: 'lal_kitab' }),
-            numerology: await FeatureUsage.countDocuments({ feature: 'numerology' })
+            numerology: await FeatureUsage.countDocuments({ feature: 'numerology' }),
+            matching: await FeatureUsage.countDocuments({ feature: 'matching' })
         };
 
         // Get today's totals for each feature
@@ -3036,7 +3037,8 @@ export const getAnalysisStats = async (req: Request, res: Response) => {
             horoscope: await FeatureUsage.countDocuments({ feature: 'horoscope', createdAt: { $gte: todayStart } }),
             panchang: await FeatureUsage.countDocuments({ feature: 'panchang', createdAt: { $gte: todayStart } }),
             lalKitab: await FeatureUsage.countDocuments({ feature: 'lal_kitab', createdAt: { $gte: todayStart } }),
-            numerology: await FeatureUsage.countDocuments({ feature: 'numerology', createdAt: { $gte: todayStart } })
+            numerology: await FeatureUsage.countDocuments({ feature: 'numerology', createdAt: { $gte: todayStart } }),
+            matching: await FeatureUsage.countDocuments({ feature: 'matching', createdAt: { $gte: todayStart } })
         };
 
         // 7-day chronological daily trend (visits per feature grouped by date)
@@ -3052,12 +3054,13 @@ export const getAnalysisStats = async (req: Request, res: Response) => {
 
             const dayLabel = `${dateCursorIST.getUTCDate()} ${monthNames[dateCursorIST.getUTCMonth()]}`;
 
-            const [kundli, horoscope, panchang, lalKitab, numerology] = await Promise.all([
+            const [kundli, horoscope, panchang, lalKitab, numerology, matching] = await Promise.all([
                 FeatureUsage.countDocuments({ feature: 'kundli', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
                 FeatureUsage.countDocuments({ feature: 'horoscope', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
                 FeatureUsage.countDocuments({ feature: 'panchang', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
                 FeatureUsage.countDocuments({ feature: 'lal_kitab', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
-                FeatureUsage.countDocuments({ feature: 'numerology', createdAt: { $gte: startOfDay, $lt: endOfDay } })
+                FeatureUsage.countDocuments({ feature: 'numerology', createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+                FeatureUsage.countDocuments({ feature: 'matching', createdAt: { $gte: startOfDay, $lt: endOfDay } })
             ]);
 
             trend.push({
@@ -3066,7 +3069,8 @@ export const getAnalysisStats = async (req: Request, res: Response) => {
                 horoscope,
                 panchang,
                 lalKitab: lalKitab, // align matching keys
-                numerology
+                numerology,
+                matching
             });
         }
 
