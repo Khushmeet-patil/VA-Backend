@@ -363,15 +363,14 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
     }
 };
 
-// Get tagged astrologers (Celebrity, Top Choice, Rising Star) - for Home Screen "Top Astrologers"
+// Get all astrologers - for Home Screen "All Astrologers"
 export const getTaggedAstrologers = async (req: Request, res: Response) => {
     try {
         const query: any = {
             status: 'approved',
             isBlocked: { $ne: true },
             isDeletionRequested: { $ne: true },
-            activeDeviceId: { $exists: true },
-            tag: { $in: ['Celebrity', 'Top Choice', 'Rising Star'] }
+            activeDeviceId: { $exists: true }
         };
 
         const astrologers = await Astrologer.find(query)

@@ -661,8 +661,8 @@ export const processRecharge = async (req: Request, res: Response) => {
         const userId = (req as any).userId;
         const { amount, bonusAmount } = req.body;
 
-        if (!amount || amount < 10) {
-            return res.status(400).json({ success: false, message: 'Invalid amount' });
+        if (!amount || amount < 15) {
+            return res.status(400).json({ success: false, message: 'Minimum recharge amount is ₹15' });
         }
 
         const user = await User.findById(userId);
@@ -723,8 +723,9 @@ export const createOrder = async (req: Request, res: Response) => {
         const { amount, baseAmount, bonusAmount } = req.body; // amount = totalAmount (incl. GST)
         // Note: Razorpay expects amount in PAISE (1 INR = 100 Paise)
 
-        if (!amount || amount < 1) {
-            return res.status(400).json({ success: false, message: 'Invalid amount' });
+        const rechargeAmount = baseAmount !== undefined ? baseAmount : amount;
+        if (!rechargeAmount || rechargeAmount < 15) {
+            return res.status(400).json({ success: false, message: 'Minimum recharge amount is ₹15' });
         }
 
         const options = {
