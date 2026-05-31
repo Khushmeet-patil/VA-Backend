@@ -423,10 +423,10 @@ export const toggleStatus = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        // Send notification only to followers of this astrologer when they come online
+        // Send notification to all users when they come online
         if (isOnline) {
             await availabilityService.recordOnline(astrologerId);
-            notificationService.broadcastToFollowers(astrologer._id.toString(), {
+            notificationService.broadcastAstrologerOnlineToAll(astrologer._id.toString(), {
                 title: 'Astrologer Online!',
                 body: `${astrologer.firstName} ${astrologer.lastName} is now available for consultation.`
             }, {
