@@ -91,6 +91,9 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'ASTROLOGER_NOTIFICATION_COOLDOWN_HOURS') {
                 return res.json({ success: true, data: { key, value: 24 } });
             }
+            if (key === 'OFFLINE_NOTIFY_MSG') {
+                return res.json({ success: true, data: { key, value: 'Dear {astrologername}, {username} is waiting for you to come online.' } });
+            }
             return res.status(404).json({ success: false, message: 'Setting not found' });
         }
 
