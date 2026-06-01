@@ -9,7 +9,8 @@ import {
     unfollowAstrologer,
     checkFollowStatus,
     rateAstrologer,
-    getAllSkills
+    getAllSkills,
+    notifyAstrologerOnline
 } from '../controllers/astrologerController';
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth';
 
@@ -28,5 +29,6 @@ router.post('/follow', authMiddleware, followAstrologer);
 router.post('/unfollow', authMiddleware, unfollowAstrologer);
 router.post('/rate', authMiddleware, rateAstrologer);
 router.get('/follow-status/:astrologerId', authMiddleware, checkFollowStatus);
+router.post('/notify-online/:id', authMiddleware, notifyAstrologerOnline);
 
 export default router;

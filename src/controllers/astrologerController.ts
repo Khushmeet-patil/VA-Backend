@@ -5,6 +5,8 @@ import AstrologerFollower from '../models/AstrologerFollower';
 import ChatReview from '../models/ChatReview';
 import ChatSession from '../models/ChatSession';
 import Skill from '../models/Skill';
+import UserToAstrologerNotificationLog from '../models/UserToAstrologerNotificationLog';
+import SystemSetting from '../models/SystemSetting';
 import { getIOInstance } from '../services/scheduler';
 import { notificationService } from '../services/notificationService';
 import mongoose from 'mongoose';
@@ -409,6 +411,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
 
         // Check if current user is following this astrologer
         let isFollowing = false;
+        let hasChatted = false;
         let userRating = null;
         if (userId) {
             const follow = await AstrologerFollower.findOne({ userId, astrologerId: id });
@@ -447,6 +450,15 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
                     unratedSessionId
                 };
             }
+
+            // Check if user has chatted with this astrologer
+            const chatCount = await ChatSession.countDocuments({
+                userId,
+                astrologerId: id,
+                status: 'ENDED',
+                startTime: { $ne: null }
+            });
+            hasChatted = chatCount > 0;
         }
 
         // Get rating distribution - ONLY APPROVED REVIEWS
@@ -466,6 +478,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
             data: {
                 ...astrologer,
                 isFollowing,
+                hasChatted,
                 userRating,
                 ratingDistribution: ratingCounts
             }
@@ -829,6 +842,88 @@ export const updateSchedule = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// Notify astrologer to come online (User)
+export const notifyAstrologerOnline = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        const { id: astrologerId } = req.params;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        if (astrologer.isOnline) {
+            return res.status(400).json({ success: false, message: 'Astrologer is already online' });
+        }
+
+        // Check if user has chatted with this astrologer
+        const hasChattedCount = await ChatSession.countDocuments({
+            userId,
+            astrologerId,
+            status: 'ENDED',
+            startTime: { $ne: null }
+        });
+
+        if (hasChattedCount === 0) {
+            return res.status(403).json({ success: false, message: 'You must have chatted with this astrologer at least once to notify them.' });
+        }
+
+        // Check 1-hour cooldown
+        const lastLog = await UserToAstrologerNotificationLog.findOne({
+            userId,
+            astrologerId
+        }).sort({ sentAt: -1 });
+
+        const cooldownMs = 60 * 60 * 1000; // 1 hour
+        if (lastLog && (Date.now() - lastLog.sentAt.getTime() < cooldownMs)) {
+            const minutesLeft = Math.ceil((cooldownMs - (Date.now() - lastLog.sentAt.getTime())) / 60000);
+            return res.status(429).json({ 
+                success: false, 
+                message: `You can send another notification in ${minutesLeft} minutes.` 
+            });
+        }
+
+        // Get admin predefined message
+        const setting = await SystemSetting.findOne({ key: 'OFFLINE_NOTIFY_MSG' });
+        const defaultMsg = "Dear {astrologername}, {username} is waiting for you to come online.";
+        const template = setting ? (setting.value as string) : defaultMsg;
+
+        const userName = user.name || 'A user';
+        const personalizedMessage = template
+            .replace(/{username}/gi, userName)
+            .replace(/{astrologername}/gi, astrologer.firstName);
+
+        // Send push notification to Astrologer
+        await notificationService.sendToUser(astrologer.userId.toString(), {
+            title: `User waiting for you`,
+            body: personalizedMessage
+        }, { type: 'user_notify_online', userId: userId.toString() });
+
+        // Log the notification
+        await UserToAstrologerNotificationLog.create({
+            userId,
+            astrologerId,
+            sentAt: new Date()
+        });
+
+        res.json({ success: true, message: 'Notification sent to astrologer.' });
+    } catch (error: any) {
+        console.error('Notify astrologer online error:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
+};
+
 
 // Get all skills (Public)
 export const getAllSkills = async (req: Request, res: Response) => {
