@@ -142,7 +142,8 @@ export const sendOtp = async (req: Request, res: Response) => {
 
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-        const bonusAmount = await getSettingValue('newUserBonusAmount', 15);
+        // We use system setting to control new user bonus
+        const bonusAmount = await getSettingValue('newUserBonusAmount', 0);
         
         // Upsert user: create if not exists, update if exists
         await User.findOneAndUpdate(
@@ -479,9 +480,10 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             }
         }
 
-        const newUserBonusAmount = await getSettingValue('newUserBonusAmount', 15);
-        const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
-        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
+        // Combine DB values with default logic for old users
+        const newUserBonusAmount = await getSettingValue('newUserBonusAmount', 0);
+        const newUserIntroRate = await getSettingValue('newUserIntroRate', 1);
+        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 5);
 
         return res.status(200).json({
             success: true,
@@ -661,8 +663,8 @@ export const processRecharge = async (req: Request, res: Response) => {
         const userId = (req as any).userId;
         const { amount, bonusAmount } = req.body;
 
-        if (!amount || amount < 15) {
-            return res.status(400).json({ success: false, message: 'Minimum recharge amount is ₹15' });
+        if (!amount || amount < 5) {
+            return res.status(400).json({ success: false, message: 'Minimum recharge amount is ₹5' });
         }
 
         const user = await User.findById(userId);
@@ -724,8 +726,8 @@ export const createOrder = async (req: Request, res: Response) => {
         // Note: Razorpay expects amount in PAISE (1 INR = 100 Paise)
 
         const rechargeAmount = baseAmount !== undefined ? baseAmount : amount;
-        if (!rechargeAmount || rechargeAmount < 15) {
-            return res.status(400).json({ success: false, message: 'Minimum recharge amount is ₹15' });
+        if (!rechargeAmount || rechargeAmount < 5) {
+            return res.status(400).json({ success: false, message: 'Minimum recharge amount is ₹5' });
         }
 
         const options = {

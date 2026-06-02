@@ -45,7 +45,7 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             }
             if (key === 'rechargePacks') {
                 const defaultPacks = [
-                    { amount: 50, bonus: 0 },
+                    { amount: 25, bonus: 0 },
                     { amount: 100, bonus: 5 },
                     { amount: 199, bonus: 10 },
                     { amount: 300, bonus: 15 },

@@ -133,9 +133,9 @@ class ChatService {
         // Check if user is eligible for introductory offer (first-time user)
         // INTRO OFFER RULES:
         //   1. User must never have used an intro rate/free trial before (hasUsedFreeTrial = false)
-        //   2. Admin must have set newUserIntroRate in SystemSetting (default 5)
-        const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
-        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
+        //   2. Admin must have set newUserIntroRate in SystemSetting (default 1)
+        const newUserIntroRate = await getSettingValue('newUserIntroRate', 1);
+        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 5);
         
         const isEligibleForIntroRate = !user.hasUsedFreeTrial;
 
@@ -177,6 +177,7 @@ class ChatService {
             intakeDetails,
             profileId: (intakeDetails as any)?.profileId || 'default', // Save profileId
             isFreeTrialSession: false, // Legacy field, set to false
+            isIntroSession: isEligibleForIntroRate, // Flag for introductory 50% commission
         });
 
         await session.save();
@@ -1363,9 +1364,9 @@ class ChatService {
             const freshAstrologer = await Astrologer.findById(astrologer._id);
             if (!freshAstrologer) throw new Error('Astrologer not found');
 
-            const activeCommission = (freshAstrologer.commissionPercentage !== undefined && freshAstrologer.commissionPercentage !== null)
+            const activeCommission = session.isIntroSession ? 50 : ((freshAstrologer.commissionPercentage !== undefined && freshAstrologer.commissionPercentage !== null)
                 ? freshAstrologer.commissionPercentage
-                : astrologerCommission;
+                : astrologerCommission);
 
             // ATOMIC STEP 2: Add to Astrologer Earnings
             const astrologerShare = Math.round((realDeduction * activeCommission / 100) * 100) / 100;
