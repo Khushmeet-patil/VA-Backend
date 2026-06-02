@@ -142,8 +142,8 @@ export const sendOtp = async (req: Request, res: Response) => {
 
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-        // We use system setting to control new user bonus
-        const bonusAmount = await getSettingValue('newUserBonusAmount', 0);
+        // Enforce 0 bonus for new users
+        const bonusAmount = 0;
         
         // Upsert user: create if not exists, update if exists
         await User.findOneAndUpdate(
@@ -480,8 +480,8 @@ export const getWalletBalance = async (req: Request, res: Response) => {
             }
         }
 
-        // Combine DB values with default logic for old users
-        const newUserBonusAmount = await getSettingValue('newUserBonusAmount', 0);
+        // Enforce 0 bonus
+        const newUserBonusAmount = 0;
         const newUserIntroRate = await getSettingValue('newUserIntroRate', 1);
         const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 5);
 
