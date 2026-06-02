@@ -482,8 +482,8 @@ export const getWalletBalance = async (req: Request, res: Response) => {
 
         // Enforce 0 bonus
         const newUserBonusAmount = 0;
-        const newUserIntroRate = await getSettingValue('newUserIntroRate', 1);
-        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 5);
+        const newUserIntroRate = 1;
+        const newUserMinRecharge = 5;
 
         return res.status(200).json({
             success: true,
