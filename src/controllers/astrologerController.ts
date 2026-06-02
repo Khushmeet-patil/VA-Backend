@@ -905,7 +905,7 @@ export const notifyAstrologerOnline = async (req: Request, res: Response) => {
             .replace(/{astrologername}/gi, astrologer.firstName);
 
         // Send push notification to Astrologer
-        await notificationService.sendToUser(astrologer.userId.toString(), {
+        await notificationService.sendToAstrologer(astrologer._id.toString(), {
             title: `User waiting for you`,
             body: personalizedMessage
         }, { type: 'user_notify_online', userId: userId.toString() });
