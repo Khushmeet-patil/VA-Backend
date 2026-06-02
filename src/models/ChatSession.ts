@@ -31,7 +31,6 @@ export interface IChatSession extends Document {
     // Free Trial fields
     isFreeTrialSession?: boolean;       // True if this is a free trial session for new users
     freeTrialDurationSeconds?: number;  // Duration of free trial (default 120 = 2 minutes)
-    isIntroSession?: boolean;           // True if this is an introductory session for new users
     createdAt: Date;
     updatedAt: Date;
     sharedProfiles?: any[];             // List of profiles shared in this session
@@ -104,7 +103,6 @@ const ChatSessionSchema: Schema = new Schema({
     // Free Trial fields
     isFreeTrialSession: { type: Boolean, default: false },
     freeTrialDurationSeconds: { type: Number, default: 120 },
-    isIntroSession: { type: Boolean, default: false },
     // Shared Profiles
     sharedProfiles: { type: [Object], default: [] },
     // Profile Reference
