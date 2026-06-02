@@ -177,6 +177,7 @@ class ChatService {
             intakeDetails,
             profileId: (intakeDetails as any)?.profileId || 'default', // Save profileId
             isFreeTrialSession: false, // Legacy field, set to false
+            isIntroSession: isEligibleForIntroRate,
         });
 
         await session.save();
@@ -1363,9 +1364,14 @@ class ChatService {
             const freshAstrologer = await Astrologer.findById(astrologer._id);
             if (!freshAstrologer) throw new Error('Astrologer not found');
 
-            const activeCommission = (freshAstrologer.commissionPercentage !== undefined && freshAstrologer.commissionPercentage !== null)
+            let activeCommission = (freshAstrologer.commissionPercentage !== undefined && freshAstrologer.commissionPercentage !== null)
                 ? freshAstrologer.commissionPercentage
                 : astrologerCommission;
+
+            // For intro chat (first chat), astrologer always gets 50%
+            if (session.isIntroSession) {
+                activeCommission = 50;
+            }
 
             // ATOMIC STEP 2: Add to Astrologer Earnings
             const astrologerShare = Math.round((realDeduction * activeCommission / 100) * 100) / 100;
