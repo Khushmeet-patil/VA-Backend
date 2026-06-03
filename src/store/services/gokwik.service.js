@@ -137,9 +137,40 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       size: item.size || null,
     }));
 
-  const discountAmount = Number(payload.discount_amount ?? payload.total_discount ?? payload.discount ?? 0);
-  const couponCode = payload.coupon_code || payload.promo_code || payload.coupon || null;
-  const shippingFee = Number(payload.shipping_amount ?? payload.shipping_fee ?? payload.shipping ?? 0);
+  // 1. Extract Coupon Code
+  let couponCode = null;
+  if (payload.coupon_code) couponCode = payload.coupon_code;
+  else if (payload.promo_code) couponCode = payload.promo_code;
+  else if (payload.coupon) couponCode = payload.coupon;
+  else if (payload.cart?.coupon_code) couponCode = payload.cart.coupon_code;
+  else if (payload.cart?.promo_code) couponCode = payload.cart.promo_code;
+  else if (payload.cart?.coupon) couponCode = payload.cart.coupon;
+  else if (payload.cart?.discounts?.[0]?.code) couponCode = payload.cart.discounts[0].code;
+  else if (payload.cart?.discounts?.[0]?.name) couponCode = payload.cart.discounts[0].name;
+  else if (payload.discounts?.[0]?.code) couponCode = payload.discounts[0].code;
+  else if (payload.discounts?.[0]?.name) couponCode = payload.discounts[0].name;
+
+  // 2. Extract Discount Amount
+  let discountAmount = 0;
+  if (payload.discount_amount != null) discountAmount = Number(payload.discount_amount);
+  else if (payload.total_discount != null) discountAmount = Number(payload.total_discount);
+  else if (payload.discount != null) discountAmount = Number(payload.discount);
+  else if (payload.cart?.discount_total != null) discountAmount = Number(payload.cart.discount_total);
+  else if (payload.cart?.total_discount != null) discountAmount = Number(payload.cart.total_discount);
+  else if (payload.cart?.discount_amount != null) discountAmount = Number(payload.cart.discount_amount);
+  else if (payload.cart?.discount != null) discountAmount = Number(payload.cart.discount);
+  else if (payload.cart?.discounts?.[0]?.amount != null) discountAmount = Number(payload.cart.discounts[0].amount);
+  else if (payload.discounts?.[0]?.amount != null) discountAmount = Number(payload.discounts[0].amount);
+
+  // 3. Extract Shipping Fee
+  let shippingFee = 0;
+  if (payload.shipping_amount != null) shippingFee = Number(payload.shipping_amount);
+  else if (payload.shipping_fee != null) shippingFee = Number(payload.shipping_fee);
+  else if (payload.shipping != null) shippingFee = Number(payload.shipping);
+  else if (payload.cart?.shipping_total != null) shippingFee = Number(payload.cart.shipping_total);
+  else if (payload.cart?.shipping_amount != null) shippingFee = Number(payload.cart.shipping_amount);
+  else if (payload.cart?.shipping_fee != null) shippingFee = Number(payload.cart.shipping_fee);
+  else if (payload.cart?.shipping != null) shippingFee = Number(payload.cart.shipping);
 
   const { order, vendorMap } = await orderService.createOrder({
     customerId: user?._id || cart.userId,

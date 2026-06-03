@@ -50,6 +50,23 @@ exports.placeOrder = async (req, res) => {
       return res.status(400).json({ error: "cart_id is required" });
     }
 
+    // Save debug payload to scratch folder
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const scratchDir = path.join(__dirname, "../../scratch");
+      if (!fs.existsSync(scratchDir)) {
+        fs.mkdirSync(scratchDir, { recursive: true });
+      }
+      fs.writeFileSync(
+        path.join(scratchDir, "last_webhook_payload.json"),
+        JSON.stringify(req.body, null, 2),
+        "utf8"
+      );
+    } catch (fsErr) {
+      logger.error("Failed to write debug payload file", fsErr);
+    }
+
     const order = await gokwikService.placeGokwikOrder(cart_id, req.body);
     const orderId = String(order?.orderNumber || order?._id || "");
     if (!orderId) throw new Error("Order created but ID could not be resolved");
