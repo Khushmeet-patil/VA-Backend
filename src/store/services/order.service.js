@@ -28,14 +28,11 @@ exports.createOrder = async ({
   paymentMethod = "razorpay",
   notes,
   couponCode,
+  couponDiscount = 0,
+  shippingFee = 0,
   paymentStatus = "pending",
   orderStatus = "pending",
   razorpayData = null,
-  // Custom overrides for external checkout systems (like GoKwik)
-  customTotalAmount,
-  customDiscount,
-  customShippingFee,
-  customCoupon,
 }) => {
   if (!items || !items.length) {
     throw new Error("No items in order");
@@ -116,29 +113,23 @@ exports.createOrder = async ({
     vendorMap[vendor.storeEmail].items.push(orderItem);
   }
 
-  const shippingFee = typeof customShippingFee === "number" ? customShippingFee : 0;
-  const couponDiscount = typeof customDiscount === "number" ? customDiscount : 0;
-  const coupon = customCoupon || null;
+  const finalCouponDiscount = Number(couponDiscount || 0);
+  const finalShippingFee = Number(shippingFee || 0);
+  const coupon = couponCode
+    ? { couponId: null, code: couponCode, discount: finalCouponDiscount }
+    : null;
 
-  const payableAmount = typeof customTotalAmount === "number"
-    ? customTotalAmount
-    : Math.max(totalAmount + shippingFee - couponDiscount, 0);
+  const payableAmount = Math.max(totalAmount - finalCouponDiscount + finalShippingFee, 0);
 
   const order = await Order.create({
     customerId,
     orderNumber,
     items: safeItems,
     subtotal,
-    discount: typeof customDiscount === "number" ? customDiscount : (productDiscount + couponDiscount),
-    coupon: coupon
-      ? {
-          couponId: coupon.couponId || coupon._id || null,
-          code: coupon.code,
-          discount: coupon.discount !== undefined ? coupon.discount : couponDiscount,
-        }
-      : null,
+    discount: productDiscount + finalCouponDiscount,
+    coupon: coupon,
     tax: totalGst,
-    shippingFee,
+    shippingFee: finalShippingFee,
     totalAmount: payableAmount,
     currency: "INR",
     paymentMethod,
