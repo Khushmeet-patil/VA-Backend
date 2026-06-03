@@ -5,7 +5,7 @@ const changeRequestSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["product", "coupon"],
+      enum: ["product"],
       required: true,
     },
 
@@ -18,7 +18,7 @@ const changeRequestSchema = new mongoose.Schema(
     typeModel: {
       type: String,
       required: true,
-      enum: ["Product", "Coupon"],
+      enum: ["Product"],
     },
 
     vendorId: {

@@ -1,6 +1,5 @@
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
-const Coupon = require("../models/Coupon");
 const { createOrder } = require("./order.service");
 const { resolveShippingAddress } = require("./shippingAddress.service");
 
@@ -84,16 +83,7 @@ exports.buyNowSummary = async ({
 
   const finalPriceTotal = product.pricing.finalPrice * quantity;
 
-  let couponDiscount = 0;
-  if (couponCode) {
-    const coupon = await Coupon.findOne({ code: couponCode, isActive: true });
-    if (!coupon) throw new Error("Invalid coupon");
-
-    couponDiscount =
-      coupon.discountType === "percentage"
-        ? (finalPriceTotal * coupon.discountValue) / 100
-        : coupon.discountValue;
-  }
+  const couponDiscount = 0;
 
   const tax = 0; // Tax is now bundled in MRP and finalPrice
   const shippingFee = 0;
@@ -149,17 +139,7 @@ exports.cartSummary = async ({ userId, couponCode, selectedItems }) => {
     finalPriceSum += item.productId.pricing.finalPrice * item.quantity;
   }
 
-  let couponDiscount = 0;
-
-  if (couponCode) {
-    const coupon = await Coupon.findOne({ code: couponCode, isActive: true });
-    if (!coupon) throw new Error("Invalid coupon");
-
-    couponDiscount =
-      coupon.discountType === "percentage"
-        ? (finalPriceSum * coupon.discountValue) / 100
-        : coupon.discountValue;
-  }
+  const couponDiscount = 0;
 
   const tax = 0;
   const shippingFee = 0;

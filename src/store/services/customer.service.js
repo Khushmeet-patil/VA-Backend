@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const User = require("../models/User");
 const Address = require("../models/Address");
 const Order = require("../models/Order");
-const CouponUsage = require("../models/CouponUsage");
 
 exports.fetchMyProfile = async (userId) => {
   try {
@@ -58,9 +57,7 @@ exports.fetchMyProfile = async (userId) => {
     const totalWishlist = user.wishlist ? user.wishlist.length : 0;
 
     /* ================= TOTAL COUPONS USED ================= */
-    const totalCouponsUsed = await CouponUsage.countDocuments({
-      userId,
-    });
+    const totalCouponsUsed = 0;
 
     return {
       success: true,

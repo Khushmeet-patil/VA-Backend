@@ -14,8 +14,6 @@ const logger = require("../utils/logger");
 const mongoose = require("mongoose");
 const Vendor = require("../models/Vendor");
 const gokwikOutbound = require("./gokwik.outbound.service");
-const { validateAndApplyCoupon } = require("./coupon.service");
-const CouponUsage = require("../models/CouponUsage");
 const KwikshipService = require("./kwikship.service");
 const { resolveShippingAddress } = require("./shippingAddress.service");
 
@@ -33,6 +31,11 @@ exports.createOrder = async ({
   paymentStatus = "pending",
   orderStatus = "pending",
   razorpayData = null,
+  // Custom overrides for external checkout systems (like GoKwik)
+  customTotalAmount,
+  customDiscount,
+  customShippingFee,
+  customCoupon,
 }) => {
   if (!items || !items.length) {
     throw new Error("No items in order");
@@ -113,25 +116,29 @@ exports.createOrder = async ({
     vendorMap[vendor.storeEmail].items.push(orderItem);
   }
 
-  const { discount: couponDiscount, coupon } = await validateAndApplyCoupon({
-    couponCode,
-    customerId,
-    subtotal,
-  });
+  const shippingFee = typeof customShippingFee === "number" ? customShippingFee : 0;
+  const couponDiscount = typeof customDiscount === "number" ? customDiscount : 0;
+  const coupon = customCoupon || null;
 
-  const payableAmount = Math.max(totalAmount - couponDiscount, 0);
+  const payableAmount = typeof customTotalAmount === "number"
+    ? customTotalAmount
+    : Math.max(totalAmount + shippingFee - couponDiscount, 0);
 
   const order = await Order.create({
     customerId,
     orderNumber,
     items: safeItems,
     subtotal,
-    discount: productDiscount + couponDiscount,
+    discount: typeof customDiscount === "number" ? customDiscount : (productDiscount + couponDiscount),
     coupon: coupon
-      ? { couponId: coupon._id, code: coupon.code, discount: couponDiscount }
+      ? {
+          couponId: coupon.couponId || coupon._id || null,
+          code: coupon.code,
+          discount: coupon.discount !== undefined ? coupon.discount : couponDiscount,
+        }
       : null,
     tax: totalGst,
-    shippingFee: 0,
+    shippingFee,
     totalAmount: payableAmount,
     currency: "INR",
     paymentMethod,
@@ -498,7 +505,6 @@ exports.getSingleOrder = async (orderId, user = null) => {
     }
 
     const order = await Order.findOne(query)
-      .populate("coupon.couponId", "code discountType discountValue")
       .lean();
 
     if (!order) {
@@ -543,11 +549,7 @@ const calculateOrderTotals = async ({ items, customerId, couponCode }) => {
     totalAmount += final * qty;
   }
 
-  const { discount } = await validateAndApplyCoupon({
-    couponCode,
-    customerId,
-    subtotal,
-  });
+  const discount = 0;
 
   const payableAmount = Math.max(totalAmount - discount, 0);
   return { subtotal, totalGst, totalAmount, discount, payableAmount };
@@ -682,14 +684,7 @@ exports.placeAdvanceCodOrder = async ({
    POST-ORDER CLEANUP (cart clear + vendor emails)
 ===================================================== */
 exports.postOrderCleanup = async function ({ order, vendorMap, items, customerId, couponCode }) {
-  // Record coupon usage
-  if (order.coupon?.couponId) {
-    await CouponUsage.create({
-      couponId: order.coupon.couponId,
-      userId: customerId,
-      orderId: order._id,
-    }).catch(() => {}); // non-blocking
-  }
+  // Record coupon usage (skipped: coupons handled by GoKwik)
 
   // Remove purchased items from cart precisely (match productId AND size)
   const cart = await Cart.findOne({ userId: customerId });

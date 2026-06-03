@@ -109,8 +109,16 @@ exports.setShippingAddress = async (cartId) => {
 
 exports.placeGokwikOrder = async (cartId, payload) => {
   const cart = await exports.getCartByGokwikId(cartId);
-  const { payment_details, shipping_address, customer_phone, meta_data } =
-    payload;
+  const { 
+    payment_details, 
+    shipping_address, 
+    customer_phone, 
+    meta_data,
+    total,
+    discount_total,
+    shipping_total,
+    discounts
+  } = payload;
 
   const isCoD = payment_details?.payment_method === "pp-cod";
 
@@ -137,6 +145,30 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       size: item.size || null,
     }));
 
+  // Parse custom pricing fields from GoKwik payload (supporting both snake_case and camelCase fallbacks)
+  const rawTotal = total !== undefined ? total : payload.total_amount;
+  const rawDiscount = discount_total !== undefined ? discount_total : payload.discountTotal;
+  const rawShipping = shipping_total !== undefined ? shipping_total : payload.shippingTotal;
+  const rawDiscounts = discounts !== undefined ? discounts : payload.discounts;
+
+  const appliedTotal = rawTotal !== undefined ? Number(rawTotal) : undefined;
+  const appliedDiscount = rawDiscount !== undefined ? Number(rawDiscount) : 0;
+  const appliedShipping = rawShipping !== undefined ? Number(rawShipping) : 0;
+
+  let appliedCoupon = null;
+  if (Array.isArray(rawDiscounts) && rawDiscounts.length > 0) {
+    const mainDiscount = rawDiscounts[0];
+    appliedCoupon = {
+      code: mainDiscount.code || mainDiscount.coupon_code || "COUPON",
+      discount: Number(mainDiscount.amount || mainDiscount.discount_amount || appliedDiscount)
+    };
+  } else if (appliedDiscount > 0) {
+    appliedCoupon = {
+      code: "GOKWIK_DISCOUNT",
+      discount: appliedDiscount
+    };
+  }
+
   const { order, vendorMap } = await orderService.createOrder({
     customerId: user?._id || cart.userId,
     items,
@@ -144,12 +176,16 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     paymentMethod: isCoD ? "cod" : "prepaid",
     paymentStatus: isCoD ? "pending" : "paid",
     orderStatus: "pending",
-    couponCode: null, // GoKwik manages their own discounts; no merchant coupon to apply
+    couponCode: appliedCoupon?.code || null,
     notes: [
       meta_data?.gokwik_order_id ? `GoKwik Order: ${meta_data.gokwik_order_id}` : null,
       payment_details?.payment_id ? `GK Pymt: ${payment_details.payment_id}` : null,
       payment_details?.pg_payment_trnx_id ? `PG Txn: ${payment_details.pg_payment_trnx_id}` : null,
     ].filter(Boolean).join(" | "),
+    customTotalAmount: appliedTotal,
+    customDiscount: appliedDiscount,
+    customShippingFee: appliedShipping,
+    customCoupon: appliedCoupon,
   });
 
   // ✅ CLEAR CART & SEND VENDOR EMAILS

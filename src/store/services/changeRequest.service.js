@@ -1,6 +1,5 @@
 const ChangeRequest = require("../models/ChangeRequest");
 const Product = require("../models/Product");
-const Coupon = require("../models/Coupon");
 const activityService = require("./activity.service");
 const logger = require("../utils/logger");
 
@@ -21,7 +20,10 @@ exports.approveRequest = async (id, adminId) => {
   if (!request) throw new Error("Change request not found");
   if (request.status !== "pending") throw new Error(`Request is already ${request.status}`);
 
-  const Model = request.type === "product" ? Product : Coupon;
+  if (request.type !== "product") {
+    throw new Error(`Invalid change request type: ${request.type}`);
+  }
+  const Model = Product;
   
   // Apply changes to the original document
   // We use the full newData stored in request
