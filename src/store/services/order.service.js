@@ -277,6 +277,8 @@ exports.getVendorOrders = async (vendorId) => {
         totalPrice: item.totalPrice,
         vendorEarning: item.totalPrice - (item.totalPrice * (item.commissionRate || currentCommission) / 100),
         status: item.status,
+        kwikship: item.kwikship,
+        shipping: item.shipping,
       })),
 
     shippingAddress: order.shippingAddress,
