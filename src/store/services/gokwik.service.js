@@ -112,7 +112,17 @@ exports.placeGokwikOrder = async (cartId, payload) => {
   const { payment_details, shipping_address, customer_phone, meta_data } =
     payload;
 
-  const isCoD = payment_details?.payment_method === "pp-cod";
+  const method = (payment_details?.payment_method || "prepaid").toLowerCase();
+  let mappedPaymentMethod = "prepaid";
+  let mappedPaymentStatus = "paid";
+
+  if (method === "cod") {
+    mappedPaymentMethod = "cod";
+    mappedPaymentStatus = "pending";
+  } else if (method === "pp-cod") {
+    mappedPaymentMethod = "advance_cod";
+    mappedPaymentStatus = "pending";
+  }
 
   const user = cart.userId;
   const profileName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : "";
@@ -187,12 +197,22 @@ exports.placeGokwikOrder = async (cartId, payload) => {
   else if (payload.cart?.shipping_fee != null) shippingFee = Number(payload.cart.shipping_fee);
   else if (payload.cart?.shipping != null) shippingFee = Number(payload.cart.shipping);
 
+  const utm = payload.utm_details || meta_data?.utm_details || payload.metadata?.utm_details;
+  const utmStr = utm 
+    ? `UTM: ${[
+        utm.utm_source ? `src=${utm.utm_source}` : '',
+        utm.utm_medium ? `med=${utm.utm_medium}` : '',
+        utm.utm_campaign ? `camp=${utm.utm_campaign}` : '',
+        utm.ad_source ? `ad_src=${utm.ad_source}` : ''
+      ].filter(Boolean).join(",")}`
+    : null;
+
   const { order, vendorMap } = await orderService.createOrder({
     customerId: user?._id || cart.userId,
     items,
     shippingAddress: shippingAddr,
-    paymentMethod: isCoD ? "cod" : "prepaid",
-    paymentStatus: isCoD ? "pending" : "paid",
+    paymentMethod: mappedPaymentMethod,
+    paymentStatus: mappedPaymentStatus,
     orderStatus: "pending",
     couponCode,
     couponDiscount: discountAmount,
@@ -201,6 +221,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       meta_data?.gokwik_order_id ? `GoKwik Order: ${meta_data.gokwik_order_id}` : null,
       payment_details?.payment_id ? `GK Pymt: ${payment_details.payment_id}` : null,
       payment_details?.pg_payment_trnx_id ? `PG Txn: ${payment_details.pg_payment_trnx_id}` : null,
+      utmStr,
     ].filter(Boolean).join(" | "),
   });
 
@@ -212,10 +233,33 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     customerId: cart.userId 
   }).catch((e) => logger.error("GoKwik post-order cleanup failed", e));
 
-  await Order.findByIdAndUpdate(order._id, { gokwikCartId: cartId });
+  const updateData = { gokwikCartId: cartId };
+  if (mappedPaymentMethod === "advance_cod") {
+    const ppcod = payload.ppcod || meta_data?.ppcod || payload.metadata?.ppcod;
+    if (ppcod) {
+      updateData.advanceCod = {
+        advanceAmount: Number(ppcod.prepaid_amount || 0),
+        collectableAmount: Number(ppcod.payable_on_delivery || 0),
+      };
+    } else {
+      const totalAmount = order.totalAmount || 0;
+      const advancePercent = Number(process.env.ADVANCE_COD_PERCENT || 20);
+      const advanceAmount = Math.round((totalAmount * advancePercent) / 100);
+      const collectableAmount = totalAmount - advanceAmount;
+      updateData.advanceCod = {
+        advanceAmount,
+        collectableAmount,
+      };
+    }
+  }
 
+  const updatedOrder = await Order.findByIdAndUpdate(
+    order._id,
+    updateData,
+    { new: true }
+  );
 
-  return order;
+  return updatedOrder;
 };
 
 /* ================= CHECK ORDER EXISTS ================= */

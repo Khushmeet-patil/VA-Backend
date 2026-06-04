@@ -13,7 +13,7 @@ const controller = require("../controllers/gokwik.controller");
 
 // Validate GoKwik webhook credentials (sent by GoKwik on webhook calls)
 const verifyGokwikWebhook = (req, res, next) => {
-  const env = "sandbox"; // FORCED TO SANDBOX AS REQUESTED
+  const env = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
   const appId = env === "production" ? process.env.GK_PROD_APP_ID : process.env.GK_SANDBOX_APP_ID;
   const appSecret = env === "production" ? process.env.GK_PROD_APP_SECRET : process.env.GK_SANDBOX_APP_SECRET;
 
