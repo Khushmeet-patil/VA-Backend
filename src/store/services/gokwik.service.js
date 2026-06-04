@@ -149,6 +149,15 @@ exports.placeGokwikOrder = async (cartId, payload) => {
   else if (payload.cart?.discounts?.[0]?.name) couponCode = payload.cart.discounts[0].name;
   else if (payload.discounts?.[0]?.code) couponCode = payload.discounts[0].code;
   else if (payload.discounts?.[0]?.name) couponCode = payload.discounts[0].name;
+  else {
+    const metaDiscounts = payload.meta_data?.discounts || payload.metadata?.discounts;
+    if (Array.isArray(metaDiscounts)) {
+      const discountWithCode = metaDiscounts.find((d) => d && d.code);
+      if (discountWithCode) {
+        couponCode = discountWithCode.code;
+      }
+    }
+  }
 
   // 2. Extract Discount Amount
   let discountAmount = 0;
@@ -161,6 +170,12 @@ exports.placeGokwikOrder = async (cartId, payload) => {
   else if (payload.cart?.discount != null) discountAmount = Number(payload.cart.discount);
   else if (payload.cart?.discounts?.[0]?.amount != null) discountAmount = Number(payload.cart.discounts[0].amount);
   else if (payload.discounts?.[0]?.amount != null) discountAmount = Number(payload.discounts[0].amount);
+  else {
+    const metaDiscounts = payload.meta_data?.discounts || payload.metadata?.discounts;
+    if (Array.isArray(metaDiscounts) && metaDiscounts.length > 0) {
+      discountAmount = metaDiscounts.reduce((sum, d) => sum + Number(d?.amount || 0), 0);
+    }
+  }
 
   // 3. Extract Shipping Fee
   let shippingFee = 0;
