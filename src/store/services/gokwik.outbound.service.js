@@ -34,7 +34,7 @@ const getGkConfig = () => {
   
   const productSyncUrl = "https://api.gokwik.co";
   const collectionSyncUrl = "https://api.gokwik.co";
-  const checkoutBaseUrl = "https://gkx.gokwik.co";
+                                                          const checkoutBaseUrl = "https://gkx.gokwik.co";
 
   return { env, mid, appId, appSecret, isSandbox, productSyncUrl, collectionSyncUrl, checkoutBaseUrl };
 };

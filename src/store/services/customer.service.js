@@ -82,6 +82,7 @@ exports.updateMyProfile = async (userId, payload) => {
     const allowedFields = [
       "firstName",
       "lastName",
+      "email",
       "phone",
       "profileImage",
       "place",
