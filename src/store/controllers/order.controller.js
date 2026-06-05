@@ -180,12 +180,22 @@ exports.getAllOrders = async (req, res) => {
 /* ================= UPDATE ITEM STATUS ================= */
 exports.updateItemStatus = async (req, res) => {
   try {
-    const order = await orderService.updateItemStatus({
+    let order = await orderService.updateItemStatus({
       orderId: req.params.id,
       itemId: req.body.itemId,
       status: req.body.status,
       vendorId: req.user.vendorId,
     });
+
+    if (req.body.status === "confirmed") {
+      try {
+        const KwikshipService = require("../services/kwikship.service");
+        const result = await KwikshipService.createForwardShipmentForVendor(order._id, req.user.vendorId);
+        order = result.order;
+      } catch (shipErr) {
+        console.error("[Kwikship] Auto-shipment failed on manual confirm:", shipErr.message);
+      }
+    }
 
     // Notify GoKwik whenever order status changes
     // If status is cancelled and it was a paid order, initiate full refund
