@@ -33,7 +33,6 @@ exports.createOrder = async ({
   paymentStatus = "pending",
   orderStatus = "pending",
   razorpayData = null,
-  finalPaidAmount = null,
 }) => {
   if (!items || !items.length) {
     throw new Error("No items in order");
@@ -120,9 +119,7 @@ exports.createOrder = async ({
     ? { couponId: null, code: couponCode, discount: finalCouponDiscount }
     : null;
 
-  const payableAmount = (finalPaidAmount !== undefined && finalPaidAmount !== null)
-    ? Number(finalPaidAmount)
-    : Math.max(totalAmount - finalCouponDiscount + finalShippingFee, 0);
+  const payableAmount = Math.max(totalAmount - finalCouponDiscount + finalShippingFee, 0);
 
   const order = await Order.create({
     customerId,
@@ -198,10 +195,6 @@ exports.getCustomerOrders = async (customerId) => {
     orderStatus: order.orderStatus,
     paymentStatus: order.paymentStatus,
     createdAt: order.createdAt,
-    totalAmount: order.totalAmount,
-    discount: order.discount,
-    shippingFee: order.shippingFee,
-    paymentMethod: order.paymentMethod,
 
     summary: {
       totalItems: order.items.reduce((s, i) => s + i.quantity, 0),

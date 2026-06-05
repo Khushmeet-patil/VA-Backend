@@ -105,7 +105,7 @@ exports.setShippingAddress = async (cartId) => {
 
 exports.placeGokwikOrder = async (cartId, payload) => {
   const cart = await exports.getCartByGokwikId(cartId);
-  const { payment_details, shipping_address, customer_phone, meta_data } =
+  const { payment_details, shipping_address, customer_phone, meta_data, order_id } =
     payload;
 
   const method = (payment_details?.payment_method || "prepaid").toLowerCase();
@@ -167,50 +167,24 @@ exports.placeGokwikOrder = async (cartId, payload) => {
 
   // 2. Extract Discount Amount
   let discountAmount = 0;
-  const discountValues = [];
-  if (payload.discount_amount != null) discountValues.push(Number(payload.discount_amount));
-  if (payload.total_discount != null) discountValues.push(Number(payload.total_discount));
-  if (payload.discount != null) discountValues.push(Number(payload.discount));
-  if (payload.cart?.discount_total != null) discountValues.push(Number(payload.cart.discount_total));
-  if (payload.cart?.total_discount != null) discountValues.push(Number(payload.cart.total_discount));
-  if (payload.cart?.discount_amount != null) discountValues.push(Number(payload.cart.discount_amount));
-  if (payload.cart?.discount != null) discountValues.push(Number(payload.cart.discount));
-  if (Array.isArray(payload.cart?.discounts)) {
-    payload.cart.discounts.forEach((d) => { if (d?.amount != null) discountValues.push(Number(d.amount)); });
-  }
-  if (Array.isArray(payload.discounts)) {
-    payload.discounts.forEach((d) => { if (d?.amount != null) discountValues.push(Number(d.amount)); });
-  }
-  const metaDiscounts = payload.meta_data?.discounts || payload.metadata?.discounts;
-  if (Array.isArray(metaDiscounts)) {
-    metaDiscounts.forEach((d) => { if (d?.amount != null) discountValues.push(Number(d.amount)); });
-  }
-  if (Array.isArray(metaDiscounts) && metaDiscounts.length > 0) {
-    discountAmount = metaDiscounts.reduce((sum, d) => sum + Number(d?.amount || 0), 0);
-  } else if (discountValues.length > 0) {
-    discountAmount = Math.max(...discountValues);
+  if (payload.discount_amount != null) discountAmount = Number(payload.discount_amount);
+  else if (payload.total_discount != null) discountAmount = Number(payload.total_discount);
+  else if (payload.discount != null) discountAmount = Number(payload.discount);
+  else if (payload.cart?.discount_total != null) discountAmount = Number(payload.cart.discount_total);
+  else if (payload.cart?.total_discount != null) discountAmount = Number(payload.cart.total_discount);
+  else if (payload.cart?.discount_amount != null) discountAmount = Number(payload.cart.discount_amount);
+  else if (payload.cart?.discount != null) discountAmount = Number(payload.cart.discount);
+  else if (payload.cart?.discounts?.[0]?.amount != null) discountAmount = Number(payload.cart.discounts[0].amount);
+  else if (payload.discounts?.[0]?.amount != null) discountAmount = Number(payload.discounts[0].amount);
+  else {
+    const metaDiscounts = payload.meta_data?.discounts || payload.metadata?.discounts;
+    if (Array.isArray(metaDiscounts) && metaDiscounts.length > 0) {
+      discountAmount = metaDiscounts.reduce((sum, d) => sum + Number(d?.amount || 0), 0);
+    }
   }
 
-  // 3. Extract Shipping Fee & Other Charges
-  let shippingFee = 0;
-  const shippingValues = [];
-  if (payload.shipping_amount != null) shippingValues.push(Number(payload.shipping_amount));
-  if (payload.shipping_fee != null) shippingValues.push(Number(payload.shipping_fee));
-  if (payload.shipping != null) shippingValues.push(Number(payload.shipping));
-  if (payload.cart?.shipping_total != null) shippingValues.push(Number(payload.cart.shipping_total));
-  if (payload.cart?.shipping_amount != null) shippingValues.push(Number(payload.cart.shipping_amount));
-  if (payload.cart?.shipping_fee != null) shippingValues.push(Number(payload.cart.shipping_fee));
-  if (payload.cart?.shipping != null) shippingValues.push(Number(payload.cart.shipping));
-  if (shippingValues.length > 0) {
-    shippingFee = Math.max(...shippingValues);
-  }
-
-  // Add other charges (e.g. COD fees, handling fees, etc.) to shippingFee so it's captured in order summary
-  const otherCharges = payload.meta_data?.other_charges || payload.metadata?.other_charges || payload.cart?.other_charges;
-  if (Array.isArray(otherCharges)) {
-    const chargesSum = otherCharges.reduce((sum, c) => sum + Number(c?.amount || 0), 0);
-    shippingFee += chargesSum;
-  }
+  // 3. Extract Shipping Fee (Set to 0 to bypass delivery/other charges)
+  const shippingFee = 0;
 
   const utm = payload.utm_details || meta_data?.utm_details || payload.metadata?.utm_details;
   const utmStr = utm 
@@ -278,7 +252,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     }
   }
 
-  // Always sync GoKwik's actual totals to the order
+  // Always sync GoKwik's actual totals/discounts/shipping to the order
   updateData.totalAmount = finalTotalAmount;
   updateData.discount = discountAmount;
   updateData.shippingFee = shippingFee;
