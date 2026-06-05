@@ -474,16 +474,16 @@ exports.updateOrder = async (order, refundAmount = null) => {
   try {
     const status = ORDER_STATUS_MAP[order.orderStatus] || "Confirmed";
     
-    // Construct payload dynamically to avoid sending empty strings
+    // Construct payload dynamically exactly per GoKwik docs
     const payload = {
-      merchant_id: config.mid,
-      merchant_order_id: order.orderNumber,
+      merchant_order_id: String(order.orderNumber || order._id),
       order_status: status,
     };
 
     if (order.kwikship?.waybill) {
       payload.awb_number = order.kwikship.waybill;
-      payload.awb_status = order.kwikship.status || "pending";
+      // Default to "pending" instead of "CREATED" to match standard tracking states
+      payload.awb_status = order.kwikship.status ? order.kwikship.status.toLowerCase() : "pending";
       payload.shipping_provider = order.kwikship.courierName || "Kwikship";
     }
 
