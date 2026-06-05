@@ -237,24 +237,23 @@ const cleanStr = (raw) => String(raw || "").replace(/\s+/g, " ").trim();
 
 /** Build a valid pickupAddressDetails object from a Vendor doc. */
 const buildVendorPickupAddress = (vendor) => {
-  const pa = vendor.pickupAddress || {};
   const ba = vendor.businessAddress || {};
-  const stateName = cleanStr(pa.state || ba.state);
-  const phone = normalizePhone(pa.phone || vendor.storePhone);
+  const stateName = cleanStr(ba.state);
+  const phone = normalizePhone(vendor.storePhone);
   return {
-    name: cleanStr(pa.name || vendor.storeName || vendor.businessName || "Vendor"),
-    email: normalizeEmail(pa.email || vendor.storeEmail),
+    name: cleanStr(vendor.storeName || vendor.businessName || "Vendor"),
+    email: normalizeEmail(vendor.storeEmail),
     phone,
-    alternatePhone: normalizePhone(pa.alternatePhone) || phone,
-    address1: cleanStr(pa.address1 || ba.street),
-    address2: cleanStr(pa.address2 || ""),
-    pincode: normalizePincode(pa.pincode || ba.postalCode),
-    city: cleanStr(pa.city || ba.city),
+    alternatePhone: phone,
+    address1: cleanStr(ba.street),
+    address2: "",
+    pincode: normalizePincode(ba.postalCode),
+    city: cleanStr(ba.city),
     state: stateName,
-    stateCode: resolveStateCode(pa.stateCode || stateName),
-    country: cleanStr(pa.country || ba.country) || "India",
-    countryCode: cleanStr(pa.countryCode) || "IN",
-    gstin: normalizeGstin(pa.gstin || vendor.gstNumber),
+    stateCode: resolveStateCode(stateName),
+    country: cleanStr(ba.country) || "India",
+    countryCode: "IN",
+    gstin: normalizeGstin(vendor.gstNumber),
   };
 };
 
@@ -417,7 +416,7 @@ const createForwardShipmentForVendor = async (orderId, vendorId) => {
     },
     deliveryAddressId: "",
     deliveryAddressDetails: delivery,
-    pickupAddressId: vendor.pickupAddress?.pickupAddressId || "",
+    pickupAddressId: "",
     pickupAddressDetails: pickup,
     returnAddressDetails: pickup, // forward: return goes back to vendor
     currencyCode: "INR",
