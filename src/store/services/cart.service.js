@@ -145,3 +145,16 @@ exports.clearCart = async (userId) => {
     { new: true }
   );
 };
+
+/* ================= UPDATE SELECTION ================= */
+exports.updateSelection = async (userId, selectedProductIds) => {
+  const cart = await Cart.findOne({ userId });
+  if (!cart) throw new Error("Cart not found");
+
+  cart.items.forEach((item) => {
+    item.isSelected = selectedProductIds.includes(item.productId.toString());
+  });
+
+  await cart.save();
+  return cart;
+};

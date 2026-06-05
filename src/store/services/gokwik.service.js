@@ -7,7 +7,7 @@ const logger = require("../utils/logger");
 
 const buildGokwikCart = (cart, extra = {}) => {
   const items = (cart.items || [])
-    .filter((item) => item.productId)
+    .filter((item) => item.productId && item.isSelected !== false)
     .map((item) => {
       const product = item.productId;
       const mrp =
@@ -39,17 +39,13 @@ const buildGokwikCart = (cart, extra = {}) => {
   // total = subtotal + shipping_total - discount_total + order_summary_extra_fields
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const discountTotal = 0; // no coupon applied; coupons handled by GoKwik's Kwik Discount
-  const shippingTotal = subtotal > 500 || subtotal === 0 ? 0 : 50;
+  const shippingTotal = 0;
   const platformFee = 0;
   const total = subtotal + shippingTotal - discountTotal;
 
-  const shippingMethods =
-    subtotal > 500 || subtotal === 0
-      ? [{ id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }]
-      : [
-          { id: "free_shipping", price: 0, title: "Free Shipping (Orders above ₹500)", currency: "INR" },
-          { id: "standard", price: 50, title: "Standard Delivery", currency: "INR" },
-        ];
+  const shippingMethods = [
+    { id: "free_shipping", price: 0, title: "Free Shipping", currency: "INR" }
+  ];
 
   return {
     subtotal,
@@ -140,7 +136,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
   };
 
   const items = cart.items
-    .filter((item) => item.productId)
+    .filter((item) => item.productId && item.isSelected !== false)
     .map((item) => ({
       productId: (item.productId._id || item.productId).toString(),
       quantity: item.quantity,

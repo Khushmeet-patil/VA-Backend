@@ -24,6 +24,10 @@ const cartItemSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    isSelected: {
+      type: Boolean,
+      default: true,
+    },
   },
   { _id: false }
 );

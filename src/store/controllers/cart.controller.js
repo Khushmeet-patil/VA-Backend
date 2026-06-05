@@ -113,3 +113,25 @@ exports.clearCart = async (req, res) => {
     });
   }
 };
+
+/* ================= UPDATE SELECTION ================= */
+exports.updateSelection = async (req, res) => {
+  try {
+    const { selectedProductIds } = req.body;
+    const cart = await cartService.updateSelection(
+      req.user._id,
+      selectedProductIds || []
+    );
+
+    return res.json({
+      success: true,
+      cart,
+    });
+  } catch (error) {
+    logger.error("Update selection failed", { error: error.message });
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
