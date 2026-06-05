@@ -800,12 +800,12 @@ exports.confirmOrder = async (orderId, vendorId) => {
     }
   });
 
-  // 4️⃣ Check if all items are confirmed
-  const allConfirmed = order.items.every(
+  // 4️⃣ Check if any item is confirmed
+  const someConfirmed = order.items.some(
     (item) => item.status === "confirmed"
   );
 
-  if (allConfirmed) {
+  if (someConfirmed && ["created", "pending"].includes(order.orderStatus)) {
     order.orderStatus = "confirmed";
   }
 
@@ -841,7 +841,7 @@ exports.confirmOrder = async (orderId, vendorId) => {
     );
 
     // Notify GoKwik that the order is confirmed and shipping is initiated
-    gokwikOutbound.updateOrder(order).catch(() => {});
+    gokwikOutbound.updateOrder(result.order).catch(() => {});
 
     return {
       success: true,
