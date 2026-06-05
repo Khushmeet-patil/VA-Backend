@@ -43,9 +43,13 @@ exports.getActiveBanners = async (req, res) => {
     if (type) filters.type = type;
     if (category) filters.category = category;
 
+    console.log('[Banner] getActiveBanners called with filters:', filters);
     const banners = await bannerService.getActiveBanners(filters);
+    console.log('[Banner] Active banners found:', banners.length, banners.map(b => ({ id: b._id, category: b.category, type: b.type, isActive: b.isActive })));
+
     res.json({ success: true, data: banners });
   } catch (error) {
+    console.error('[Banner] getActiveBanners error:', error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch active banners",
