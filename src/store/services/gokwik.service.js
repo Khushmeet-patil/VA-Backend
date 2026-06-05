@@ -203,6 +203,18 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       ].filter(Boolean).join(",")}`
     : null;
 
+  // Extract final paid amount from GoKwik payload (after coupons/discounts/shipping/COD charges/prepaid discounts etc.)
+  let finalPaidAmount = null;
+  if (payload.total_price != null) finalPaidAmount = Number(payload.total_price);
+  else if (payload.total != null) finalPaidAmount = Number(payload.total);
+  else if (payload.order_total != null) finalPaidAmount = Number(payload.order_total);
+  else if (payload.payable_amount != null) finalPaidAmount = Number(payload.payable_amount);
+  else if (payload.payment_details?.net_payable_amount != null) finalPaidAmount = Number(payload.payment_details.net_payable_amount);
+  else if (payload.payment_details?.amount != null) finalPaidAmount = Number(payload.payment_details.amount);
+  else if (payload.cart?.total_price != null) finalPaidAmount = Number(payload.cart.total_price);
+  else if (payload.cart?.total != null) finalPaidAmount = Number(payload.cart.total);
+  else if (payload.cart?.payable_amount != null) finalPaidAmount = Number(payload.cart.payable_amount);
+
   const { order, vendorMap } = await orderService.createOrder({
     customerId: user?._id || cart.userId,
     items,
@@ -213,6 +225,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     couponCode,
     couponDiscount: discountAmount,
     shippingFee,
+    finalPaidAmount,
     notes: [
       meta_data?.gokwik_order_id ? `GoKwik Order: ${meta_data.gokwik_order_id}` : null,
       payment_details?.payment_id ? `GK Pymt: ${payment_details.payment_id}` : null,
