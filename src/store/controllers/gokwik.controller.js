@@ -149,15 +149,12 @@ exports.syncEverything = async (req, res) => {
     // After sync, verify by fetching products from GoKwik
     let verification = null;
     try {
-      const GK_ENV = (process.env.GK_ENV || "sandbox").trim().toLowerCase();
-      const GK_MID = GK_ENV === "production" ? (process.env.GK_PROD_MID || "").trim() : (process.env.GK_SANDBOX_MID || "").trim();
-      const GK_APP_ID = GK_ENV === "production" ? (process.env.GK_PROD_APP_ID || "").trim() : (process.env.GK_SANDBOX_APP_ID || "").trim();
-      const GK_APP_SECRET = GK_ENV === "production" ? (process.env.GK_PROD_APP_SECRET || "").trim() : (process.env.GK_SANDBOX_APP_SECRET || "").trim();
-      const IS_SANDBOX = GK_ENV === "sandbox" || GK_MID === "19vhta8dq0co";
+      const GK_MID = (process.env.GK_PROD_MID || "").trim();
+      const GK_APP_ID = (process.env.GK_PROD_APP_ID || "").trim();
+      const GK_APP_SECRET = (process.env.GK_PROD_APP_SECRET || "").trim();
+      const IS_SANDBOX = false;
 
-      const verifyUrl = IS_SANDBOX
-          ? "https://api-gw-v4.dev.gokwik.io/sandbox"
-          : (process.env.GK_API_BASE_URL || "https://api.gokwik.co");
+      const verifyUrl = "https://api.gokwik.co";
 
       const verifyRes = await axios.get(
         `${verifyUrl}/v3/product/all?page=1&limit=5`,
