@@ -474,33 +474,43 @@ exports.updateOrder = async (order, refundAmount = null) => {
   try {
     const status = ORDER_STATUS_MAP[order.orderStatus] || "Confirmed";
     
-    // Construct payload dynamically exactly per GoKwik docs
+    let waybill = order.kwikship?.waybill;
+    let courierName = order.kwikship?.courierName;
+    let kwikshipStatus = order.kwikship?.status;
+
+    // Fallback to checking items if order-level kwikship is not set
+    if (!waybill && order.items && order.items.length > 0) {
+      const itemWithShipment = order.items.find(it => it.kwikship?.waybill);
+      if (itemWithShipment) {
+        waybill = itemWithShipment.kwikship.waybill;
+        courierName = itemWithShipment.kwikship.courierName;
+        kwikshipStatus = itemWithShipment.kwikship.status;
+      }
+    }
+
+    // Construct payload explicitly per GoKwik docs
     const payload = {
       merchant_order_id: String(order.orderNumber || order._id),
       order_status: status,
+      awb_number: waybill || "",
+      awb_status: kwikshipStatus ? kwikshipStatus.toLowerCase() : "pending",
+      shipping_provider: courierName || "Kwikship",
+      order_note: order.notes || "",
     };
-
-    if (order.kwikship?.waybill) {
-      payload.awb_number = order.kwikship.waybill;
-      // Default to "pending" instead of "CREATED" to match standard tracking states
-      payload.awb_status = order.kwikship.status ? order.kwikship.status.toLowerCase() : "pending";
-      payload.shipping_provider = order.kwikship.courierName || "Kwikship";
-    }
-
-    if (order.notes) {
-      payload.order_note = order.notes;
-    }
 
     if (refundAmount && Number(refundAmount) > 0) {
       payload.refund_amount = Number(refundAmount);
-    }
-
-    if (order.razorpay?.paymentId) {
-      payload.refund_tracking_id = order.razorpay.paymentId;
+      if (order.razorpay?.paymentId) {
+        payload.refund_tracking_id = order.razorpay.paymentId;
+      }
     }
 
     const url = `${config.checkoutBaseUrl}/v3/orders/update`;
-    const headers = buildCheckoutHeaders(config);
+    const headers = {
+      "gk-app-id": config.appId,
+      "gk-app-secret": config.appSecret,
+      "Content-Type": "application/json",
+    };
 
     logger.info("GoKwik updateOrder initiating", {
       orderNumber: order.orderNumber,
