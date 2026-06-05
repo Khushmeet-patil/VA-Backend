@@ -456,8 +456,8 @@ exports.updateItemStatus = async ({ orderId, itemId, status, vendorId }) => {
           orderNumber: order.orderNumber,
           productName: item.name,
           status,
-          platformName: "YourPlatform",
-          supportEmail: "support@yourplatform.com",
+          platformName: "VedicAstro",
+          supportEmail: "support@vedicastro.co.in",
           year: new Date().getFullYear(),
         }),
       });
@@ -714,8 +714,8 @@ exports.postOrderCleanup = async function ({ order, vendorMap, items, customerId
         products: data.items,
         customerName: order.shippingAddress.fullName,
         shippingAddress: `${order.shippingAddress.addressLine1}, ${order.shippingAddress.city}`,
-        platformName: "VedicStore",
-        supportEmail: "support@vedicstore.com",
+        platformName: "VedicAstro",
+        supportEmail: "support@vedicastro.co.in",
         year: new Date().getFullYear(),
       }),
     }).catch((e) => logger.error("Vendor email failed", { error: e.message }));
