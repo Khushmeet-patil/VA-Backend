@@ -45,6 +45,8 @@ exports.getAllCategories = async () => {
 };
 
 /* ================= GET BY ID ================= */
+const Product = require("../models/Product");
+
 exports.getCategoryById = async (id) => {
   try {
     const category = await Category.findById(id);
@@ -52,7 +54,17 @@ exports.getCategoryById = async (id) => {
       logger.warn("Category not found", { categoryId: id });
       throw new Error("Category not found");
     }
-    return category;
+
+    const products = await Product.find({
+      category: id,
+      status: true,
+      "approval.status": "approved",
+    }).sort({ createdAt: -1 });
+
+    const categoryObj = category.toObject();
+    categoryObj.products = products;
+
+    return categoryObj;
   } catch (error) {
     logger.error("Fetch category by ID failed", {
       categoryId: id,

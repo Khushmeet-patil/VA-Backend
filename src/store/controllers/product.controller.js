@@ -34,6 +34,7 @@ exports.getProducts = async (req, res) => {
     const user = req.user;
     const {
       categoryId,
+      category,
       vendorId,
       featured,
       approvalStatus,
@@ -59,8 +60,9 @@ exports.getProducts = async (req, res) => {
     }
 
     /* ================= CATEGORY ================= */
-    if (categoryId) {
-      filters.category = categoryId; // ✅ FIX
+    const selectedCategory = category || categoryId;
+    if (selectedCategory) {
+      filters.category = selectedCategory;
     }
 
     /* ================= FEATURED ================= */
