@@ -14,7 +14,6 @@ const Vendor = require("../models/Vendor");
 module.exports = async (req, res, next) => {
   try {
     let authHeader = req.headers.authorization;
-
     if (!authHeader && req.query.token) {
       authHeader = `Bearer ${req.query.token}`;
     }

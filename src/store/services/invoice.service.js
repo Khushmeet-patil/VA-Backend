@@ -14,34 +14,31 @@ exports.generateInvoice = async (orderId) => {
     throw new Error("Order not found");
   }
 
+  const platformFee = Number(order.platformFee || 0);
+  const isAdvanceCod = order.paymentMethod === "advance_cod";
+
   const invoiceHtml = invoiceTemplate({
     invoiceNumber: `INV-${order.orderNumber}`,
     orderNumber: order.orderNumber,
     invoiceDate: new Date().toDateString(),
     orderDate: new Date(order.createdAt).toDateString(),
-    orderStatus: order.orderStatus,
-    paymentStatus: order.paymentStatus,
-    paymentMethod: order.paymentMethod,
+    paymentMethod: String(order.paymentMethod || "").toUpperCase().replace(/_/g, " "),
+    paymentStatus: String(order.paymentStatus || "").toUpperCase(),
+    orderStatus: String(order.orderStatus || "").toUpperCase(),
 
     customer: {
-      name: `${order.customerId?.firstName || ""} ${order.customerId?.lastName || ""}`.trim() || "Customer",
+      name: order.shippingAddress?.fullName || `${order.customerId?.firstName || ""} ${order.customerId?.lastName || ""}`.trim(),
       email: order.customerId?.email || "",
+      phone: order.shippingAddress?.phone || "",
       address: `${order.shippingAddress?.addressLine1 || ""}, ${order.shippingAddress?.city || ""}, ${order.shippingAddress?.state || ""} - ${order.shippingAddress?.postalCode || ""}`,
     },
 
     items: order.items.map((item) => ({
       name: item.name,
       quantity: item.quantity,
-      size: item.size || null,
-
-      basePrice: Number(item.basePrice ?? item.price ?? 0),
-      discountAmount: Number(item.discountAmount ?? 0),
-      discountedPrice: Number(item.discountedPrice ?? item.price ?? 0),
-
+      price: Number(item.price ?? 0),
       gstRate: Number(item.gstRate ?? 0),
       gstAmount: Number(item.gstAmount ?? 0),
-
-      price: Number(item.price ?? 0),
       totalPrice: Number(item.totalPrice ?? 0),
     })),
 
@@ -49,16 +46,19 @@ exports.generateInvoice = async (orderId) => {
       subtotal: order.subtotal,
       gst: order.tax,
       shippingFee: order.shippingFee,
+      platformFee: platformFee,
       discount: order.discount,
-      platformFee: order.platformFee || 0,
       grandTotal: order.totalAmount,
-      advanceCod: order.advanceCod || null,
+      advanceCod: isAdvanceCod ? {
+        advanceAmount: order.advanceCod?.advanceAmount || 0,
+        collectableAmount: order.advanceCod?.collectableAmount || 0,
+      } : null,
     },
 
     platform: {
       name: "VedicAstro",
+      companyName: "RASHIGURU ASTROLOGY AND SULITION",
       email: "support@vedicastro.co.in",
-      operatedBy: "RASHIGURU ASTROLOGY AND SOLUTION",
     },
   });
 
