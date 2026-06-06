@@ -33,6 +33,11 @@ exports.createOrder = async ({
   paymentStatus = "pending",
   orderStatus = "pending",
   razorpayData = null,
+  finalPaidAmount = null,
+  gokwikCartId = null,
+  advanceCod = null,
+  platformFee = 0,
+  gokwikMetadata = {},
 }) => {
   if (!items || !items.length) {
     throw new Error("No items in order");
@@ -119,7 +124,9 @@ exports.createOrder = async ({
     ? { couponId: null, code: couponCode, discount: finalCouponDiscount }
     : null;
 
-  const payableAmount = Math.max(totalAmount - finalCouponDiscount + finalShippingFee, 0);
+  const payableAmount = (finalPaidAmount !== undefined && finalPaidAmount !== null)
+    ? Number(finalPaidAmount)
+    : Math.max(totalAmount - finalCouponDiscount + finalShippingFee, 0);
 
   const order = await Order.create({
     customerId,
@@ -139,6 +146,10 @@ exports.createOrder = async ({
     shippingAddress: resolvedShippingAddress,
     notes,
     paidAt: paymentStatus === "paid" ? new Date() : null,
+    gokwikCartId,
+    advanceCod,
+    platformFee,
+    gokwikMetadata,
   });
 
   /* ✅ DECREMENT STOCK */
@@ -195,6 +206,10 @@ exports.getCustomerOrders = async (customerId) => {
     orderStatus: order.orderStatus,
     paymentStatus: order.paymentStatus,
     createdAt: order.createdAt,
+    totalAmount: order.totalAmount,
+    discount: order.discount,
+    shippingFee: order.shippingFee,
+    paymentMethod: order.paymentMethod,
 
     summary: {
       totalItems: order.items.reduce((s, i) => s + i.quantity, 0),

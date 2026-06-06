@@ -317,6 +317,16 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
+    platformFee: {
+      type: Number,
+      default: 0,
+    },
+
+    gokwikMetadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
     /* ================= KWIKSHIP DATA ================= */
     kwikship: {
       waybill: String,

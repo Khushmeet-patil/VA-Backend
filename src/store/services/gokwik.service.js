@@ -105,7 +105,7 @@ exports.setShippingAddress = async (cartId) => {
 
 exports.placeGokwikOrder = async (cartId, payload) => {
   const cart = await exports.getCartByGokwikId(cartId);
-  const { payment_details, shipping_address, customer_phone, meta_data, order_id } =
+  const { payment_details, shipping_address, customer_phone, meta_data } =
     payload;
 
   const method = (payment_details?.payment_method || "prepaid").toLowerCase();
@@ -143,48 +143,114 @@ exports.placeGokwikOrder = async (cartId, payload) => {
       size: item.size || null,
     }));
 
-  // 1. Extract Coupon Code
+  // 1. Resolve Total Order Amount from GoKwik
+  const ppcod = meta_data?.ppcod || payload.ppcod || meta_data?.metadata?.ppcod;
+  let totalOrderAmount = 0;
+  if (method === "pp-cod" && ppcod?.prepaid_amount != null && ppcod?.payable_on_delivery != null) {
+    totalOrderAmount = Number(ppcod.prepaid_amount) + Number(ppcod.payable_on_delivery);
+  } else if (payment_details?.payment_amount != null) {
+    totalOrderAmount = Number(payment_details.payment_amount);
+  }
+
+  // 2. Resolve Coupon Code and Coupon/Other Discounts
   let couponCode = null;
-  if (payload.coupon_code) couponCode = payload.coupon_code;
-  else if (payload.promo_code) couponCode = payload.promo_code;
-  else if (payload.coupon) couponCode = payload.coupon;
-  else if (payload.cart?.coupon_code) couponCode = payload.cart.coupon_code;
-  else if (payload.cart?.promo_code) couponCode = payload.cart.promo_code;
-  else if (payload.cart?.coupon) couponCode = payload.cart.coupon;
-  else if (payload.cart?.discounts?.[0]?.code) couponCode = payload.cart.discounts[0].code;
-  else if (payload.cart?.discounts?.[0]?.name) couponCode = payload.cart.discounts[0].name;
-  else if (payload.discounts?.[0]?.code) couponCode = payload.discounts[0].code;
-  else if (payload.discounts?.[0]?.name) couponCode = payload.discounts[0].name;
-  else {
-    const metaDiscounts = payload.meta_data?.discounts || payload.metadata?.discounts;
-    if (Array.isArray(metaDiscounts)) {
-      const discountWithCode = metaDiscounts.find((d) => d && d.code);
-      if (discountWithCode) {
-        couponCode = discountWithCode.code;
+  let couponDiscount = 0;
+  let prepaidDiscount = 0;
+  let otherDiscount = 0;
+
+  const discounts = meta_data?.discounts || payload.discounts || [];
+  if (Array.isArray(discounts)) {
+    discounts.forEach((d) => {
+      if (!d) return;
+      const type = (d.type || "").toLowerCase();
+      const amount = Number(d.amount || 0);
+      if (type.includes("coupon")) {
+        couponDiscount += amount;
+        if (d.code) couponCode = d.code;
+      } else if (type.includes("prepaid")) {
+        prepaidDiscount += amount;
+      } else {
+        otherDiscount += amount;
+      }
+    });
+  }
+
+  // If coupon code wasn't found in discounts array, try other locations in payload
+  if (!couponCode) {
+    if (payload.coupon_code) couponCode = payload.coupon_code;
+    else if (payload.promo_code) couponCode = payload.promo_code;
+    else if (payload.coupon) couponCode = payload.coupon;
+    else if (payload.cart?.coupon_code) couponCode = payload.cart.coupon_code;
+    else if (payload.cart?.promo_code) couponCode = payload.cart.promo_code;
+    else if (payload.cart?.coupon) couponCode = payload.cart.coupon;
+    else if (payload.cart?.discounts?.[0]?.code) couponCode = payload.cart.discounts[0].code;
+    else if (payload.cart?.discounts?.[0]?.name) couponCode = payload.cart.discounts[0].name;
+    else if (payload.discounts?.[0]?.code) couponCode = payload.discounts[0].code;
+    else if (payload.discounts?.[0]?.name) couponCode = payload.discounts[0].name;
+    else {
+      const metaDiscounts = meta_data?.discounts || payload.metadata?.discounts;
+      if (Array.isArray(metaDiscounts)) {
+        const discountWithCode = metaDiscounts.find((d) => d && d.code);
+        if (discountWithCode) {
+          couponCode = discountWithCode.code;
+        }
       }
     }
   }
 
-  // 2. Extract Discount Amount
-  let discountAmount = 0;
-  if (payload.discount_amount != null) discountAmount = Number(payload.discount_amount);
-  else if (payload.total_discount != null) discountAmount = Number(payload.total_discount);
-  else if (payload.discount != null) discountAmount = Number(payload.discount);
-  else if (payload.cart?.discount_total != null) discountAmount = Number(payload.cart.discount_total);
-  else if (payload.cart?.total_discount != null) discountAmount = Number(payload.cart.total_discount);
-  else if (payload.cart?.discount_amount != null) discountAmount = Number(payload.cart.discount_amount);
-  else if (payload.cart?.discount != null) discountAmount = Number(payload.cart.discount);
-  else if (payload.cart?.discounts?.[0]?.amount != null) discountAmount = Number(payload.cart.discounts[0].amount);
-  else if (payload.discounts?.[0]?.amount != null) discountAmount = Number(payload.discounts[0].amount);
-  else {
-    const metaDiscounts = payload.meta_data?.discounts || payload.metadata?.discounts;
-    if (Array.isArray(metaDiscounts) && metaDiscounts.length > 0) {
-      discountAmount = metaDiscounts.reduce((sum, d) => sum + Number(d?.amount || 0), 0);
-    }
+  // 3. Resolve Rewards
+  const rewardAmount = Number(meta_data?.rewards_info?.reward_amount || payload.rewards_info?.reward_amount || 0);
+
+  // 4. Resolve Platform Fees / Other Charges
+  let platformFee = 0;
+  const otherCharges = meta_data?.other_charges || payload.other_charges || [];
+  if (Array.isArray(otherCharges)) {
+    platformFee = otherCharges.reduce((sum, c) => sum + Number(c?.amount || 0), 0);
   }
 
-  // 3. Extract Shipping Fee (Set to 0 to bypass delivery/other charges)
-  const shippingFee = 0;
+  // 5. Resolve Shipping Fee
+  let shippingFee = 0;
+  if (payload.shipping_amount != null) shippingFee = Number(payload.shipping_amount);
+  else if (payload.shipping_fee != null) shippingFee = Number(payload.shipping_fee);
+  else if (payload.shipping != null) shippingFee = Number(payload.shipping);
+  else if (payload.cart?.shipping_total != null) shippingFee = Number(payload.cart.shipping_total);
+  else if (payload.cart?.shipping_amount != null) shippingFee = Number(payload.cart.shipping_amount);
+  else if (payload.cart?.shipping_fee != null) shippingFee = Number(payload.cart.shipping_fee);
+  else if (payload.cart?.shipping != null) shippingFee = Number(payload.cart.shipping);
+
+  // 6. Build GoKwik Metadata details for database
+  const gokwikMetadata = {
+    gokwikOrderId: meta_data?.gokwik_order_id || payload.gokwik_order_id || null,
+    rtoRiskFlag: meta_data?.rto_risk_flag || payload.rto_risk_flag || null,
+    rewardsInfo: meta_data?.rewards_info || payload.rewards_info || null,
+    prepaidDiscount,
+    couponDiscount,
+    otherDiscount,
+    rewardAmount,
+    platformFee,
+    discounts,
+    otherCharges,
+    ppcod: ppcod || null,
+  };
+
+  // 7. Resolve Advance COD details if pp-cod
+  let advanceCod = null;
+  if (mappedPaymentMethod === "advance_cod") {
+    if (ppcod && ppcod.prepaid_amount != null && ppcod.payable_on_delivery != null) {
+      advanceCod = {
+        advanceAmount: Number(ppcod.prepaid_amount),
+        collectableAmount: Number(ppcod.payable_on_delivery),
+      };
+    } else {
+      const advancePercent = Number(process.env.ADVANCE_COD_PERCENT || 20);
+      const advanceAmount = Math.round((totalOrderAmount * advancePercent) / 100);
+      const collectableAmount = totalOrderAmount - advanceAmount;
+      advanceCod = {
+        advanceAmount,
+        collectableAmount,
+      };
+    }
+  }
 
   const utm = payload.utm_details || meta_data?.utm_details || payload.metadata?.utm_details;
   const utmStr = utm 
@@ -204,8 +270,13 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     paymentStatus: mappedPaymentStatus,
     orderStatus: "pending",
     couponCode,
-    couponDiscount: discountAmount,
+    couponDiscount: couponDiscount + prepaidDiscount + otherDiscount + rewardAmount,
     shippingFee,
+    finalPaidAmount: totalOrderAmount,
+    gokwikCartId: cartId,
+    advanceCod,
+    platformFee,
+    gokwikMetadata,
     notes: [
       meta_data?.gokwik_order_id ? `GoKwik Order: ${meta_data.gokwik_order_id}` : null,
       payment_details?.payment_id ? `GK Pymt: ${payment_details.payment_id}` : null,
@@ -222,48 +293,7 @@ exports.placeGokwikOrder = async (cartId, payload) => {
     customerId: cart.userId 
   }).catch((e) => logger.error("GoKwik post-order cleanup failed", e));
 
-  const updateData = { gokwikCartId: cartId };
-  let finalTotalAmount = order.totalAmount;
-
-  if (mappedPaymentMethod === "advance_cod") {
-    const ppcod = payload.ppcod || meta_data?.ppcod || payload.metadata?.ppcod;
-    if (ppcod) {
-      const adv = Number(ppcod.prepaid_amount || 0);
-      const col = Number(ppcod.payable_on_delivery || 0);
-      finalTotalAmount = adv + col;
-      updateData.advanceCod = {
-        advanceAmount: adv,
-        collectableAmount: col,
-      };
-    } else {
-      const totalAmount = order.totalAmount || 0;
-      const advancePercent = Number(process.env.ADVANCE_COD_PERCENT || 20);
-      const advanceAmount = Math.round((totalAmount * advancePercent) / 100);
-      const collectableAmount = totalAmount - advanceAmount;
-      updateData.advanceCod = {
-        advanceAmount,
-        collectableAmount,
-      };
-      finalTotalAmount = totalAmount;
-    }
-  } else {
-    if (payment_details?.payment_amount != null && Number(payment_details.payment_amount) > 0) {
-      finalTotalAmount = Number(payment_details.payment_amount);
-    }
-  }
-
-  // Always sync GoKwik's actual totals/discounts/shipping to the order
-  updateData.totalAmount = finalTotalAmount;
-  updateData.discount = discountAmount;
-  updateData.shippingFee = shippingFee;
-
-  const updatedOrder = await Order.findByIdAndUpdate(
-    order._id,
-    updateData,
-    { new: true }
-  );
-
-  return updatedOrder;
+  return order;
 };
 
 /* ================= CHECK ORDER EXISTS ================= */
