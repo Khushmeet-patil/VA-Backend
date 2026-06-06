@@ -13,16 +13,19 @@ const Vendor = require("../models/Vendor");
 
 module.exports = async (req, res, next) => {
   try {
-    let authHeader = req.headers.authorization;
-    if (!authHeader && req.query.token) {
-      authHeader = `Bearer ${req.query.token}`;
+    const authHeader = req.headers.authorization;
+    let token = null;
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else if (req.query.token) {
+      token = req.query.token;
     }
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!token) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const token = authHeader.split(" ")[1];
     // JWT_SECRET is shared between both apps
     const secret = process.env.JWT_SECRET || process.env.STORE_JWT_SECRET;
     const decoded = jwt.verify(token, secret);
