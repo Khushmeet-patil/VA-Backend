@@ -10,12 +10,8 @@ exports.generateInvoice = async (orderId) => {
     "firstName lastName email"
   );
 
-  if (
-    !order ||
-    order.paymentStatus !== "paid" ||
-    !["delivered", "completed"].includes(order.orderStatus)
-  ) {
-    throw new Error("Invoice can be generated only for delivered orders");
+  if (!order) {
+    throw new Error("Order not found");
   }
 
   const invoiceHtml = invoiceTemplate({
@@ -23,16 +19,20 @@ exports.generateInvoice = async (orderId) => {
     orderNumber: order.orderNumber,
     invoiceDate: new Date().toDateString(),
     orderDate: new Date(order.createdAt).toDateString(),
+    orderStatus: order.orderStatus,
+    paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
 
     customer: {
-      name: `${order.customerId.firstName} ${order.customerId.lastName}`,
-      email: order.customerId.email,
-      address: `${order.shippingAddress.addressLine1}, ${order.shippingAddress.city}, ${order.shippingAddress.state} - ${order.shippingAddress.postalCode}`,
+      name: `${order.customerId?.firstName || ""} ${order.customerId?.lastName || ""}`.trim() || "Customer",
+      email: order.customerId?.email || "",
+      address: `${order.shippingAddress?.addressLine1 || ""}, ${order.shippingAddress?.city || ""}, ${order.shippingAddress?.state || ""} - ${order.shippingAddress?.postalCode || ""}`,
     },
 
     items: order.items.map((item) => ({
       name: item.name,
       quantity: item.quantity,
+      size: item.size || null,
 
       basePrice: Number(item.basePrice ?? item.price ?? 0),
       discountAmount: Number(item.discountAmount ?? 0),
@@ -50,12 +50,15 @@ exports.generateInvoice = async (orderId) => {
       gst: order.tax,
       shippingFee: order.shippingFee,
       discount: order.discount,
+      platformFee: order.platformFee || 0,
       grandTotal: order.totalAmount,
+      advanceCod: order.advanceCod || null,
     },
 
     platform: {
-      name: "YourPlatform",
-      email: "support@yourplatform.com",
+      name: "VedicAstro",
+      email: "support@vedicastro.co.in",
+      operatedBy: "RASHIGURU ASTROLOGY AND SOLUTION",
     },
   });
 
