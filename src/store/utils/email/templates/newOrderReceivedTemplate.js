@@ -7,7 +7,16 @@ const newOrderReceivedTemplate = ({
   platformName,
   supportEmail,
   year,
+  paymentMethod,
 }) => {
+  const formattedPaymentMethod = (() => {
+    const method = String(paymentMethod || "").toLowerCase();
+    if (method === "cod") return "COD";
+    if (method === "advance_cod") return "Prepaid COD";
+    if (method === "prepaid" || method === "razorpay") return "Prepaid";
+    return method.toUpperCase() || "N/A";
+  })();
+
   const productRows = products
     .map(
       (item) => `
@@ -53,6 +62,7 @@ const newOrderReceivedTemplate = ({
               <p>You have received a new order.</p>
 
               <p><strong>Order Number:</strong> ${orderNumber}</p>
+              <p><strong>Payment Method:</strong> ${formattedPaymentMethod}</p>
 
               <!-- Products Table -->
               <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:16px">

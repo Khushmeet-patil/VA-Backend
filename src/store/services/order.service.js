@@ -734,6 +734,7 @@ exports.postOrderCleanup = async function ({ order, vendorMap, items, customerId
         platformName: "VedicAstro",
         supportEmail: "support@vedicastro.co.in",
         year: new Date().getFullYear(),
+        paymentMethod: order.paymentMethod,
       }),
     }).catch((e) => logger.error("Vendor email failed", { error: e.message }));
   }
