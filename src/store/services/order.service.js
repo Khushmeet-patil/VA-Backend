@@ -209,6 +209,7 @@ exports.getCustomerOrders = async (customerId) => {
     totalAmount: order.totalAmount,
     discount: order.discount,
     shippingFee: order.shippingFee,
+    platformFee: order.platformFee || 0,
     paymentMethod: order.paymentMethod,
 
     summary: {
@@ -217,6 +218,7 @@ exports.getCustomerOrders = async (customerId) => {
       discount: order.discount,
       tax: order.tax,
       shippingFee: order.shippingFee,
+      platformFee: order.platformFee || 0,
       totalAmount: order.totalAmount,
     },
 
