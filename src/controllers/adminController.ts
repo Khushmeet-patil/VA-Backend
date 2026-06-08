@@ -2856,7 +2856,65 @@ export const updateReview = async (req: Request, res: Response) => {
         console.error('updateReview error:', error);
         res.status(500).json({ success: false, message: 'Server Error' });
     }
-}
+};
+
+/**
+ * Add a review manually by admin
+ */
+export const adminAddReview = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId, rating, reviewText, userName, status } = req.body;
+
+        if (!astrologerId || !rating) {
+            return res.status(400).json({ success: false, message: 'astrologerId and rating are required' });
+        }
+
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Create a unique dummy mobile number for the user
+        const dummyMobile = `dummy-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+        // Create a dummy user
+        const user = await User.create({
+            name: userName || 'Anonymous',
+            mobile: dummyMobile,
+            isVerified: true,
+            role: 'user'
+        });
+
+        // Create a unique sessionId
+        const sessionId = `admin-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+
+        // Create the review
+        const review = await ChatReview.create({
+            sessionId,
+            userId: user._id,
+            astrologerId,
+            rating,
+            reviewText,
+            status: status || 'approved'
+        });
+
+        // Trigger average rating recalculation
+        if (review.status === 'approved' && review.astrologerId) {
+            await chatService.updateAstrologerAverageRating(review.astrologerId.toString());
+        }
+
+        // Populate and return the review
+        const populatedReview = await ChatReview.findById(review._id)
+            .populate('userId', 'name mobile')
+            .populate('astrologerId', 'firstName lastName profilePhoto');
+
+        res.status(201).json({ success: true, message: 'Review added successfully', data: populatedReview });
+    } catch (error: any) {
+        console.error('adminAddReview error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
 
 // 12. Start Pop-up Management
 export const getStartPopups = async (req: Request, res: Response) => {

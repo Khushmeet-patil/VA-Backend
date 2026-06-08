@@ -65,6 +65,7 @@ import {
     approveReview,
     rejectReview,
     updateReview,
+    adminAddReview,
     createStartPopup,
     getStartPopups,
     updateStartPopup,
@@ -132,6 +133,7 @@ router.post('/astrologers/:astrologerId/wallet/add', addAstrologerEarnings);
 router.post('/astrologers/:astrologerId/wallet/deduct', deductAstrologerEarnings);
 
 // Reviews
+router.post('/reviews', adminAddReview);
 router.get('/reviews/pending', getPendingReviews);
 router.get('/reviews/all', getAllReviews);
 router.put('/reviews/:reviewId/approve', approveReview);
