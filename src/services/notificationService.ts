@@ -284,6 +284,7 @@ class NotificationService {
             userMobile?: string;
             ratePerMinute: number;
             intakeDetails?: any;
+            sessionType?: string;
         }
     ): Promise<boolean> {
         if (!this.initialized) {
@@ -319,6 +320,7 @@ class NotificationService {
                         userMobile: request.userMobile || '',
                         ratePerMinute: String(request.ratePerMinute),
                         intakeDetails: request.intakeDetails ? JSON.stringify(request.intakeDetails) : '',
+                        sessionType: request.sessionType || 'chat',
                     },
                     android: {
                         priority: 'high',

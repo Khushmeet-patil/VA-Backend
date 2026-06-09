@@ -2,11 +2,11 @@ import mongoose, { Schema, Document } from 'mongoose';
 import { randomUUID } from 'crypto';
 
 /**
- * ChatSession Model
- * Represents a paid chat session between a user and an astrologer.
+ * CallSession Model
+ * Represents a paid call (voice or video) session between a user and an astrologer.
  * The backend is FULLY authoritative for timing, billing, and session state.
  */
-export interface IChatSession extends Document {
+export interface ICallSession extends Document {
     sessionId: string;                  // Unique UUID for the session
     userId: mongoose.Types.ObjectId;    // Reference to User
     astrologerId: mongoose.Types.ObjectId;  // Reference to Astrologer
@@ -25,7 +25,7 @@ export interface IChatSession extends Document {
     lastBilledAt?: Date;                // Time of last billing cycle completion
     userLastSeen?: Date;                // Time user was last seen connected
     astrologerLastSeen?: Date;          // Time astrologer was last seen connected
-    // Continue Chat fields
+    // Continue Call fields
     isContinuation?: boolean;           // True if this is a continuation of a previous session
     previousSessionId?: string;         // Reference to the previous session's sessionId
     // Free Trial fields
@@ -35,13 +35,13 @@ export interface IChatSession extends Document {
     createdAt: Date;
     updatedAt: Date;
     sharedProfiles?: any[];             // List of profiles shared in this session
-    profileId?: string;                 // ID of the profile used for this chat
+    profileId?: string;                 // ID of the profile used for this call
     penaltyAmount?: number;             // Amount deducted if session was missed/timed out
     errorDescription?: string;         // Captures unexpected error details
-    sessionType?: 'chat' | 'voice_call' | 'video_call';
+    sessionType?: 'voice_call' | 'video_call';
 }
 
-const ChatSessionSchema: Schema = new Schema({
+const CallSessionSchema: Schema = new Schema({
     sessionId: {
         type: String,
         required: true,
@@ -99,7 +99,7 @@ const ChatSessionSchema: Schema = new Schema({
     lastBilledAt: { type: Date },
     userLastSeen: { type: Date, default: Date.now },
     astrologerLastSeen: { type: Date, default: Date.now },
-    // Continue Chat fields
+    // Continue Call fields
     isContinuation: { type: Boolean, default: false },
     previousSessionId: { type: String },
     // Free Trial fields
@@ -113,14 +113,14 @@ const ChatSessionSchema: Schema = new Schema({
     errorDescription: { type: String }, // Details for system errors
     sessionType: {
         type: String,
-        enum: ['chat', 'voice_call', 'video_call'],
-        default: 'chat',
+        enum: ['voice_call', 'video_call'],
+        default: 'voice_call',
         index: true
     }
 }, { timestamps: true });
 
 // Compound index for finding active sessions
-ChatSessionSchema.index({ astrologerId: 1, status: 1 });
-ChatSessionSchema.index({ userId: 1, status: 1 });
+CallSessionSchema.index({ astrologerId: 1, status: 1 });
+CallSessionSchema.index({ userId: 1, status: 1 });
 
-export default mongoose.model<IChatSession>('ChatSession', ChatSessionSchema);
+export default mongoose.model<ICallSession>('CallSession', CallSessionSchema);

@@ -26,6 +26,8 @@ export interface IAstrologer extends Document {
     isBusy: boolean;                    // TRUE when in active chat
     activeSessionId?: string;           // Current active session ID
     pricePerMin: number;
+    voiceCallPricePerMin?: number;
+    videoCallPricePerMin?: number;
     priceRangeMin: number;
     priceRangeMax: number;
     totalChats: number;
@@ -103,6 +105,8 @@ const AstrologerSchema: Schema = new Schema({
     isBusy: { type: Boolean, default: false },
     activeSessionId: { type: String },
     pricePerMin: { type: Number, default: 20 },
+    voiceCallPricePerMin: { type: Number, default: 20 },
+    videoCallPricePerMin: { type: Number, default: 30 },
     priceRangeMin: { type: Number, default: 10 },
     priceRangeMax: { type: Number, default: 100 },
     totalChats: { type: Number, default: 0 },

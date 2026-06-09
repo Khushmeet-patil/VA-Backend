@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import chatService from './chatService';
+import callService from './callService';
 
 /**
  * Start the session maintenance scheduler
@@ -12,11 +13,13 @@ export const startSessionScheduler = () => {
     cron.schedule('* * * * *', async () => {
         console.log('[SessionScheduler] Running maintenance tick...');
         try {
-            // 1. Resume billing for sessions that lost their in-memory timers
+            // 1. Resume billing/call timers that lost in-memory timers
             await chatService.resumeActiveSessions();
+            await callService.resumeActiveCalls();
             
-            // 2. Cleanup sessions where participants have been offline for > 2 mins
+            // 2. Cleanup sessions that have been disconnected or timed out
             await chatService.cleanupStaleSessions();
+            await callService.cleanupStaleCalls();
 
             // 3. Verify billing consistency (self-healing for lost timers)
             await chatService.verifyBillingConsistency();

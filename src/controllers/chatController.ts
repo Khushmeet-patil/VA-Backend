@@ -52,7 +52,7 @@ const maskSessionForAstrologer = (session: any) => {
 export const requestChat = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
-        const { astrologerId, intakeDetails } = req.body;
+        const { astrologerId, intakeDetails, sessionType } = req.body;
 
         if (!userId) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -62,7 +62,7 @@ export const requestChat = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'astrologerId is required' });
         }
 
-        const session = await chatService.createChatRequest(userId, astrologerId, intakeDetails);
+        const session = await chatService.createChatRequest(userId, astrologerId, intakeDetails, sessionType);
 
         res.status(201).json({
             message: 'Chat request sent',
@@ -120,6 +120,7 @@ export const acceptChat = async (req: AuthRequest, res: Response) => {
             intakeDetails: updatedSession.intakeDetails,
             isFreeTrialSession: updatedSession.isFreeTrialSession || false,
             freeTrialDurationSeconds: updatedSession.freeTrialDurationSeconds || 0,
+            sessionType: updatedSession.sessionType || 'chat',
         });
 
     } catch (error: any) {

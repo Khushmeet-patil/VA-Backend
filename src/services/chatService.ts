@@ -48,6 +48,8 @@ class ChatService {
     // Map of free trial warning timers: sessionId -> NodeJS.Timeout
     private freeTrialWarningTimers: Map<string, NodeJS.Timeout> = new Map();
 
+
+
     // Free trial duration (120 seconds = 2 minutes)
     private readonly FREE_TRIAL_DURATION_MS = 120000;
 
@@ -85,7 +87,8 @@ class ChatService {
     async createChatRequest(
         userId: string,
         astrologerId: string,
-        intakeDetails?: object
+        intakeDetails?: object,
+        sessionType: 'chat' | 'voice_call' | 'video_call' = 'chat'
     ): Promise<IChatSession> {
         // Validate user exists and has sufficient balance
         const user = await User.findById(userId);
@@ -178,6 +181,7 @@ class ChatService {
             profileId: (intakeDetails as any)?.profileId || 'default', // Save profileId
             isFreeTrialSession: false, // Legacy field, set to false
             isIntroSession: isEligibleForIntroRate,
+            sessionType,
         });
 
         await session.save();
@@ -217,6 +221,7 @@ class ChatService {
                 createdAt: session.createdAt.toISOString(),
                 isFreeTrialSession: session.isFreeTrialSession || false,
                 freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
+                sessionType,
             };
 
             // FCM wake-up (best-effort, works even if app is killed/background)
@@ -227,11 +232,12 @@ class ChatService {
                 userMobile: '', // REDACTED for privacy
                 ratePerMinute,
                 intakeDetails: sanitizedIntake,
+                sessionType,
             }).catch(e => console.error('[ChatService] FCM chat request send failed:', e));
 
             // Socket emit — fire and forget, no ACK, no retry
             this.io.to(roomName).emit('CHAT_REQUEST', requestPayload);
-            console.log(`[ChatService] CHAT_REQUEST sent to room: ${roomName}`);
+            console.log(`[ChatService] CHAT_REQUEST sent to room: ${roomName} of type: ${sessionType}`);
         } else {
             console.error(`[ChatService] ERROR: Socket.IO instance not initialized!`);
         }
@@ -395,7 +401,6 @@ class ChatService {
         // doesn't hit MongoDB and see a stale PENDING status.
         void this.updateSessionCache(session);
 
-        // Start appropriate timer based on session type
         if (session.isFreeTrialSession) {
             // Free trial - start countdown timer instead of billing
             this.startFreeTrialTimer(sessionId, session.freeTrialDurationSeconds || 120);
@@ -429,6 +434,7 @@ class ChatService {
                 status: 'ACTIVE',
                 isFreeTrialSession: session.isFreeTrialSession || false,
                 freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
+                sessionType: session.sessionType || 'chat',
             };
 
             this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
@@ -846,7 +852,7 @@ class ChatService {
      */
     async endChat(
         sessionId: string,
-        endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED'
+        endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED' | 'TIMEOUT'
     ): Promise<IChatSession> {
         // Invalidate cache first so any concurrent send_message re-reads from DB
         void this.invalidateSessionCache(sessionId);
@@ -1130,6 +1136,8 @@ class ChatService {
             console.log(`[ChatService] Stopped free trial warning timer for: ${sessionId}`);
         }
     }
+
+
 
     /**
      * End a free trial session when the trial period expires
@@ -2131,6 +2139,8 @@ class ChatService {
                     await this.endChat(session.sessionId, 'FREE_TRIAL_ENDED'); // Accurate reason
                 }
             }
+
+
         }
     }
 
