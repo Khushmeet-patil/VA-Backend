@@ -688,11 +688,14 @@ class CallService {
      * Helpers for checking active calls
      */
     async getActiveCallForUser(userId: string): Promise<ICallSession | null> {
-        return CallSession.findOne({ userId, status: 'ACTIVE' });
+        return CallSession.findOne({ userId, status: { $in: ['ACTIVE', 'PENDING'] } })
+            .sort({ createdAt: -1 })
+            .populate('astrologerId', 'firstName lastName');
     }
 
     async getActiveCallForAstrologer(astrologerId: string): Promise<ICallSession | null> {
-        return CallSession.findOne({ astrologerId, status: 'ACTIVE' });
+        return CallSession.findOne({ astrologerId, status: 'ACTIVE' })
+            .populate('userId', 'name');
     }
 
     async getPendingCallsForAstrologer(astrologerId: string): Promise<ICallSession[]> {
