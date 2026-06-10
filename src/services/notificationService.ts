@@ -367,6 +367,7 @@ class NotificationService {
             startTime: string;
             isFreeTrialSession?: boolean;
             freeTrialDurationSeconds?: number;
+            sessionType?: string;
         }
     ): Promise<boolean> {
         if (!this.initialized) {
@@ -393,6 +394,7 @@ class NotificationService {
                     startTime: data.startTime,
                     isFreeTrialSession: String(!!data.isFreeTrialSession),
                     freeTrialDurationSeconds: String(data.freeTrialDurationSeconds || 0),
+                    sessionType: data.sessionType || 'chat',
                 },
                 android: {
                     priority: 'high',

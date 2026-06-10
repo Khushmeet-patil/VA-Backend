@@ -343,6 +343,27 @@ class CallService {
             });
         }
 
+        // FCM BACKUP: Send data-only push to USER so they receive CHAT_STARTED (which navigates them to UserCallScreen or ChatScreen)
+        // even if their socket connection died (background/killed state)
+        notificationService.sendChatStartedNotification(session.userId.toString(), {
+            sessionId,
+            astrologerId: session.astrologerId.toString(),
+            astrologerName: `${astrologer.firstName} ${astrologer.lastName}`,
+            ratePerMinute: session.ratePerMinute,
+            startTime: session.startTime?.toISOString() || new Date().toISOString(),
+            isFreeTrialSession: false,
+            freeTrialDurationSeconds: 0,
+            sessionType: session.sessionType,
+        }).catch(err => console.error('[CallService] FCM chat_started push failed:', err));
+
+        // DISMISS SIGNAL: Send a 'cancel' notification to the ASTROLOGER themselves.
+        // This ensures the persistent 'incoming call' notification is cleared on ALL their devices.
+        notificationService.sendChatCancelNotification(
+            session.astrologerId.toString(),
+            sessionId,
+            'cancelled'
+        ).catch(err => console.error('[CallService] FCM dismiss notify failed:', err));
+
         return session;
     }
 
