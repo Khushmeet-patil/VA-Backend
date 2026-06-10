@@ -488,6 +488,39 @@ class CallService {
             throw new Error('Session not found');
         }
 
+        if (session.status === 'ENDED' || session.status === 'REJECTED') {
+            console.log(`[CallService] endCall called on session ${sessionId} which is already ${session.status}`);
+            return session;
+        }
+
+        if (session.status === 'PENDING') {
+            console.log(`[CallService] endCall called on PENDING session ${sessionId}. Cancelling request.`);
+            session.status = 'ENDED';
+            session.endReason = 'USER_CANCEL_WHILE_PENDING';
+            await session.save();
+
+            const timeout = this.requestTimeouts.get(sessionId);
+            if (timeout) {
+                clearTimeout(timeout);
+                this.requestTimeouts.delete(sessionId);
+            }
+
+            if (this.io) {
+                this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_CANCELLED', {
+                    sessionId,
+                    reason: 'User ended the request'
+                });
+            }
+
+            notificationService.sendChatCancelNotification(
+                session.astrologerId.toString(),
+                sessionId,
+                'cancelled'
+            ).catch(err => console.error('[CallService] FCM cancel push failed in endCall:', err));
+
+            return session;
+        }
+
         if (session.status !== 'ACTIVE') {
             throw new Error(`Cannot end session with status: ${session.status}`);
         }
