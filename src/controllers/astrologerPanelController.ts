@@ -296,6 +296,11 @@ export const getProfile = async (req: Request, res: Response) => {
                 isOnline: astrologer.isOnline || false,
                 isBlocked: astrologer.isBlocked || false,
                 pricePerMin: astrologer.pricePerMin || 20,
+                voiceCallPricePerMin: astrologer.voiceCallPricePerMin || 20,
+                videoCallPricePerMin: astrologer.videoCallPricePerMin || 30,
+                isChatEnabled: astrologer.isChatEnabled !== false,
+                isVoiceCallEnabled: astrologer.isVoiceCallEnabled !== false,
+                isVideoCallEnabled: astrologer.isVideoCallEnabled !== false,
                 priceRangeMin: astrologer.priceRangeMin || 10,
                 priceRangeMax: astrologer.priceRangeMax || 100,
                 city: astrologer.city,
@@ -317,6 +322,7 @@ export const getProfile = async (req: Request, res: Response) => {
                 isDeletionRequested: astrologer.isDeletionRequested || false
             }
         });
+
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
