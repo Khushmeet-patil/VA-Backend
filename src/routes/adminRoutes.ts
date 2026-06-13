@@ -71,7 +71,8 @@ import {
     updateStartPopup,
     deleteStartPopup,
     setGlobalAstrologerRate,
-    getAnalysisStats
+    getAnalysisStats,
+    getCallStats
 } from '../controllers/adminController';
 import { getAvailabilityLogs } from '../controllers/astrologerPanelController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
@@ -91,6 +92,7 @@ router.use(adminMiddleware);
 // Dashboard
 router.get('/dashboard', getDashboardStats);
 router.get('/chat-stats', getChatStats);
+router.get('/call-stats', getCallStats);
 router.get('/analysis-stats', getAnalysisStats);
 router.get('/finances/gst', getGstStats);
 router.get('/finances/earnings', getEarningsStats);

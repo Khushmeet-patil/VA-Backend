@@ -5,6 +5,7 @@ import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import ChatSession from '../models/ChatSession'; // Added import
+import CallSession from '../models/CallSession';
 import Withdrawal from '../models/Withdrawal'; // Added import
 import Notification from '../models/Notification';
 import ChatReview from '../models/ChatReview';
@@ -2581,6 +2582,108 @@ export const getChatStats = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('getChatStats error:', error);
+        return res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+// Get Call Stats for Admin Dashboard
+export const getCallStats = async (req: Request, res: Response) => {
+    try {
+        const { timeframe, month, year, startDate: qStartDate, endDate: qEndDate } = req.query; 
+        
+        const now = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const nowIST = new Date(now.getTime() + istOffset);
+
+        let startDate = new Date();
+        let endDate = new Date();
+        
+        if (timeframe === 'custom' && qStartDate) {
+            startDate = new Date(qStartDate as string);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(qEndDate as string || qStartDate as string);
+            endDate.setHours(23, 59, 59, 999);
+        } else {
+            switch(timeframe) {
+            case 'today':
+                startDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
+                break;
+            case 'yesterday':
+                const yesterdayIST = new Date(nowIST);
+                yesterdayIST.setDate(nowIST.getDate() - 1);
+                startDate = new Date(yesterdayIST.getFullYear(), yesterdayIST.getMonth(), yesterdayIST.getDate(), 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(yesterdayIST.getFullYear(), yesterdayIST.getMonth(), yesterdayIST.getDate(), 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
+                break;
+            case 'monthly':
+                startDate = new Date(Number(year), Number(month), 1, 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(Number(year), Number(month) + 1, 0, 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
+                break;
+            case 'yearly':
+                startDate = new Date(Number(year), 0, 1, 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(Number(year), 11, 31, 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
+                break;
+            default:
+                startDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 0, 0, 0, 0);
+                startDate = new Date(startDate.getTime() - istOffset);
+                endDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate(), 23, 59, 59, 999);
+                endDate = new Date(endDate.getTime() - istOffset);
+            }
+        }
+
+        const missedEndReasons = [
+            'ASTROLOGER_TIMEOUT',
+            'TIMEOUT',
+            'ASTROLOGER_REJECTED',
+            'ASTROLOGER_OFFLINE_DURING_REQUEST',
+            'INSUFFICIENT_BALANCE_AT_ACCEPT',
+            'USER_CANCEL_WHILE_PENDING'
+        ];
+
+        const completedCalls = await CallSession.find({
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: 'ENDED',
+            startTime: { $exists: true, $ne: null },
+            endReason: { $nin: missedEndReasons }
+        })
+        .populate('userId', 'name mobile')
+        .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
+        .sort({ createdAt: -1 });
+
+        const activeCalls = await CallSession.find({ status: 'ACTIVE' })
+            .populate('userId', 'name mobile')
+            .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
+            .sort({ createdAt: -1 });
+
+        const missedCalls = await CallSession.find({
+            createdAt: { $gte: startDate, $lte: endDate },
+            $or: [
+                { status: 'REJECTED' },
+                { status: 'ENDED', endReason: { $in: missedEndReasons } }
+            ]
+        })
+        .populate('userId', 'name mobile')
+        .populate('astrologerId', 'firstName lastName mobileNumber profilePhoto')
+        .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                completedCalls,
+                activeCalls,
+                missedCalls
+            }
+        });
+    } catch (error: any) {
+        console.error('getCallStats error:', error);
         return res.status(500).json({ success: false, message: 'Server Error' });
     }
 };
