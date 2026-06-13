@@ -719,6 +719,44 @@ export const updateChatRate = async (req: Request, res: Response) => {
         const minRate = astrologer.priceRangeMin || 10;
         const maxRate = astrologer.priceRangeMax || 100;
 
+        // Handle status toggles directly (no admin approval required)
+        let togglesChanged = false;
+        if (isChatEnabled !== undefined) {
+            if (typeof isChatEnabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'Invalid Chat Enable state' });
+            }
+            if (isChatEnabled !== astrologer.isChatEnabled) {
+                astrologer.isChatEnabled = isChatEnabled;
+                togglesChanged = true;
+            }
+        }
+
+        if (isVoiceCallEnabled !== undefined) {
+            if (typeof isVoiceCallEnabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'Invalid Voice Call Enable state' });
+            }
+            if (isVoiceCallEnabled !== astrologer.isVoiceCallEnabled) {
+                astrologer.isVoiceCallEnabled = isVoiceCallEnabled;
+                togglesChanged = true;
+            }
+        }
+
+        if (isVideoCallEnabled !== undefined) {
+            if (typeof isVideoCallEnabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'Invalid Video Call Enable state' });
+            }
+            if (isVideoCallEnabled !== astrologer.isVideoCallEnabled) {
+                astrologer.isVideoCallEnabled = isVideoCallEnabled;
+                togglesChanged = true;
+            }
+        }
+
+        if (togglesChanged) {
+            await astrologer.save();
+            console.log(`[AstrologerPanel] Toggles updated directly for ${astrologerId}`);
+        }
+
+        // Handle price rates via admin approval flow
         const beforeData: any = {};
         const afterData: any = {};
 
@@ -761,40 +799,10 @@ export const updateChatRate = async (req: Request, res: Response) => {
             }
         }
 
-        if (isChatEnabled !== undefined) {
-            if (typeof isChatEnabled !== 'boolean') {
-                return res.status(400).json({ success: false, message: 'Invalid Chat Enable state' });
-            }
-            if (isChatEnabled !== astrologer.isChatEnabled) {
-                beforeData.isChatEnabled = astrologer.isChatEnabled;
-                afterData.isChatEnabled = isChatEnabled;
-            }
-        }
-
-        if (isVoiceCallEnabled !== undefined) {
-            if (typeof isVoiceCallEnabled !== 'boolean') {
-                return res.status(400).json({ success: false, message: 'Invalid Voice Call Enable state' });
-            }
-            if (isVoiceCallEnabled !== astrologer.isVoiceCallEnabled) {
-                beforeData.isVoiceCallEnabled = astrologer.isVoiceCallEnabled;
-                afterData.isVoiceCallEnabled = isVoiceCallEnabled;
-            }
-        }
-
-        if (isVideoCallEnabled !== undefined) {
-            if (typeof isVideoCallEnabled !== 'boolean') {
-                return res.status(400).json({ success: false, message: 'Invalid Video Call Enable state' });
-            }
-            if (isVideoCallEnabled !== astrologer.isVideoCallEnabled) {
-                beforeData.isVideoCallEnabled = astrologer.isVideoCallEnabled;
-                afterData.isVideoCallEnabled = isVideoCallEnabled;
-            }
-        }
-
         if (Object.keys(afterData).length === 0) {
             return res.json({
                 success: true,
-                message: 'No changes detected',
+                message: togglesChanged ? 'Consultation status updated successfully' : 'No changes detected',
                 data: {
                     pricePerMin: astrologer.pricePerMin,
                     voiceCallPricePerMin: astrologer.voiceCallPricePerMin,
@@ -806,7 +814,7 @@ export const updateChatRate = async (req: Request, res: Response) => {
             });
         }
 
-        // Create change request instead of direct update
+        // Create change request instead of direct update for rate updates
         const changeRequest = new ProfileChangeRequest({
             astrologerId: astrologer._id,
             requestType: 'rate_update',
@@ -816,12 +824,17 @@ export const updateChatRate = async (req: Request, res: Response) => {
         });
         await changeRequest.save();
 
-        console.log(`[AstrologerPanel] Rate/Channel change request created: ${changeRequest._id}`);
+        console.log(`[AstrologerPanel] Rate change request created: ${changeRequest._id}`);
 
         res.json({
             success: true,
             message: 'Rate change submitted for admin approval',
-            data: afterData
+            data: {
+                ...afterData,
+                isChatEnabled: astrologer.isChatEnabled !== false,
+                isVoiceCallEnabled: astrologer.isVoiceCallEnabled !== false,
+                isVideoCallEnabled: astrologer.isVideoCallEnabled !== false,
+            }
         });
     } catch (error: any) {
         console.error('updateChatRate error:', error);
