@@ -728,7 +728,7 @@ class ChatService {
                 },
                 {
                     navigateType: 'screen',
-                    navigateTarget: 'NotificationList'
+                    navigateTarget: 'Notifications'
                 },
                 'alert'
             );
@@ -830,6 +830,28 @@ class ChatService {
             });
 
             await this.incrementMissedChats(session.astrologerId);
+
+            // Send missed chat notification
+            try {
+                const user = await User.findById(session.userId);
+                const userName = user ? `${user.name || 'User'}` : 'a user';
+
+                await notificationService.createAndSendNotification(
+                    session.astrologerId.toString(),
+                    'astrologer',
+                    {
+                        title: 'Missed Chat Request',
+                        body: `You missed a chat request from ${userName}. Please try to stay online for next requests.`
+                    },
+                    {
+                        navigateType: 'screen',
+                        navigateTarget: 'Notifications'
+                    },
+                    'alert'
+                );
+            } catch (notifErr) {
+                console.error('[ChatService] Failed to send missed chat notification on cancel:', notifErr);
+            }
         }
 
         // Clear the request timeout

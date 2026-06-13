@@ -481,6 +481,29 @@ class CallService {
                 $set: { endReason: 'ASTROLOGER_TIMEOUT' }
             });
             await this.incrementMissedCalls(session.astrologerId);
+
+            // Send missed call notification
+            try {
+                const user = await User.findById(session.userId);
+                const userName = user ? `${user.name || 'User'}` : 'a user';
+                const callTypeLabel = session.sessionType === 'video_call' ? 'video call' : 'voice call';
+
+                await notificationService.createAndSendNotification(
+                    session.astrologerId.toString(),
+                    'astrologer',
+                    {
+                        title: session.sessionType === 'video_call' ? 'Missed Video Call' : 'Missed Voice Call',
+                        body: `You missed a ${callTypeLabel} request from ${userName}. Please try to stay online for next requests.`
+                    },
+                    {
+                        navigateType: 'screen',
+                        navigateTarget: 'Notifications'
+                    },
+                    'alert'
+                );
+            } catch (notifErr) {
+                console.error('[CallService] Failed to send missed call notification on cancel:', notifErr);
+            }
         }
 
         const timeout = this.requestTimeouts.get(sessionId);
@@ -825,6 +848,29 @@ class CallService {
         this.requestTimeouts.delete(sessionId);
         console.log(`[CallService] Call request timed out: ${sessionId}`);
         await this.incrementMissedCalls(session.astrologerId);
+
+        // Send missed call notification
+        try {
+            const user = await User.findById(session.userId);
+            const userName = user ? `${user.name || 'User'}` : 'a user';
+            const callTypeLabel = session.sessionType === 'video_call' ? 'video call' : 'voice call';
+
+            await notificationService.createAndSendNotification(
+                session.astrologerId.toString(),
+                'astrologer',
+                {
+                    title: session.sessionType === 'video_call' ? 'Missed Video Call' : 'Missed Voice Call',
+                    body: `You missed a ${callTypeLabel} request from ${userName}. Please try to stay online for next requests.`
+                },
+                {
+                    navigateType: 'screen',
+                    navigateTarget: 'Notifications'
+                },
+                'alert'
+            );
+        } catch (notifErr) {
+            console.error('[CallService] Failed to send missed call notification:', notifErr);
+        }
 
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('CHAT_TIMEOUT', {
