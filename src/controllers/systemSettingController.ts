@@ -66,6 +66,12 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'astrologerCommission') {
                 return res.json({ success: true, data: { key, value: 40 } }); // 40% to astrologer
             }
+            if (key === 'voiceCallCommission') {
+                return res.json({ success: true, data: { key, value: 40 } }); // 40% to astrologer for voice calls
+            }
+            if (key === 'videoCallCommission') {
+                return res.json({ success: true, data: { key, value: 40 } }); // 40% to astrologer for video calls
+            }
             if (key === 'bonusUsagePercent') {
                 return res.json({ success: true, data: { key, value: 20 } }); // 20% from bonus wallet
             }

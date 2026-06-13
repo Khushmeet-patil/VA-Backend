@@ -686,18 +686,28 @@ export const getChats = async (req: Request, res: Response) => {
     }
 };
 
-// Update Chat Rate (creates a change request for admin approval)
+// Update Chat Rate and Channels (creates a change request for admin approval)
 export const updateChatRate = async (req: Request, res: Response) => {
     try {
         const astrologerId = (req as any).userId;
-        const { pricePerMin } = req.body;
+        const {
+            pricePerMin,
+            voiceCallPricePerMin,
+            videoCallPricePerMin,
+            isChatEnabled,
+            isVoiceCallEnabled,
+            isVideoCallEnabled
+        } = req.body;
 
-        console.log('updateChatRate called:', { astrologerId, pricePerMin, type: typeof pricePerMin });
-
-        if (typeof pricePerMin !== 'number' || pricePerMin < 1) {
-            console.log('Invalid pricePerMin:', pricePerMin);
-            return res.status(400).json({ success: false, message: 'Invalid price per minute' });
-        }
+        console.log('updateChatRate called:', {
+            astrologerId,
+            pricePerMin,
+            voiceCallPricePerMin,
+            videoCallPricePerMin,
+            isChatEnabled,
+            isVoiceCallEnabled,
+            isVideoCallEnabled
+        });
 
         const astrologer = await Astrologer.findById(astrologerId);
         if (!astrologer) {
@@ -705,16 +715,94 @@ export const updateChatRate = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
-        // Validate rate is within admin-defined range
+        // Validate rates are within admin-defined range
         const minRate = astrologer.priceRangeMin || 10;
         const maxRate = astrologer.priceRangeMax || 100;
 
-        console.log('Rate range check:', { pricePerMin, minRate, maxRate });
+        const beforeData: any = {};
+        const afterData: any = {};
 
-        if (pricePerMin < minRate || pricePerMin > maxRate) {
-            return res.status(400).json({
-                success: false,
-                message: `Rate must be between ₹${minRate} and ₹${maxRate} per minute`
+        if (pricePerMin !== undefined) {
+            if (typeof pricePerMin !== 'number' || pricePerMin < 1 || pricePerMin < minRate || pricePerMin > maxRate) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Chat rate must be between ₹${minRate} and ₹${maxRate} per minute`
+                });
+            }
+            if (pricePerMin !== astrologer.pricePerMin) {
+                beforeData.pricePerMin = astrologer.pricePerMin;
+                afterData.pricePerMin = pricePerMin;
+            }
+        }
+
+        if (voiceCallPricePerMin !== undefined) {
+            if (typeof voiceCallPricePerMin !== 'number' || voiceCallPricePerMin < 1 || voiceCallPricePerMin < minRate || voiceCallPricePerMin > maxRate) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Voice call rate must be between ₹${minRate} and ₹${maxRate} per minute`
+                });
+            }
+            if (voiceCallPricePerMin !== astrologer.voiceCallPricePerMin) {
+                beforeData.voiceCallPricePerMin = astrologer.voiceCallPricePerMin;
+                afterData.voiceCallPricePerMin = voiceCallPricePerMin;
+            }
+        }
+
+        if (videoCallPricePerMin !== undefined) {
+            if (typeof videoCallPricePerMin !== 'number' || videoCallPricePerMin < 1 || videoCallPricePerMin < minRate || videoCallPricePerMin > maxRate) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Video call rate must be between ₹${minRate} and ₹${maxRate} per minute`
+                });
+            }
+            if (videoCallPricePerMin !== astrologer.videoCallPricePerMin) {
+                beforeData.videoCallPricePerMin = astrologer.videoCallPricePerMin;
+                afterData.videoCallPricePerMin = videoCallPricePerMin;
+            }
+        }
+
+        if (isChatEnabled !== undefined) {
+            if (typeof isChatEnabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'Invalid Chat Enable state' });
+            }
+            if (isChatEnabled !== astrologer.isChatEnabled) {
+                beforeData.isChatEnabled = astrologer.isChatEnabled;
+                afterData.isChatEnabled = isChatEnabled;
+            }
+        }
+
+        if (isVoiceCallEnabled !== undefined) {
+            if (typeof isVoiceCallEnabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'Invalid Voice Call Enable state' });
+            }
+            if (isVoiceCallEnabled !== astrologer.isVoiceCallEnabled) {
+                beforeData.isVoiceCallEnabled = astrologer.isVoiceCallEnabled;
+                afterData.isVoiceCallEnabled = isVoiceCallEnabled;
+            }
+        }
+
+        if (isVideoCallEnabled !== undefined) {
+            if (typeof isVideoCallEnabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'Invalid Video Call Enable state' });
+            }
+            if (isVideoCallEnabled !== astrologer.isVideoCallEnabled) {
+                beforeData.isVideoCallEnabled = astrologer.isVideoCallEnabled;
+                afterData.isVideoCallEnabled = isVideoCallEnabled;
+            }
+        }
+
+        if (Object.keys(afterData).length === 0) {
+            return res.json({
+                success: true,
+                message: 'No changes detected',
+                data: {
+                    pricePerMin: astrologer.pricePerMin,
+                    voiceCallPricePerMin: astrologer.voiceCallPricePerMin,
+                    videoCallPricePerMin: astrologer.videoCallPricePerMin,
+                    isChatEnabled: astrologer.isChatEnabled !== false,
+                    isVoiceCallEnabled: astrologer.isVoiceCallEnabled !== false,
+                    isVideoCallEnabled: astrologer.isVideoCallEnabled !== false,
+                }
             });
         }
 
@@ -722,18 +810,18 @@ export const updateChatRate = async (req: Request, res: Response) => {
         const changeRequest = new ProfileChangeRequest({
             astrologerId: astrologer._id,
             requestType: 'rate_update',
-            beforeData: { pricePerMin: astrologer.pricePerMin },
-            afterData: { pricePerMin },
+            beforeData,
+            afterData,
             status: 'pending'
         });
         await changeRequest.save();
 
-        console.log(`[AstrologerPanel] Rate change request created: ${changeRequest._id}`);
+        console.log(`[AstrologerPanel] Rate/Channel change request created: ${changeRequest._id}`);
 
         res.json({
             success: true,
             message: 'Rate change submitted for admin approval',
-            data: { pricePerMin: pricePerMin }
+            data: afterData
         });
     } catch (error: any) {
         console.error('updateChatRate error:', error);

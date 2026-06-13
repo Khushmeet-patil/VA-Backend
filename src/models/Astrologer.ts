@@ -25,9 +25,12 @@ export interface IAstrologer extends Document {
     isBlocked: boolean;
     isBusy: boolean;                    // TRUE when in active chat
     activeSessionId?: string;           // Current active session ID
-    pricePerMin: number;
+        pricePerMin: number;
     voiceCallPricePerMin?: number;
     videoCallPricePerMin?: number;
+    isChatEnabled?: boolean;
+    isVoiceCallEnabled?: boolean;
+    isVideoCallEnabled?: boolean;
     priceRangeMin: number;
     priceRangeMax: number;
     totalChats: number;
@@ -76,7 +79,9 @@ export interface IAstrologer extends Document {
     isDeletionRequested: boolean;
     deletionRequestedAt?: Date;
     blockingReason?: string;
-    commissionPercentage?: number | null;
+    commissionPercentage?: number | null;          // Chat commission override (null = use global)
+    voiceCallCommissionPercentage?: number | null; // Voice call commission override (null = use global)
+    videoCallCommissionPercentage?: number | null; // Video call commission override (null = use global)
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -107,6 +112,9 @@ const AstrologerSchema: Schema = new Schema({
     pricePerMin: { type: Number, default: 20 },
     voiceCallPricePerMin: { type: Number, default: 20 },
     videoCallPricePerMin: { type: Number, default: 30 },
+    isChatEnabled: { type: Boolean, default: true },
+    isVoiceCallEnabled: { type: Boolean, default: true },
+    isVideoCallEnabled: { type: Boolean, default: true },
     priceRangeMin: { type: Number, default: 10 },
     priceRangeMax: { type: Number, default: 100 },
     totalChats: { type: Number, default: 0 },
@@ -164,7 +172,9 @@ const AstrologerSchema: Schema = new Schema({
     isDeletionRequested: { type: Boolean, default: false },
     deletionRequestedAt: { type: Date },
     blockingReason: { type: String },
-    commissionPercentage: { type: Number, default: null }
+    commissionPercentage: { type: Number, default: null },           // Chat commission override
+    voiceCallCommissionPercentage: { type: Number, default: null },  // Voice call commission override
+    videoCallCommissionPercentage: { type: Number, default: null },  // Video call commission override
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

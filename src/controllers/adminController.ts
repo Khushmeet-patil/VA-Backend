@@ -1150,7 +1150,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
             updateData.freeChatLimit = req.body.freeChatLimit;
         }
 
-        // Commission Settings
+        // Commission Settings — chat commission (existing)
         if (commissionPercentage !== undefined) {
             if (commissionPercentage === null || commissionPercentage === '') {
                 updateData.commissionPercentage = null;
@@ -1160,6 +1160,36 @@ export const updateAstrologer = async (req: Request, res: Response) => {
                     updateData.commissionPercentage = commissionVal;
                 } else {
                     return res.status(400).json({ success: false, message: 'Commission percentage must be a number between 0 and 100' });
+                }
+            }
+        }
+
+        // Voice Call Commission — per-astrologer override (null = use global voiceCallCommission setting)
+        if (req.body.voiceCallCommissionPercentage !== undefined) {
+            const v = req.body.voiceCallCommissionPercentage;
+            if (v === null || v === '') {
+                updateData.voiceCallCommissionPercentage = null;
+            } else {
+                const val = Number(v);
+                if (!isNaN(val) && val >= 0 && val <= 100) {
+                    updateData.voiceCallCommissionPercentage = val;
+                } else {
+                    return res.status(400).json({ success: false, message: 'voiceCallCommissionPercentage must be between 0 and 100' });
+                }
+            }
+        }
+
+        // Video Call Commission — per-astrologer override (null = use global videoCallCommission setting)
+        if (req.body.videoCallCommissionPercentage !== undefined) {
+            const v = req.body.videoCallCommissionPercentage;
+            if (v === null || v === '') {
+                updateData.videoCallCommissionPercentage = null;
+            } else {
+                const val = Number(v);
+                if (!isNaN(val) && val >= 0 && val <= 100) {
+                    updateData.videoCallCommissionPercentage = val;
+                } else {
+                    return res.status(400).json({ success: false, message: 'videoCallCommissionPercentage must be between 0 and 100' });
                 }
             }
         }

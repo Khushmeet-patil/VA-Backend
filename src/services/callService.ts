@@ -11,11 +11,14 @@ import { getSettingValue } from '../controllers/systemSettingController';
 class CallService {
     public io: SocketIOServer | null = null;
 
-    // Map of call timers: sessionId -> NodeJS.Timeout
+    // Map of call billing timers: sessionId -> NodeJS.Timeout
     private callTimers: Map<string, NodeJS.Timeout> = new Map();
 
     // Map of call warning timers: sessionId -> NodeJS.Timeout
     private callWarningTimers: Map<string, NodeJS.Timeout> = new Map();
+
+    // Billing cycle interval for calls (60 seconds, same as chat)
+    private readonly CALL_BILLING_INTERVAL_MS = 60000;
 
     // Request timeout — 35 seconds
     private readonly REQUEST_TIMEOUT_MS = 35000;
@@ -312,9 +315,9 @@ class CallService {
         session = updatedSession;
         void this.updateSessionCache(session);
 
-        // Call has 2 minute (120s) hard limit
-        this.startCallTimer(sessionId, 120);
-        console.log(`[CallService] Call accepted - starting 120s timer for sessionId: ${sessionId}`);
+        // Start per-minute wallet-based billing (replaces 2-min hard cap)
+        this.startCallBillingTimer(sessionId);
+        console.log(`[CallService] Call accepted - starting wallet-based billing timer for sessionId: ${sessionId}`);
 
         // Emit CHAT_STARTED (reused event name so frontend transitions screen)
         if (this.io) {
@@ -332,14 +335,40 @@ class CallService {
                 ...chatStartedData,
                 astrologerId: session.astrologerId.toString(),
                 astrologerName: astrologer.firstName + ' ' + astrologer.lastName,
-                status: 'ACTIVE'
+                status: 'ACTIVE',
+                intakeDetails: session.intakeDetails,
+                sharedProfiles: session.sharedProfiles,
             });
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
                 ...chatStartedData,
                 userId: session.userId.toString(),
                 userName: user.name || 'User',
-                status: 'ACTIVE'
+                status: 'ACTIVE',
+                intakeDetails: session.intakeDetails,
+                profileId: session.profileId,
+                sharedProfiles: session.sharedProfiles || [],
+            });
+
+            // Emit TIMER_STARTED with wallet-based remaining seconds
+            const realBal = user.walletBalance || 0;
+            const bonusBal = user.bonusBalance || 0;
+            const effectiveBal = realBal + bonusBal;
+            const remainingSeconds = Math.floor((effectiveBal / session.ratePerMinute) * 60);
+
+            this.io.to(`user:${session.userId}`).emit('TIMER_STARTED', {
+                sessionId,
+                remainingSeconds,
+                ratePerMinute: session.ratePerMinute,
+                walletBalance: realBal,
+                bonusBalance: bonusBal,
+            });
+            this.io.to(`astrologer:${session.astrologerId}`).emit('TIMER_STARTED', {
+                sessionId,
+                remainingSeconds,
+                ratePerMinute: session.ratePerMinute,
+                userRealBalance: realBal,
+                userBonusBalance: bonusBal,
             });
         }
 
@@ -629,51 +658,133 @@ class CallService {
     }
 
     /**
-     * Start Call Timer (120s limit)
+     * Start per-minute wallet-based billing timer for calls.
+     * Replaces the old fixed 2-minute hard cap.
+     * Mirrors chatService.startBillingTimer() behaviour.
      */
-    private async startCallTimer(sessionId: string, durationSeconds: number): Promise<void> {
+    private startCallBillingTimer(sessionId: string): void {
         if (this.callTimers.has(sessionId)) return;
 
-        console.log(`[CallService] Starting call timer for ${sessionId}, duration: ${durationSeconds}s`);
+        console.log(`[CallService] Starting per-minute billing timer for: ${sessionId}`);
+
+        const billingTimer = setInterval(async () => {
+            await this.processCallBillingCycle(sessionId);
+        }, this.CALL_BILLING_INTERVAL_MS);
+
+        this.callTimers.set(sessionId, billingTimer as unknown as NodeJS.Timeout);
+    }
+
+    /**
+     * Execute one billing cycle for an active call session.
+     * Deducts ratePerMinute from user wallet; ends call on depletion.
+     */
+    private async processCallBillingCycle(sessionId: string): Promise<void> {
         const session = await CallSession.findOne({ sessionId });
-        if (!session) return;
+        if (!session || session.status !== 'ACTIVE') {
+            this.stopCallTimer(sessionId);
+            return;
+        }
 
-        const endTimer = setTimeout(async () => {
-            console.log(`[CallService] Call limit reached, ending session: ${sessionId}`);
-            try {
-                await this.endCall(sessionId, 'TIMEOUT');
-            } catch (err: any) {
-                console.error(`[CallService] Error ending timed out call: ${err.message}`);
+        const user = await User.findById(session.userId);
+        const astrologer = await Astrologer.findById(session.astrologerId);
+        if (!user || !astrologer) {
+            this.stopCallTimer(sessionId);
+            return;
+        }
+
+        const ratePerMinute = session.ratePerMinute;
+        const realBalance = user.walletBalance || 0;
+        const bonusBalance = user.bonusBalance || 0;
+        const effectiveBalance = realBalance + bonusBalance;
+
+        console.log(`[CallService] Billing cycle [${sessionId}]: ` +
+            `Real:₹${realBalance.toFixed(2)}, Bonus:₹${bonusBalance.toFixed(2)}, ` +
+            `Effective:₹${effectiveBalance.toFixed(2)}, Rate:₹${ratePerMinute}/min`);
+
+        // End call if user can no longer afford 1 minute
+        if (effectiveBalance < ratePerMinute) {
+            console.log(`[CallService] Balance depleted (${effectiveBalance}), ending call: ${sessionId}`);
+            await this.endCall(sessionId, 'INSUFFICIENT_BALANCE');
+            return;
+        }
+
+        // Deduct payment
+        const paymentResult = await this.processPayment(
+            session, user, astrologer,
+            ratePerMinute,
+            `Call session: ${sessionId} - Minute billing`
+        );
+
+        if (!paymentResult.success) {
+            console.error(`[CallService] Payment failed for: ${sessionId}`);
+            await this.endCall(sessionId, 'INSUFFICIENT_BALANCE');
+            return;
+        }
+
+        // Update session totalMinutes
+        await CallSession.findOneAndUpdate(
+            { sessionId },
+            { $inc: { totalMinutes: 1 }, $set: { lastBilledAt: new Date() } }
+        );
+
+        // Reload user for fresh balance
+        const updatedUser = await User.findById(session.userId);
+        if (!updatedUser) return;
+
+        const newRealBalance = updatedUser.walletBalance || 0;
+        const newBonusBalance = updatedUser.bonusBalance || 0;
+        const newCombined = newRealBalance + newBonusBalance;
+
+        // Emit BILLING_UPDATE to user and astrologer
+        if (this.io) {
+            this.io.to(`user:${session.userId}`).emit('BILLING_UPDATE', {
+                sessionId,
+                amountDeducted: ratePerMinute,
+                realDeducted: paymentResult.realDeducted || 0,
+                bonusDeducted: paymentResult.bonusDeducted || 0,
+                realBalance: newRealBalance,
+                bonusBalance: newBonusBalance,
+            });
+
+            this.io.to(`astrologer:${session.astrologerId}`).emit('BILLING_UPDATE', {
+                sessionId,
+                amountDeducted: ratePerMinute,
+                userRealBalance: newRealBalance,
+                userBonusBalance: newBonusBalance,
+            });
+        }
+
+        // End immediately if combined balance now depleted
+        if (newCombined <= 0) {
+            console.log(`[CallService] Combined balance depleted after billing, ending call: ${sessionId}`);
+            await this.endCall(sessionId, 'INSUFFICIENT_BALANCE');
+            return;
+        }
+
+        // LAST MINUTE WARNING when balance < 2x rate
+        if (newCombined < ratePerMinute * 2 && newCombined > 0) {
+            console.log(`[CallService] Last minute warning for: ${sessionId}, balance: ${newCombined}`);
+            if (this.io) {
+                const payload = {
+                    sessionId,
+                    remainingBalance: newCombined,
+                    ratePerMinute,
+                    isCall: true,
+                    isBalanceDepleted: false,
+                };
+                this.io.to(`user:${session.userId}`).emit('LAST_MINUTE_WARNING', payload);
+                this.io.to(`astrologer:${session.astrologerId}`).emit('LAST_MINUTE_WARNING', payload);
             }
-        }, durationSeconds * 1000);
-
-        this.callTimers.set(sessionId, endTimer);
-
-        if (durationSeconds > 60) {
-            const warningTimer = setTimeout(() => {
-                if (this.io) {
-                    const payload = {
-                        sessionId,
-                        remainingBalance: 0,
-                        ratePerMinute: 0,
-                        isCall: true,
-                        isBalanceDepleted: false
-                    };
-                    this.io.to(`user:${session.userId}`).emit('LAST_MINUTE_WARNING', payload);
-                    this.io.to(`astrologer:${session.astrologerId}`).emit('LAST_MINUTE_WARNING', payload);
-                }
-            }, (durationSeconds - 60) * 1000);
-            this.callWarningTimers.set(sessionId, warningTimer);
         }
     }
 
     /**
-     * Stop Call Timer
+     * Stop Call Billing Timer
      */
     private stopCallTimer(sessionId: string): void {
         const timer = this.callTimers.get(sessionId);
         if (timer) {
-            clearTimeout(timer);
+            clearInterval(timer as any);
             this.callTimers.delete(sessionId);
         }
         const warningTimer = this.callWarningTimers.get(sessionId);
@@ -802,10 +913,16 @@ class CallService {
         try {
             const systemSettingModel = mongoose.model('SystemSetting');
             const bonusUsageSetting = await systemSettingModel.findOne({ key: 'bonusUsagePercent' });
-            const commissionSetting = await systemSettingModel.findOne({ key: 'astrologerCommission' });
+
+            // Use session-type-specific global commission as fallback
+            const commissionKey = session.sessionType === 'video_call'
+                ? 'videoCallCommission'
+                : 'voiceCallCommission';
+            const commissionSetting = await systemSettingModel.findOne({ key: commissionKey });
 
             const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20);
-            const astrologerCommission = Number(commissionSetting?.value ?? 40);
+            // Global fallback commission for this session type
+            const globalCommission = Number(commissionSetting?.value ?? 40);
 
             const totalToDeduct = Math.round(amount * 100) / 100;
             const realBalance = user.walletBalance || 0;
@@ -860,9 +977,14 @@ class CallService {
             const freshAstrologer = await Astrologer.findById(astrologer._id);
             if (!freshAstrologer) throw new Error('Astrologer not found');
 
-            const activeCommission = (freshAstrologer.commissionPercentage !== undefined && freshAstrologer.commissionPercentage !== null)
-                ? freshAstrologer.commissionPercentage
-                : astrologerCommission;
+            // Per-astrologer commission override: check type-specific field first, then general, then global default
+            const perAstrologerCommission = session.sessionType === 'video_call'
+                ? freshAstrologer.videoCallCommissionPercentage
+                : freshAstrologer.voiceCallCommissionPercentage;
+
+            const activeCommission = (perAstrologerCommission !== undefined && perAstrologerCommission !== null)
+                ? perAstrologerCommission
+                : globalCommission;
 
             const astrologerShare = Math.round((realDeduction * activeCommission / 100) * 100) / 100;
 
@@ -958,16 +1080,20 @@ class CallService {
 
         for (const session of activeCalls) {
             if (!this.callTimers.has(session.sessionId)) {
-                const startTime = session.startTime || session.createdAt;
-                const elapsedSeconds = Math.floor((Date.now() - startTime.getTime()) / 1000);
-                const remainingSeconds = 120 - elapsedSeconds;
-
-                if (remainingSeconds > 0) {
-                    console.log(`[CallService] Resuming call timer for: ${session.sessionId} (${remainingSeconds}s remaining)`);
-                    this.startCallTimer(session.sessionId, remainingSeconds);
+                // Wallet-based check: verify user still has balance
+                const user = await User.findById(session.userId);
+                if (!user) {
+                    console.log(`[CallService] User not found for resumed call ${session.sessionId}. Ending.`);
+                    await this.endCall(session.sessionId, 'DISCONNECT');
+                    continue;
+                }
+                const combinedBalance = (user.walletBalance || 0) + (user.bonusBalance || 0);
+                if (combinedBalance < session.ratePerMinute) {
+                    console.log(`[CallService] Insufficient balance on resume for: ${session.sessionId}. Ending.`);
+                    await this.endCall(session.sessionId, 'INSUFFICIENT_BALANCE');
                 } else {
-                    console.log(`[CallService] Call expired during downtime: ${session.sessionId}. Ending.`);
-                    await this.endCall(session.sessionId, 'TIMEOUT');
+                    console.log(`[CallService] Resuming wallet-based billing timer for: ${session.sessionId}`);
+                    this.startCallBillingTimer(session.sessionId);
                 }
             }
         }
