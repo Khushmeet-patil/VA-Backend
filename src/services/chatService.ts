@@ -118,13 +118,25 @@ class ChatService {
             throw new Error('ASTROLOGER_BUSY: Astrologer is busy with another chat');
         }
 
-        // Check if astrologer already has a PENDING request from another user
+        // ─── Channel availability check ───────────────────────────────────────
+        // Reject immediately if the astrologer has disabled chat.
+        if (astrologer.isChatEnabled === false) {
+            throw new Error('CHANNEL_DISABLED: This astrologer is not available for chat right now.');
+        }
+
+        // ─── First-come-first-served: atomic PENDING slot check ──────────────
+        // Block if ANY user already has a pending request with this astrologer
+        // across both ChatSession AND CallSession — only the first user gets the slot.
+        const callSessionModel = mongoose.model('CallSession');
         const existingPendingSession = await ChatSession.findOne({
             astrologerId,
-            userId: { $ne: userId },
             status: 'PENDING',
         });
-        if (existingPendingSession) {
+        const existingCallPending = await callSessionModel.findOne({
+            astrologerId,
+            status: 'PENDING',
+        });
+        if (existingPendingSession || existingCallPending) {
             // Register user in waitlist so they get notified when this astrologer is free
             this.addToWaitlist(astrologerId, userId);
             throw new Error('ASTROLOGER_BUSY_PENDING: Astrologer is currently handling another incoming request. Please stay tuned.');

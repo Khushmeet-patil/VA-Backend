@@ -70,16 +70,26 @@ class CallService {
             throw new Error('ASTROLOGER_BUSY: Astrologer is busy with another session');
         }
 
-        // Check if astrologer has a PENDING request in ChatSession OR CallSession
+        // ─── Channel availability checks ─────────────────────────────────────
+        // Reject immediately if the astrologer has disabled this consultation type.
+        if (sessionType === 'voice_call' && astrologer.isVoiceCallEnabled === false) {
+            throw new Error('CHANNEL_DISABLED: This astrologer is not available for voice calls right now.');
+        }
+        if (sessionType === 'video_call' && astrologer.isVideoCallEnabled === false) {
+            throw new Error('CHANNEL_DISABLED: This astrologer is not available for video calls right now.');
+        }
+
+        // ─── First-come-first-served: atomic PENDING slot check ──────────────
+        // Check across BOTH ChatSession and CallSession so that ANY pending
+        // request (from any user) blocks new ones — ensuring only the first
+        // user through gets the slot.
         const chatSessionModel = mongoose.model('ChatSession');
         const existingChatPending = await chatSessionModel.findOne({
             astrologerId,
-            userId: { $ne: userId },
             status: 'PENDING',
         });
         const existingCallPending = await CallSession.findOne({
             astrologerId,
-            userId: { $ne: userId },
             status: 'PENDING',
         });
 
