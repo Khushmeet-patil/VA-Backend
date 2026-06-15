@@ -202,6 +202,11 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             rating: 1,
             reviewsCount: 1,
             pricePerMin: 1,
+            voiceCallPricePerMin: 1,
+            videoCallPricePerMin: 1,
+            isChatEnabled: 1,
+            isVoiceCallEnabled: 1,
+            isVideoCallEnabled: 1,
             isOnline: 1,
             language: 1,
             bio: 1,
@@ -307,9 +312,10 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
                     $project: {
                         firstName: 1, lastName: 1, systemKnown: 1, language: 1, bio: 1,
                         aboutMe: 1, experience: 1, rating: 1, reviewsCount: 1, followersCount: 1,
-                        isOnline: 1, isBusy: 1, pricePerMin: 1, priceRangeMin: 1, priceRangeMax: 1,
-                        profilePhoto: 1, specialties: 1, tag: 1, isFreeChatAvailable: 1,
-                        freeChatLimit: 1, freeChatsToday: 1
+                        isOnline: 1, isBusy: 1, pricePerMin: 1, voiceCallPricePerMin: 1, videoCallPricePerMin: 1,
+                        isChatEnabled: 1, isVoiceCallEnabled: 1, isVideoCallEnabled: 1,
+                        priceRangeMin: 1, priceRangeMax: 1, profilePhoto: 1, specialties: 1, tag: 1,
+                        isFreeChatAvailable: 1, freeChatLimit: 1, freeChatsToday: 1
                     }
                 }
             ];
@@ -335,7 +341,7 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             }
 
             astrologers = await Astrologer.find(query)
-                .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
+                .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
                 .sort(sort)
                 .skip(skip)
                 .limit(limit)
@@ -376,7 +382,7 @@ export const getTaggedAstrologers = async (req: Request, res: Response) => {
         };
 
         const astrologers = await Astrologer.find(query)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
             .sort({ isOnline: -1, rating: -1 })
             .lean();
 
@@ -402,7 +408,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
         const userId = (req as any).userId; // Optional - may be undefined for unauthenticated requests
 
         const astrologer = await Astrologer.findById(id)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin priceRangeMin priceRangeMax profilePhoto specialties totalChats tag')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties totalChats tag')
             .lean();
 
         if (!astrologer) {

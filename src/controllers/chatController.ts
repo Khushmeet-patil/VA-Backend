@@ -523,7 +523,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
                 userJoined: true,
                 astrologerJoined: true
             })
-                .populate('astrologerId', 'firstName lastName profilePhoto')
+                .populate('astrologerId', 'firstName lastName profilePhoto isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled')
                 .sort({ createdAt: -1 })
                 .limit(50);
         }
