@@ -414,20 +414,27 @@ export const toggleStatus = async (req: Request, res: Response) => {
         const astrologerId = (req as any).userId;
         const { isOnline } = req.body;
 
-        const astrologer = await Astrologer.findByIdAndUpdate(
-            astrologerId,
-            { 
-               isOnline,
-               isManualOverride: true
-               // Note: intentionally NOT setting isAutoOnlineEnabled:false
-               // so the scheduler can resume at the next boundary crossing
-            },
-            { new: true }
-        );
-
+        const astrologer = await Astrologer.findById(astrologerId);
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
+
+        if (isOnline) {
+            const chatEnabled = astrologer.isChatEnabled !== false;
+            const voiceEnabled = astrologer.isVoiceCallEnabled !== false;
+            const videoEnabled = astrologer.isVideoCallEnabled !== false;
+
+            if (!chatEnabled && !voiceEnabled && !videoEnabled) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please enable at least one service (Chat, Voice Call, or Video Call) before going online.'
+                });
+            }
+        }
+
+        astrologer.isOnline = isOnline;
+        astrologer.isManualOverride = true;
+        await astrologer.save();
 
         // Send notification to all users when they come online
         if (isOnline) {
@@ -719,6 +726,20 @@ export const updateChatRate = async (req: Request, res: Response) => {
         if (!astrologer) {
             console.log('Astrologer not found:', astrologerId);
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        // Check if updating the toggles would result in 0 active services while online
+        if (astrologer.isOnline) {
+            const finalChat = isChatEnabled !== undefined ? isChatEnabled : (astrologer.isChatEnabled !== false);
+            const finalVoice = isVoiceCallEnabled !== undefined ? isVoiceCallEnabled : (astrologer.isVoiceCallEnabled !== false);
+            const finalVideo = isVideoCallEnabled !== undefined ? isVideoCallEnabled : (astrologer.isVideoCallEnabled !== false);
+
+            if (!finalChat && !finalVoice && !finalVideo) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'You must keep at least one service enabled while you are online. Go offline first if you wish to disable all services.'
+                });
+            }
         }
 
         // Validate rates are within admin-defined range

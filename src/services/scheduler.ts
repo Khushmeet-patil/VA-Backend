@@ -52,8 +52,12 @@ const scheduleAutoOnline = () => {
                 if (todaySchedule && todaySchedule.enabled) {
                     const startMins = parseInt(todaySchedule.startTime.split(':')[0]) * 60 + parseInt(todaySchedule.startTime.split(':')[1]);
                     const endMins = parseInt(todaySchedule.endTime.split(':')[0]) * 60 + parseInt(todaySchedule.endTime.split(':')[1]);
-                    shouldBeOnline = currentMins >= startMins && currentMins < endMins;
-                    scheduleInfo = `${todaySchedule.startTime}-${todaySchedule.endTime} (${startMins}-${endMins} mins), current=${currentMins}, shouldBeOnline=${shouldBeOnline}`;
+                    const chatEnabled = astro.isChatEnabled !== false;
+                    const voiceEnabled = astro.isVoiceCallEnabled !== false;
+                    const videoEnabled = astro.isVideoCallEnabled !== false;
+                    
+                    shouldBeOnline = (currentMins >= startMins && currentMins < endMins) && (chatEnabled || voiceEnabled || videoEnabled);
+                    scheduleInfo = `${todaySchedule.startTime}-${todaySchedule.endTime} (${startMins}-${endMins} mins), current=${currentMins}, services=${chatEnabled || voiceEnabled || videoEnabled}, shouldBeOnline=${shouldBeOnline}`;
                 }
 
                 const currentExpected = (astro as any).expectedScheduleState || 'none';
