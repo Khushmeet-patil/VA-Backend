@@ -1110,7 +1110,7 @@ export const updateAstrologer = async (req: Request, res: Response) => {
     try {
         const { astrologerId } = req.params;
         const {
-            isBlocked, priceRangeMin, priceRangeMax, pricePerMin, tag,
+            isBlocked, priceRangeMin, priceRangeMax, pricePerMin, voiceCallPricePerMin, videoCallPricePerMin, tag,
             firstName, lastName, email, mobileNumber, experience, city, country, bio, aboutMe, specialties, profileImage,
             language, systemKnown, isOnline, blockingReason, commissionPercentage
         } = req.body;
@@ -1122,6 +1122,8 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (typeof priceRangeMin === 'number') updateData.priceRangeMin = priceRangeMin;
         if (typeof priceRangeMax === 'number') updateData.priceRangeMax = priceRangeMax;
         if (typeof pricePerMin === 'number') updateData.pricePerMin = pricePerMin;
+        if (typeof voiceCallPricePerMin === 'number') updateData.voiceCallPricePerMin = voiceCallPricePerMin;
+        if (typeof videoCallPricePerMin === 'number') updateData.videoCallPricePerMin = videoCallPricePerMin;
         if (tag) updateData.tag = tag;
 
         // Basic Info
@@ -3200,6 +3202,46 @@ export const setGlobalAstrologerRate = async (req: Request, res: Response) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server Error', error });
+    }
+};
+
+export const setGlobalVoiceCallRate = async (req: Request, res: Response) => {
+    try {
+        const { voiceCallPricePerMin } = req.body;
+
+        if (typeof voiceCallPricePerMin !== 'number' || voiceCallPricePerMin <= 0) {
+            return res.status(400).json({ success: false, message: 'voiceCallPricePerMin must be a positive number' });
+        }
+
+        const result = await Astrologer.updateMany({}, { $set: { voiceCallPricePerMin } });
+
+        res.status(200).json({
+            success: true,
+            message: `Global voice call rate updated for ${result.modifiedCount} astrologers`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+export const setGlobalVideoCallRate = async (req: Request, res: Response) => {
+    try {
+        const { videoCallPricePerMin } = req.body;
+
+        if (typeof videoCallPricePerMin !== 'number' || videoCallPricePerMin <= 0) {
+            return res.status(400).json({ success: false, message: 'videoCallPricePerMin must be a positive number' });
+        }
+
+        const result = await Astrologer.updateMany({}, { $set: { videoCallPricePerMin } });
+
+        res.status(200).json({
+            success: true,
+            message: `Global video call rate updated for ${result.modifiedCount} astrologers`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
     }
 };
 

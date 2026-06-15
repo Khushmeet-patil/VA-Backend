@@ -71,6 +71,8 @@ import {
     updateStartPopup,
     deleteStartPopup,
     setGlobalAstrologerRate,
+    setGlobalVoiceCallRate,
+    setGlobalVideoCallRate,
     getAnalysisStats,
     getCallStats
 } from '../controllers/adminController';
@@ -117,6 +119,8 @@ router.delete('/users/:userId', deleteUser);
 router.post('/astrologers', adminAddAstrologer);
 router.get('/astrologers', getAstrologers);
 router.put('/astrologers/global-rate', setGlobalAstrologerRate); // Must be before :astrologerId route
+router.put('/astrologers/global-voice-rate', setGlobalVoiceCallRate);
+router.put('/astrologers/global-video-rate', setGlobalVideoCallRate);
 router.put('/astrologers/bulk', bulkUpdateAstrologers); // Must be before :astrologerId route
 router.put('/astrologers/:astrologerId/status', updateAstrologerStatus);
 router.put('/astrologers/:astrologerId', updateAstrologer);
