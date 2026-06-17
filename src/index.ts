@@ -36,6 +36,7 @@ import panchangRoutes from './routes/panchangRoutes';
 import policyRoutes from './routes/policyRoutes';
 import systemRoutes from './routes/systemRoutes';
 import giftRoutes from './routes/giftRoutes';
+import pdfServiceRoutes from './routes/pdfServiceRoutes';
 
 // Store module (CommonJS – required with require() since it uses JS, not TS)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -164,6 +165,7 @@ app.use('/api/panchang', panchangRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/policies', policyRoutes);
 app.use('/api/gifts', giftRoutes);
+app.use('/api/pdf-service', pdfServiceRoutes);
 
 // Store module — mounted at /store (all store APIs become /store/api/...)
 app.use('/store', storeApp);

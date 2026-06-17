@@ -100,6 +100,36 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'OFFLINE_NOTIFY_MSG') {
                 return res.json({ success: true, data: { key, value: 'Dear {astrologername}, {username} is waiting for you to come online.' } });
             }
+            if (key === 'kundliPdfBasicPrice') {
+                return res.json({ success: true, data: { key, value: 99 } });
+            }
+            if (key === 'kundliPdfProPrice') {
+                return res.json({ success: true, data: { key, value: 199 } });
+            }
+            if (key === 'kundliPdfCompanyName') {
+                return res.json({ success: true, data: { key, value: 'VedicAstro Solutions' } });
+            }
+            if (key === 'kundliPdfCompanyEmail') {
+                return res.json({ success: true, data: { key, value: 'support@vedicastro.co.in' } });
+            }
+            if (key === 'kundliPdfCompanyMobile') {
+                return res.json({ success: true, data: { key, value: '+91-9999999999' } });
+            }
+            if (key === 'kundliPdfCompanyInfo') {
+                return res.json({ success: true, data: { key, value: 'VedicAstro provides personalized horoscope predictions and guidance.' } });
+            }
+            if (key === 'kundliPdfLogoUrl') {
+                return res.json({ success: true, data: { key, value: 'https://cdn.vedicastro.co.in/assets/Logo.png' } });
+            }
+            if (key === 'kundliPdfDomainUrl') {
+                return res.json({ success: true, data: { key, value: 'https://vedicastro.co.in' } });
+            }
+            if (key === 'kundliPdfFooterLink') {
+                return res.json({ success: true, data: { key, value: 'vedicastro.co.in' } });
+            }
+            if (key === 'kundliPdfCompanyLandline') {
+                return res.json({ success: true, data: { key, value: '+91-1234567890' } });
+            }
             return res.status(404).json({ success: false, message: 'Setting not found' });
         }
 
