@@ -53,7 +53,7 @@ export const getGeoDetails = async (place: string, maxRows: number = 6): Promise
 
 export const getGeoDetailsGoogle = async (
     place: string,
-    maxRows: number = 6
+    maxRows: number = 3
 ): Promise<{ status: boolean; data: any[] | null }> => {
     try {
         if (!place || place.trim() === '') {
