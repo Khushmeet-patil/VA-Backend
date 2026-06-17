@@ -86,27 +86,45 @@ export const getGeoDetailsGoogle = async (
             return { status: false, data: [] };
         }
 
-        // Call Google Places Autocomplete API
-        const autocompleteUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(queryVal)}&types=(regions)&key=${GOOGLE_MAPS_API_KEY}`;
-        const autoRes = await axios.get(autocompleteUrl);
+        // Call Google Places API (New) Autocomplete POST endpoint
+        const autocompleteUrl = 'https://places.googleapis.com/v1/places:autocomplete';
+        const autoRes = await axios.post(autocompleteUrl, {
+            input: queryVal,
+            includedPrimaryTypes: ['(regions)']
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY
+            }
+        });
 
-        if (autoRes.data && autoRes.data.predictions) {
-            const predictions = autoRes.data.predictions.slice(0, maxRows);
-            const mappedResults = predictions.map((pred: any) => {
+        if (autoRes.data && autoRes.data.suggestions) {
+            const predictions = autoRes.data.suggestions.slice(0, maxRows);
+            const mappedResults = predictions.map((sug: any) => {
+                const pred = sug.placePrediction;
+                if (!pred) return null;
+
                 let countryCode = 'IN';
-                if (pred.terms && pred.terms.length > 0) {
-                    countryCode = pred.terms[pred.terms.length - 1].value;
+                const secondaryText = pred.structuredFormat?.secondaryText?.text || '';
+                if (secondaryText.toLowerCase().includes('india')) {
+                    countryCode = 'IN';
+                } else {
+                    const parts = secondaryText.split(',');
+                    if (parts.length > 0) {
+                        countryCode = parts[parts.length - 1].trim().substring(0, 2).toUpperCase();
+                    }
                 }
+
                 return {
-                    place_name: pred.description,
-                    place_id: pred.place_id,
+                    place_name: pred.text?.text || '',
+                    place_id: pred.placeId,
                     latitude: 0, // Resolved lazily upon user selection
                     longitude: 0,
                     timezone: '5.5',
                     timezone_id: 'Asia/Kolkata',
                     country_code: countryCode
                 };
-            });
+            }).filter((item: any) => item !== null);
 
             return {
                 status: true,
@@ -116,13 +134,13 @@ export const getGeoDetailsGoogle = async (
 
         return { status: false, data: [] };
     } catch (error: any) {
-        console.error('[GeoService Google] Autocomplete error:', error.message);
+        console.error('[GeoService Google] Autocomplete error:', error.response?.data || error.message);
         return { status: false, data: [] };
     }
 };
 
 /**
- * Resolves a Place ID to coordinates using Google Place Details
+ * Resolves a Place ID to coordinates using Google Place Details (New)
  */
 export const getPlaceDetailsGoogle = async (placeId: string, placeName?: string): Promise<any> => {
     try {
@@ -146,20 +164,30 @@ export const getPlaceDetailsGoogle = async (placeId: string, placeName?: string)
             return null;
         }
 
-        // 2. Query Google Place Details API
-        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address,address_components&key=${GOOGLE_MAPS_API_KEY}`;
-        const detailsRes = await axios.get(detailsUrl);
+        // 2. Query Google Place Details (New) GET API
+        const detailsUrl = `https://places.googleapis.com/v1/places/${placeId}`;
+        const detailsRes = await axios.get(detailsUrl, {
+            headers: {
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+                'X-Goog-FieldMask': 'id,location,formattedAddress,addressComponents'
+            }
+        });
 
-        if (detailsRes.data && detailsRes.data.result) {
-            const result = detailsRes.data.result;
-            const lat = result.geometry.location.lat;
-            const lng = result.geometry.location.lng;
-            const formattedAddress = result.formatted_address;
+        if (detailsRes.data) {
+            const result = detailsRes.data;
+            const lat = result.location?.latitude;
+            const lng = result.location?.longitude;
+            const formattedAddress = result.formattedAddress;
+
+            if (lat === undefined || lng === undefined) {
+                console.warn('[GeoService Google] Latitude or longitude missing in Google response');
+                return null;
+            }
 
             let countryCode = 'IN';
-            const countryComponent = result.address_components?.find((comp: any) => comp.types.includes('country'));
+            const countryComponent = result.addressComponents?.find((comp: any) => comp.types.includes('country'));
             if (countryComponent) {
-                countryCode = countryComponent.short_name;
+                countryCode = countryComponent.shortText || 'IN';
             }
 
             const timezone = '5.5';
@@ -198,7 +226,7 @@ export const getPlaceDetailsGoogle = async (placeId: string, placeName?: string)
 
         return null;
     } catch (error: any) {
-        console.error('[GeoService Google] getPlaceDetails error:', error.message);
+        console.error('[GeoService Google] getPlaceDetails error:', error.response?.data || error.message);
         return null;
     }
 };
@@ -231,20 +259,29 @@ export const geocodePlaceGoogle = async (placeName: string): Promise<any> => {
         }
 
         // 2. Call Places Autocomplete to find matches
-        const autocompleteUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(placeName)}&types=(regions)&key=${GOOGLE_MAPS_API_KEY}`;
-        const autoRes = await axios.get(autocompleteUrl);
+        const autocompleteUrl = 'https://places.googleapis.com/v1/places:autocomplete';
+        const autoRes = await axios.post(autocompleteUrl, {
+            input: placeName,
+            includedPrimaryTypes: ['(regions)']
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY
+            }
+        });
 
-        if (autoRes.data && autoRes.data.predictions && autoRes.data.predictions.length > 0) {
-            const bestMatch = autoRes.data.predictions[0];
-            const placeId = bestMatch.place_id;
-
-            // 3. Resolve details
-            return await getPlaceDetailsGoogle(placeId, placeName);
+        if (autoRes.data && autoRes.data.suggestions && autoRes.data.suggestions.length > 0) {
+            const bestMatch = autoRes.data.suggestions[0].placePrediction;
+            if (bestMatch) {
+                const placeId = bestMatch.placeId;
+                // 3. Resolve details
+                return await getPlaceDetailsGoogle(placeId, placeName);
+            }
         }
 
         return null;
     } catch (error: any) {
-        console.error('[GeoService Google] geocodePlace error:', error.message);
+        console.error('[GeoService Google] geocodePlace error:', error.response?.data || error.message);
         return null;
     }
 };
