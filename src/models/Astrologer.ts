@@ -82,6 +82,7 @@ export interface IAstrologer extends Document {
     commissionPercentage?: number | null;          // Chat commission override (null = use global)
     voiceCallCommissionPercentage?: number | null; // Voice call commission override (null = use global)
     videoCallCommissionPercentage?: number | null; // Video call commission override (null = use global)
+    lastRateChangeAt?: Date;                        // Timestamp of last approved rate change (for once-per-month limit)
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -175,6 +176,7 @@ const AstrologerSchema: Schema = new Schema({
     commissionPercentage: { type: Number, default: null },           // Chat commission override
     voiceCallCommissionPercentage: { type: Number, default: null },  // Voice call commission override
     videoCallCommissionPercentage: { type: Number, default: null },  // Video call commission override
+    lastRateChangeAt: { type: Date, default: null },                 // Timestamp of last approved rate change
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

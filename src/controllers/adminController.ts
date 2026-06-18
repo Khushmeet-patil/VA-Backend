@@ -2010,6 +2010,14 @@ export const approveChangeRequest = async (req: Request, res: Response) => {
             }
             (astrologer as any)[key] = value;
         }
+
+        // Stamp lastRateChangeAt when a rate change is approved, enabling the
+        // once-per-month constraint on the astrologer's side.
+        if (changeRequest.requestType === 'rate_update') {
+            (astrologer as any).lastRateChangeAt = new Date();
+            console.log(`[Admin] lastRateChangeAt stamped for astrologer ${astrologer._id}`);
+        }
+
         await astrologer.save();
 
         // Mark request as approved

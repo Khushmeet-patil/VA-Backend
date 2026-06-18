@@ -319,7 +319,8 @@ export const getProfile = async (req: Request, res: Response) => {
                 isFreeChatAvailable: astrologer.isFreeChatAvailable || false,
                 freeChatLimit: astrologer.freeChatLimit || 0,
                 isVerified: astrologer.isVerified || false,
-                isDeletionRequested: astrologer.isDeletionRequested || false
+                isDeletionRequested: astrologer.isDeletionRequested || false,
+                lastRateChangeAt: astrologer.lastRateChangeAt || null
             }
         });
 
@@ -745,6 +746,48 @@ export const updateChatRate = async (req: Request, res: Response) => {
         // Validate rates are within admin-defined range
         const minRate = astrologer.priceRangeMin || 10;
         const maxRate = astrologer.priceRangeMax || 100;
+
+        // ── Rate-change frequency guard ──────────────────────────────────────────
+        // Only relevant when price fields are being changed (not just toggles).
+        const isPriceChangeRequested =
+            pricePerMin !== undefined ||
+            voiceCallPricePerMin !== undefined ||
+            videoCallPricePerMin !== undefined;
+
+        if (isPriceChangeRequested) {
+            // 1. Block if there is already a pending rate_update request for this astrologer.
+            const existingPending = await ProfileChangeRequest.findOne({
+                astrologerId: astrologer._id,
+                requestType: 'rate_update',
+                status: 'pending'
+            });
+            if (existingPending) {
+                return res.status(429).json({
+                    success: false,
+                    message: 'You already have a pending rate change request. Please wait for admin approval before submitting a new one.'
+                });
+            }
+
+            // 2. Block if the last approved rate change was within the last 30 days.
+            if (astrologer.lastRateChangeAt) {
+                const daysSinceLast =
+                    (Date.now() - new Date(astrologer.lastRateChangeAt).getTime()) /
+                    (1000 * 60 * 60 * 24);
+                if (daysSinceLast < 30) {
+                    const nextAllowedDate = new Date(astrologer.lastRateChangeAt);
+                    nextAllowedDate.setDate(nextAllowedDate.getDate() + 30);
+                    const formattedDate = nextAllowedDate.toLocaleDateString('en-IN', {
+                        day: '2-digit', month: 'short', year: 'numeric'
+                    });
+                    return res.status(429).json({
+                        success: false,
+                        message: `Rate can only be changed once per month. You can submit a new rate change request after ${formattedDate}.`,
+                        nextAllowedDate: nextAllowedDate.toISOString()
+                    });
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────────
 
         // Handle status toggles directly (no admin approval required)
         let togglesChanged = false;
