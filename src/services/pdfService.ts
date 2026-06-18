@@ -46,7 +46,7 @@ interface GeneratePdfInput {
 
 export const generateKundliPdf = async (input: GeneratePdfInput): Promise<string> => {
     try {
-        const apiKey = process.env.ASTRO_API_KEY || '';
+        const apiKey = process.env.ASTRO_PDF_ACCESS_TOKEN || process.env.ASTRO_API_KEY || '';
         const endpoint = input.pdfType === 'pro' 
             ? 'https://pdf.astrologyapi.com/v1/pro_horoscope_pdf'
             : 'https://pdf.astrologyapi.com/v1/basic_horoscope_pdf';
