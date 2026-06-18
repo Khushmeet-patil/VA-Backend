@@ -52,11 +52,11 @@ export const generateKundliPdf = async (input: GeneratePdfInput): Promise<string
             : 'https://pdf.astrologyapi.com/v1/basic_horoscope_pdf';
 
         // Load branding / company info from admin settings or fall back to defaults
-        const companyName = await getSettingValue('kundliPdfCompanyName', 'VedicAstro Solutions');
+        const companyName = await getSettingValue('kundliPdfCompanyName', '');
         const companyInfo = await getSettingValue('kundliPdfCompanyInfo', 'VedicAstro provides personalized horoscope predictions and guidance.');
         const domainUrl = await getSettingValue('kundliPdfDomainUrl', 'https://vedicastro.co.in');
         const footerLink = await getSettingValue('kundliPdfFooterLink', 'vedicastro.co.in');
-        const logoUrl = await getSettingValue('kundliPdfLogoUrl', 'https://cdn.vedicastro.co.in/assets/Logo.png');
+        const logoUrl = await getSettingValue('kundliPdfLogoUrl', 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18).png');
         const companyEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
         const companyLandline = await getSettingValue('kundliPdfCompanyLandline', '+91-1234567890');
         const companyMobile = await getSettingValue('kundliPdfCompanyMobile', '+91-9999999999');
