@@ -229,7 +229,7 @@ export const generateNumerologyPdf = async (input: GenerateNumerologyPdfInput): 
 
         console.log('[PDF Service] Numerology PDF API Response:', response.data);
 
-        let pdfUrl = response.data?.pdf_url || response.data?.pdfUrl;
+        let pdfUrl = response.data?.response?.pdf_url || response.data?.response?.pdfUrl || response.data?.pdf_url || response.data?.pdfUrl;
         if (!pdfUrl) {
             throw new Error(response.data?.message || 'Astrology Numerology PDF API did not return a PDF URL');
         }
