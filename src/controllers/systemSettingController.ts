@@ -119,7 +119,7 @@ export const getSettingByKey = async (req: Request, res: Response) => {
                 return res.json({ success: true, data: { key, value: 'VedicAstro provides personalized horoscope predictions and guidance.' } });
             }
             if (key === 'kundliPdfLogoUrl') {
-                return res.json({ success: true, data: { key, value: 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18).png' } });
+                return res.json({ success: true, data: { key, value: 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18)%20(1).png' } });
             }
             if (key === 'kundliPdfDomainUrl') {
                 return res.json({ success: true, data: { key, value: 'https://vedicastro.co.in' } });
