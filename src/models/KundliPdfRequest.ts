@@ -14,7 +14,7 @@ export interface IKundliPdfRequest extends Document {
     lon: number;
     tzone: number;
     place: string;
-    pdfType: 'basic' | 'pro';
+    pdfType: 'basic' | 'pro' | 'numerology';
     language: string;
     email: string;
     amount: number;
@@ -39,7 +39,7 @@ const KundliPdfRequestSchema: Schema = new Schema({
     lon: { type: Number },
     tzone: { type: Number },
     place: { type: String },
-    pdfType: { type: String, enum: ['basic', 'pro'] },
+    pdfType: { type: String, enum: ['basic', 'pro', 'numerology'] },
     language: { type: String, default: 'en', required: true },
     email: { type: String, required: true },
     amount: { type: Number, required: true },

@@ -54,6 +54,7 @@ export const createPdfOrder = async (req: AuthRequest, res: Response) => {
                 language: language || 'en',
                 email,
                 amount,
+                pdfType: 'numerology',
                 status: 'pending'
             });
         } else {
