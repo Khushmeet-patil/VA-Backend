@@ -98,9 +98,13 @@ export const generateKundliPdf = async (input: GeneratePdfInput): Promise<string
         console.log('[PDF Service] Astrology PDF API Response:', response.data);
 
         // API usually returns { status: true, pdf_url: "..." } or { success: true, pdf_url: "..." }
-        const pdfUrl = response.data?.pdf_url || response.data?.pdfUrl;
+        let pdfUrl = response.data?.pdf_url || response.data?.pdfUrl;
         if (!pdfUrl) {
             throw new Error(response.data?.message || 'Astrology PDF API did not return a PDF URL');
+        }
+
+        if (pdfUrl.startsWith('http://')) {
+            pdfUrl = pdfUrl.replace('http://', 'https://');
         }
 
         return pdfUrl;

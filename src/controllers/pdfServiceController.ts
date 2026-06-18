@@ -7,6 +7,7 @@ import User from '../models/User';
 import { generateKundliPdf, sendPdfEmail } from '../services/pdfService';
 import { getSettingValue } from './systemSettingController';
 import mongoose from 'mongoose';
+import axios from 'axios';
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -251,5 +252,34 @@ export const getPdfOrders = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('[PDF Service Controller] getPdfOrders Error:', error);
         return res.status(500).json({ success: false, message: 'Failed to retrieve PDF orders analytics', error: error.message });
+    }
+};
+
+// 4. Public route to download PDF with attachment headers (Direct Download)
+export const downloadPdfFile = async (req: Request, res: Response) => {
+    try {
+        const { url, name } = req.query;
+        if (!url || typeof url !== 'string') {
+            return res.status(400).json({ success: false, message: 'PDF URL is required.' });
+        }
+
+        // Fetch the PDF from Astrology API as arraybuffer
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        
+        // Clean up the name for filename
+        const safeName = name && typeof name === 'string' 
+            ? name.replace(/[^a-zA-Z0-9]/g, '_') 
+            : 'Kundli_Horoscope';
+        const filename = `${safeName}_Kundli.pdf`;
+
+        // Set attachment headers
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', response.data.length);
+
+        return res.send(Buffer.from(response.data));
+    } catch (error: any) {
+        console.error('[PDF Service Controller] downloadPdfFile Error:', error.message);
+        return res.status(500).json({ success: false, message: 'Failed to download PDF file.', error: error.message });
     }
 };
