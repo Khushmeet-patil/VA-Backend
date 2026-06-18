@@ -346,7 +346,7 @@ export const getUserCalls = async (req: AuthRequest, res: Response) => {
                 astrologerId: userId,
                 status: 'ENDED'
             })
-                .populate('userId', 'name mobile')
+                .populate('userId', 'name mobile profilePhoto')
                 .sort({ createdAt: -1 })
                 .limit(50);
         } else {
