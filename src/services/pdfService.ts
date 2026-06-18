@@ -59,7 +59,7 @@ export const generateKundliPdf = async (input: GeneratePdfInput): Promise<string
         const logoUrl = await getSettingValue('kundliPdfLogoUrl', 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18)%20(1).png');
         const companyEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
         const companyLandline = await getSettingValue('kundliPdfCompanyLandline', '+91-1234567890');
-        const companyMobile = await getSettingValue('kundliPdfCompanyMobile', '+91-9999999999');
+        const companyMobile = await getSettingValue('kundliPdfCompanyMobile', '+91 75749 70100');
 
         const requestBody = {
             name: input.name,

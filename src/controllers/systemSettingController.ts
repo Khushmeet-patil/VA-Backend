@@ -113,7 +113,7 @@ export const getSettingByKey = async (req: Request, res: Response) => {
                 return res.json({ success: true, data: { key, value: 'support@vedicastro.co.in' } });
             }
             if (key === 'kundliPdfCompanyMobile') {
-                return res.json({ success: true, data: { key, value: '+91-9999999999' } });
+                return res.json({ success: true, data: { key, value: '+91 75749 70100' } });
             }
             if (key === 'kundliPdfCompanyInfo') {
                 return res.json({ success: true, data: { key, value: 'VedicAstro provides personalized horoscope predictions and guidance.' } });
