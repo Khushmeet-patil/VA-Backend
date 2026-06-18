@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import KundliPdfRequest from '../models/KundliPdfRequest';
 import Transaction from '../models/Transaction';
 import User from '../models/User';
-import { generateKundliPdf, sendPdfEmail } from '../services/pdfService';
+import { generateKundliPdf, sendPdfEmail, generateNumerologyPdf, sendNumerologyPdfEmail } from '../services/pdfService';
 import { getSettingValue } from './systemSettingController';
 import mongoose from 'mongoose';
 import axios from 'axios';
@@ -18,7 +18,7 @@ interface AuthRequest extends Request {
     userId?: string;
 }
 
-// 1. Create Order for Kundli PDF
+// 1. Create Order — supports both Kundli and Numerology PDFs
 export const createPdfOrder = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
@@ -26,82 +26,104 @@ export const createPdfOrder = async (req: AuthRequest, res: Response) => {
             return res.status(401).json({ success: false, message: 'Not authenticated' });
         }
 
-        const {
-            name, gender, day, month, year, hour, min,
-            lat, lon, tzone, place, pdfType, language, email
-        } = req.body;
+        const { reportType = 'kundli', ...body } = req.body;
 
-        // Validation
-        if (!name || !gender || !day || !month || !year || hour === undefined || min === undefined ||
-            lat === undefined || lon === undefined || tzone === undefined || !place || !pdfType || !email) {
-            return res.status(400).json({ success: false, message: 'All birth details, pdfType, and email are required.' });
+        let amount: number;
+        let pdfRequest: any;
+
+        if (reportType === 'numerology') {
+            // Numerology PDF: only needs name, day, month, year, language, email
+            const { name, day, month, year, language, email } = body;
+
+            if (!name || !day || !month || !year || !email) {
+                return res.status(400).json({ success: false, message: 'Name, date of birth, and email are required for Numerology PDF.' });
+            }
+
+            const basePrice = await getSettingValue('numerologyPdfPrice', 149);
+            const gstRate = await getSettingValue('gstRate', 18);
+            const gstAmount = (basePrice * gstRate) / 100;
+            amount = basePrice + gstAmount;
+
+            pdfRequest = await KundliPdfRequest.create({
+                user: userId,
+                reportType: 'numerology',
+                name,
+                day: Number(day),
+                month: Number(month),
+                year: Number(year),
+                language: language || 'en',
+                email,
+                amount,
+                status: 'pending'
+            });
+        } else {
+            // Kundli PDF
+            const { name, gender, day, month, year, hour, min, lat, lon, tzone, place, pdfType, language, email } = body;
+
+            if (!name || !gender || !day || !month || !year || hour === undefined || min === undefined ||
+                lat === undefined || lon === undefined || tzone === undefined || !place || !pdfType || !email) {
+                return res.status(400).json({ success: false, message: 'All birth details, pdfType, and email are required.' });
+            }
+
+            const rateKey = pdfType === 'pro' ? 'kundliPdfProPrice' : 'kundliPdfBasicPrice';
+            const defaultRate = pdfType === 'pro' ? 199 : 99;
+            const basePrice = await getSettingValue(rateKey, defaultRate);
+            const gstRate = await getSettingValue('gstRate', 18);
+            const gstAmount = (basePrice * gstRate) / 100;
+            amount = basePrice + gstAmount;
+
+            pdfRequest = await KundliPdfRequest.create({
+                user: userId,
+                reportType: 'kundli',
+                name,
+                gender,
+                day: Number(day),
+                month: Number(month),
+                year: Number(year),
+                hour: Number(hour),
+                min: Number(min),
+                lat: Number(lat),
+                lon: Number(lon),
+                tzone: Number(tzone),
+                place,
+                pdfType,
+                language: language || 'en',
+                email,
+                amount,
+                status: 'pending'
+            });
         }
-
-        // Get configured rate
-        const rateKey = pdfType === 'pro' ? 'kundliPdfProPrice' : 'kundliPdfBasicPrice';
-        const defaultRate = pdfType === 'pro' ? 199 : 99;
-        const basePrice = await getSettingValue(rateKey, defaultRate);
-        
-        const gstRate = await getSettingValue('gstRate', 18);
-        const gstAmount = (basePrice * gstRate) / 100;
-        const totalAmount = basePrice + gstAmount;
-
-        // Save PDF Request order record in DB
-        const pdfRequest = await KundliPdfRequest.create({
-            user: userId,
-            name,
-            gender,
-            day: Number(day),
-            month: Number(month),
-            year: Number(year),
-            hour: Number(hour),
-            min: Number(min),
-            lat: Number(lat),
-            lon: Number(lon),
-            tzone: Number(tzone),
-            place,
-            pdfType,
-            language: language || 'en',
-            email,
-            amount: totalAmount,
-            status: 'pending'
-        });
 
         // Setup Razorpay options
         const options = {
-            amount: Math.round(totalAmount * 100), // convert to paise
+            amount: Math.round(amount * 100),
             currency: 'INR',
             receipt: pdfRequest._id.toString(),
-            notes: {
-                userId: userId,
-                pdfRequestId: pdfRequest._id.toString(),
-                pdfType: pdfType,
-                email: email
-            }
+            notes: { userId, pdfRequestId: pdfRequest._id.toString(), reportType }
         };
 
         let orderId = `mock_order_${pdfRequest._id}`;
-        let amount = Math.round(totalAmount * 100);
+        let orderAmount = Math.round(amount * 100);
         let currency = 'INR';
 
         try {
             if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
                 const order = await razorpay.orders.create(options);
                 orderId = order.id;
-                amount = Number(order.amount);
+                orderAmount = Number(order.amount);
                 currency = order.currency;
             } else {
                 console.log('[PDF Service Controller] Razorpay credentials missing. Using mock order ID for testing.');
             }
         } catch (err: any) {
-            console.warn('[PDF Service Controller] Razorpay order creation failed, using mock order ID for testing:', err.message);
+            console.warn('[PDF Service Controller] Razorpay order creation failed, using mock:', err.message);
         }
 
         return res.status(200).json({
             success: true,
-            orderId: orderId,
-            amount: amount,
-            currency: currency,
+            orderId,
+            amount: orderAmount,
+            currency,
             key_id: process.env.RAZORPAY_KEY_ID || 'mock_key_id',
             pdfRequestId: pdfRequest._id
         });
@@ -112,7 +134,7 @@ export const createPdfOrder = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// 2. Verify Payment & Generate PDF
+// 2. Verify Payment & Generate PDF (Kundli or Numerology)
 export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.userId;
@@ -120,12 +142,7 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
             return res.status(401).json({ success: false, message: 'Not authenticated' });
         }
 
-        const {
-            razorpay_order_id,
-            razorpay_payment_id,
-            razorpay_signature,
-            pdfRequestId
-        } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, pdfRequestId } = req.body;
 
         const isBypass = razorpay_signature === 'bypass' || razorpay_payment_id === 'bypass' || !process.env.RAZORPAY_KEY_SECRET;
 
@@ -138,8 +155,7 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
                 return res.status(400).json({ success: false, message: 'Missing payment signature components.' });
             }
 
-            // Verify signature
-            const body = razorpay_order_id + "|" + razorpay_payment_id;
+            const body = razorpay_order_id + '|' + razorpay_payment_id;
             const expectedSignature = crypto
                 .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
                 .update(body.toString())
@@ -150,38 +166,38 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
             }
         }
 
-        // Fetch the PDF Request
         const pdfRequest = await KundliPdfRequest.findById(pdfRequestId);
         if (!pdfRequest) {
             return res.status(404).json({ success: false, message: 'PDF Request details not found.' });
         }
 
-        // If already success, just return the URL
         if (pdfRequest.status === 'success' && pdfRequest.pdfUrl) {
             return res.status(200).json({ success: true, pdfUrl: pdfRequest.pdfUrl });
         }
 
         const paymentId = razorpay_payment_id || `mock_pay_${Date.now()}`;
 
-        // Create transaction record (idempotent guard using unique sparse index on paymentId)
         try {
             const gstRate = await getSettingValue('gstRate', 18);
             const baseAmount = pdfRequest.amount / (1 + gstRate / 100);
             const gstAmount = pdfRequest.amount - baseAmount;
 
+            const reportLabel = pdfRequest.reportType === 'numerology'
+                ? 'Numerology Report PDF'
+                : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`;
+
             await Transaction.create({
-                paymentId: paymentId,
+                paymentId,
                 fromUser: userId,
                 amount: baseAmount,
-                gstAmount: gstAmount,
+                gstAmount,
                 totalPaid: pdfRequest.amount,
-                type: 'debit', // Debit for direct purchase
+                type: 'debit',
                 status: 'success',
-                description: `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF Service Purchase (Txn: ${paymentId})`
+                description: `${reportLabel} Service Purchase (Txn: ${paymentId})`
             });
         } catch (err: any) {
             if (err.code === 11000) {
-                // Duplicate transaction detected - check if pdfUrl was generated
                 const existingReq = await KundliPdfRequest.findById(pdfRequestId);
                 if (existingReq?.pdfUrl) {
                     return res.status(200).json({ success: true, pdfUrl: existingReq.pdfUrl });
@@ -190,41 +206,53 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
             throw err;
         }
 
-        // Payment verified! Now generate the PDF from Astrology API
         let pdfUrl = '';
         try {
-            pdfUrl = await generateKundliPdf({
-                name: pdfRequest.name,
-                gender: pdfRequest.gender,
-                day: pdfRequest.day,
-                month: pdfRequest.month,
-                year: pdfRequest.year,
-                hour: pdfRequest.hour,
-                min: pdfRequest.min,
-                lat: pdfRequest.lat,
-                lon: pdfRequest.lon,
-                tzone: pdfRequest.tzone,
-                place: pdfRequest.place,
-                pdfType: pdfRequest.pdfType,
-                language: pdfRequest.language
-            });
+            if (pdfRequest.reportType === 'numerology') {
+                pdfUrl = await generateNumerologyPdf({
+                    name: pdfRequest.name,
+                    day: pdfRequest.day,
+                    month: pdfRequest.month,
+                    year: pdfRequest.year,
+                    language: (pdfRequest.language as 'en' | 'hi') || 'en'
+                });
+            } else {
+                pdfUrl = await generateKundliPdf({
+                    name: pdfRequest.name,
+                    gender: pdfRequest.gender as 'male' | 'female',
+                    day: pdfRequest.day,
+                    month: pdfRequest.month,
+                    year: pdfRequest.year,
+                    hour: pdfRequest.hour!,
+                    min: pdfRequest.min!,
+                    lat: pdfRequest.lat!,
+                    lon: pdfRequest.lon!,
+                    tzone: pdfRequest.tzone!,
+                    place: pdfRequest.place!,
+                    pdfType: pdfRequest.pdfType as 'basic' | 'pro',
+                    language: pdfRequest.language
+                });
+            }
         } catch (pdfError: any) {
             console.error('[PDF Service Controller] PDF Generation Failed:', pdfError.message);
-            // Save request as failed
             pdfRequest.status = 'failed';
             await pdfRequest.save();
             return res.status(500).json({ success: false, message: 'Payment verified but PDF generation failed.', error: pdfError.message });
         }
 
-        // Update database record as successful
         pdfRequest.pdfUrl = pdfUrl;
         pdfRequest.paymentId = paymentId;
         pdfRequest.status = 'success';
         await pdfRequest.save();
 
-        // Dispatch Email asynchronously with the PDF as attachment
-        sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name, pdfRequest.pdfType)
-            .catch(err => console.error('[PDF Service Controller] Async Email Dispatch Failed:', err.message));
+        // Send email asynchronously
+        if (pdfRequest.reportType === 'numerology') {
+            sendNumerologyPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name)
+                .catch(err => console.error('[PDF Service Controller] Async Numerology Email Failed:', err.message));
+        } else {
+            sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name, pdfRequest.pdfType as 'basic' | 'pro')
+                .catch(err => console.error('[PDF Service Controller] Async Kundli Email Failed:', err.message));
+        }
 
         return res.status(200).json({
             success: true,
@@ -245,17 +273,14 @@ export const getPdfOrders = async (req: Request, res: Response) => {
             .sort({ createdAt: -1 })
             .populate('user', 'name mobile email');
 
-        return res.status(200).json({
-            success: true,
-            data: orders
-        });
+        return res.status(200).json({ success: true, data: orders });
     } catch (error: any) {
         console.error('[PDF Service Controller] getPdfOrders Error:', error);
         return res.status(500).json({ success: false, message: 'Failed to retrieve PDF orders analytics', error: error.message });
     }
 };
 
-// 4. Public route to download PDF with attachment headers (Direct Download)
+// 4. Public route to download PDF with attachment headers
 export const downloadPdfFile = async (req: Request, res: Response) => {
     try {
         const { url, name } = req.query;
@@ -263,16 +288,13 @@ export const downloadPdfFile = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'PDF URL is required.' });
         }
 
-        // Fetch the PDF from Astrology API as arraybuffer
         const response = await axios.get(url, { responseType: 'arraybuffer' });
-        
-        // Clean up the name for filename
-        const safeName = name && typeof name === 'string' 
-            ? name.replace(/[^a-zA-Z0-9]/g, '_') 
-            : 'Kundli_Horoscope';
-        const filename = `${safeName}_Kundli.pdf`;
 
-        // Set attachment headers
+        const safeName = name && typeof name === 'string'
+            ? name.replace(/[^a-zA-Z0-9]/g, '_')
+            : 'Report';
+        const filename = `${safeName}.pdf`;
+
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', response.data.length);

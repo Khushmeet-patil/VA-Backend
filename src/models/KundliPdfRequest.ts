@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IKundliPdfRequest extends Document {
     user: mongoose.Types.ObjectId;
+    reportType: 'kundli' | 'numerology';
     name: string;
     gender: 'male' | 'female';
     day: number;
@@ -26,18 +27,19 @@ export interface IKundliPdfRequest extends Document {
 
 const KundliPdfRequestSchema: Schema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    reportType: { type: String, enum: ['kundli', 'numerology'], default: 'kundli' },
     name: { type: String, required: true },
-    gender: { type: String, enum: ['male', 'female'], required: true },
+    gender: { type: String, enum: ['male', 'female'] },
     day: { type: Number, required: true },
     month: { type: Number, required: true },
     year: { type: Number, required: true },
-    hour: { type: Number, required: true },
-    min: { type: Number, required: true },
-    lat: { type: Number, required: true },
-    lon: { type: Number, required: true },
-    tzone: { type: Number, required: true },
-    place: { type: String, required: true },
-    pdfType: { type: String, enum: ['basic', 'pro'], required: true },
+    hour: { type: Number },
+    min: { type: Number },
+    lat: { type: Number },
+    lon: { type: Number },
+    tzone: { type: Number },
+    place: { type: String },
+    pdfType: { type: String, enum: ['basic', 'pro'] },
     language: { type: String, default: 'en', required: true },
     email: { type: String, required: true },
     amount: { type: Number, required: true },

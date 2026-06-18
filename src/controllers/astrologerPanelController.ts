@@ -25,14 +25,14 @@ import SystemSetting from '../models/SystemSetting';
  */
 const maskUser = (user: any) => {
     if (!user) return { name: 'User', mobile: '' };
-    
+
     // Handle both Mongoose models and plain objects
     const userObj = user.toObject ? user.toObject() : JSON.parse(JSON.stringify(user));
-    
+
     const name = userObj.name || 'User';
     // MASK if name contains 10 or more digits anywhere (to catch user7990358824)
     const isNamePhone = /\d{10,}/.test(name.replace(/[\s-]/g, ''));
-    
+
     // Also mask intakeDetails if this is a session object
     if (userObj.intakeDetails && userObj.intakeDetails.name) {
         const intakeName = userObj.intakeDetails.name;
@@ -241,7 +241,7 @@ export const logoutAstrologer = async (req: Request, res: Response) => {
         const astrologerId = (req as any).userId;
         const { deviceId } = req.body;
         const astrologer = await Astrologer.findById(astrologerId);
-        
+
         if (!astrologer) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
@@ -474,13 +474,13 @@ export const getStats = async (req: Request, res: Response) => {
             {
                 $group: {
                     _id: null,
-                    lifetimeEarnings: { 
-                        $sum: { 
+                    lifetimeEarnings: {
+                        $sum: {
                             $subtract: [
-                                { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] }, 
+                                { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] },
                                 { $ifNull: ['$penaltyAmount', 0] }
-                            ] 
-                        } 
+                            ]
+                        }
                     },
                     totalChats: { $sum: { $cond: [{ $gt: ['$astrologerEarnings', 0] }, 1, 0] } },
                     totalDuration: { $sum: '$totalMinutes' }
@@ -599,7 +599,7 @@ export const getAvailabilityLogs = async (req: Request, res: Response) => {
         console.log(`[getAvailabilityLogs] Fetching logs for ${astrologerId}, range: ${startDate} to ${endDate}`);
 
         const query: any = { astrologerId };
-        
+
         if (startDate || endDate) {
             query.startTime = {};
             if (startDate) query.startTime.$gte = new Date(startDate as string);
@@ -1407,7 +1407,7 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
         if (!astrologer) return res.status(404).json({ success: false, message: 'Astrologer not found' });
 
         const limitPerDay = await getSettingValue('ASTROLOGER_NOTIFICATION_LIMIT_PER_DAY', 5);
-        
+
         // Reset if new day
         const now = new Date();
         const lastDate = astrologer.lastNotificationDate;
@@ -1435,7 +1435,7 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
 
         let successCount = 0;
         let skippedCount = 0;
-        
+
         for (const user of users) {
             // Check cooldown for this specific user
             const lastLog = await AstrologerNotificationLog.findOne({
@@ -1476,7 +1476,7 @@ export const sendPersonalizedNotification = async (req: Request, res: Response) 
         // Update limit
         if (successCount > 0) {
             await Astrologer.findByIdAndUpdate(astrologerId, {
-                $set: { 
+                $set: {
                     notificationsSentToday: sentToday + successCount,
                     lastNotificationDate: now
                 }
