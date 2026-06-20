@@ -341,6 +341,12 @@ class CallService {
                 sessionType: session.sessionType,
             };
 
+            // Calculate wallet-based remaining seconds
+            const realBal = user.walletBalance || 0;
+            const bonusBal = user.bonusBalance || 0;
+            const effectiveBal = realBal + bonusBal;
+            const remainingSeconds = Math.floor((effectiveBal / session.ratePerMinute) * 60);
+
             this.io.to(`user:${session.userId}`).emit('CHAT_STARTED', {
                 ...chatStartedData,
                 astrologerId: session.astrologerId.toString(),
@@ -348,6 +354,7 @@ class CallService {
                 status: 'ACTIVE',
                 intakeDetails: session.intakeDetails,
                 sharedProfiles: session.sharedProfiles,
+                remainingSeconds,
             });
 
             this.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', {
@@ -358,13 +365,10 @@ class CallService {
                 intakeDetails: session.intakeDetails,
                 profileId: session.profileId,
                 sharedProfiles: session.sharedProfiles || [],
+                remainingSeconds,
             });
 
             // Emit TIMER_STARTED with wallet-based remaining seconds
-            const realBal = user.walletBalance || 0;
-            const bonusBal = user.bonusBalance || 0;
-            const effectiveBal = realBal + bonusBal;
-            const remainingSeconds = Math.floor((effectiveBal / session.ratePerMinute) * 60);
 
             this.io.to(`user:${session.userId}`).emit('TIMER_STARTED', {
                 sessionId,
