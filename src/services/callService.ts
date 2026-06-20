@@ -26,7 +26,7 @@ class CallService {
 
     // Map of active disconnect timers: sessionId -> NodeJS.Timeout
     private activeDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
-    private readonly ACTIVE_DISCONNECT_GRACE_MS = 30000; // 30 seconds
+    private readonly ACTIVE_DISCONNECT_GRACE_MS = 90000; // 90 seconds — generous grace for app kill/network drop
 
     // Redis session cache TTL
     private readonly SESSION_CACHE_TTL_SECS = 300;
@@ -664,7 +664,9 @@ class CallService {
                 endReason,
                 totalMinutes: session.totalMinutes,
                 totalAmount: session.totalAmount,
-                astrologerEarnings: session.astrologerNetEarnings ?? session.astrologerEarnings
+                astrologerEarnings: session.astrologerNetEarnings ?? session.astrologerEarnings,
+                ratePerMinute: session.ratePerMinute,
+                startTime: session.startTime?.toISOString(),
             };
 
             this.io.to(`user:${session.userId}`).emit('CHAT_ENDED', {
@@ -769,6 +771,19 @@ class CallService {
         const newCombined = newRealBalance + newBonusBalance;
 
         // Emit BILLING_UPDATE to user and astrologer
+        // Astrologer earnings are calculated on realDeducted only (NOT bonus)
+        const freshAstrologerForBilling = await Astrologer.findById(session.astrologerId);
+        const perAstrologerComm = session.sessionType === 'video_call'
+            ? freshAstrologerForBilling?.videoCallCommissionPercentage
+            : freshAstrologerForBilling?.voiceCallCommissionPercentage;
+        const systemSettingModelB = mongoose.model('SystemSetting');
+        const commissionKeyB = session.sessionType === 'video_call' ? 'videoCallCommission' : 'voiceCallCommission';
+        const commissionSettingB = await systemSettingModelB.findOne({ key: commissionKeyB });
+        const globalCommissionB = Number(commissionSettingB?.value ?? 40);
+        const activeCommissionB = (perAstrologerComm !== undefined && perAstrologerComm !== null) ? perAstrologerComm : globalCommissionB;
+        const realDeductedThisCycle = paymentResult.realDeducted || 0;
+        const astrologerEarningsThisCycle = Math.round((realDeductedThisCycle * activeCommissionB / 100) * 100) / 100;
+
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('BILLING_UPDATE', {
                 sessionId,
@@ -782,6 +797,9 @@ class CallService {
             this.io.to(`astrologer:${session.astrologerId}`).emit('BILLING_UPDATE', {
                 sessionId,
                 amountDeducted: ratePerMinute,
+                realDeducted: realDeductedThisCycle,
+                bonusDeducted: paymentResult.bonusDeducted || 0,
+                astrologerEarningsThisCycle,      // earnings this minute (from real money only)
                 userRealBalance: newRealBalance,
                 userBonusBalance: newBonusBalance,
             });
@@ -1213,6 +1231,42 @@ class CallService {
             console.log(`[CallService] Participant reconnected to call ${session.sessionId}. Clearing grace timer.`);
             clearTimeout(graceTimer);
             this.activeDisconnectTimers.delete(session.sessionId);
+        }
+
+        // Re-emit TIMER_STARTED so the reconnected client fully resyncs its timer
+        // This is critical when user kills/reopens the app mid-call
+        if (this.io && session.status === 'ACTIVE') {
+            try {
+                const user = await User.findById(session.userId);
+                if (user) {
+                    const realBal = user.walletBalance || 0;
+                    const bonusBal = user.bonusBalance || 0;
+                    const remainingSeconds = Math.floor(((realBal + bonusBal) / session.ratePerMinute) * 60);
+
+                    const timerPayload = {
+                        sessionId: session.sessionId,
+                        remainingSeconds,
+                        ratePerMinute: session.ratePerMinute,
+                        walletBalance: realBal,
+                        bonusBalance: bonusBal,
+                        startTime: session.startTime?.toISOString(),
+                        isReconnect: true,
+                    };
+
+                    if (isAstrologer) {
+                        this.io.to(`astrologer:${userId}`).emit('TIMER_STARTED', {
+                            ...timerPayload,
+                            userRealBalance: realBal,
+                            userBonusBalance: bonusBal,
+                        });
+                    } else {
+                        this.io.to(`user:${userId}`).emit('TIMER_STARTED', timerPayload);
+                    }
+                    console.log(`[CallService] Re-emitted TIMER_STARTED on reconnect for ${session.sessionId}. Remaining: ${remainingSeconds}s`);
+                }
+            } catch (err: any) {
+                console.error(`[CallService] Failed to re-emit TIMER_STARTED on reconnect: ${err.message}`);
+            }
         }
     }
 }
