@@ -4,6 +4,7 @@ import Astrologer from '../models/Astrologer';
 import User from '../models/User';
 import Otp from '../models/Otp';
 import ChatSession from '../models/ChatSession';
+import CallSession from '../models/CallSession';
 import ChatMessage from '../models/ChatMessage';
 import Withdrawal from '../models/Withdrawal';
 import ChatReview from '../models/ChatReview';
@@ -476,7 +477,7 @@ export const getStats = async (req: Request, res: Response) => {
 
 
         // Calculate real earnings from ended chat sessions
-        const sessionsStats = await ChatSession.aggregate([
+        const chatSessionsStats = await ChatSession.aggregate([
             { $match: { astrologerId: astrologer._id, status: 'ENDED' } },
             {
                 $group: {
@@ -495,7 +496,34 @@ export const getStats = async (req: Request, res: Response) => {
             }
         ]);
 
-        const stats = sessionsStats[0] || { lifetimeEarnings: 0, totalChats: 0, totalDuration: 0 };
+        // Calculate real earnings from ended call sessions
+        const callSessionsStats = await CallSession.aggregate([
+            { $match: { astrologerId: astrologer._id, status: 'ENDED' } },
+            {
+                $group: {
+                    _id: null,
+                    lifetimeEarnings: {
+                        $sum: {
+                            $subtract: [
+                                { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] },
+                                { $ifNull: ['$penaltyAmount', 0] }
+                            ]
+                        }
+                    },
+                    totalCalls: { $sum: { $cond: [{ $gt: ['$astrologerEarnings', 0] }, 1, 0] } },
+                    totalDuration: { $sum: '$totalMinutes' }
+                }
+            }
+        ]);
+
+        const chatStats = chatSessionsStats[0] || { lifetimeEarnings: 0, totalChats: 0, totalDuration: 0 };
+        const callStats = callSessionsStats[0] || { lifetimeEarnings: 0, totalCalls: 0, totalDuration: 0 };
+
+        const stats = {
+            lifetimeEarnings: (chatStats.lifetimeEarnings || 0) + (callStats.lifetimeEarnings || 0),
+            totalChats: (chatStats.totalChats || 0) + (callStats.totalCalls || 0),
+            totalDuration: (chatStats.totalDuration || 0) + (callStats.totalDuration || 0)
+        };
 
         // Calculate Average Chat Time (in minutes)
         const avgChatTime = stats.totalChats > 0
@@ -515,7 +543,7 @@ export const getStats = async (req: Request, res: Response) => {
         endOfTodayIST.setUTCHours(23, 59, 59, 999);
         const endOfTodayUTC = new Date(endOfTodayIST.getTime() - istOffset);
 
-        const todayStats = await ChatSession.aggregate([
+        const todayChatStats = await ChatSession.aggregate([
             {
                 $match: {
                     astrologerId: astrologer._id,
@@ -533,7 +561,31 @@ export const getStats = async (req: Request, res: Response) => {
             }
         ]);
 
-        const todayData = todayStats[0] || { todayEarnings: 0, todayChats: 0 };
+        const todayCallStats = await CallSession.aggregate([
+            {
+                $match: {
+                    astrologerId: astrologer._id,
+                    status: 'ENDED',
+                    updatedAt: { $gte: startOfTodayUTC, $lte: endOfTodayUTC },
+                    astrologerEarnings: { $gt: 0 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    todayEarnings: { $sum: { $ifNull: ['$astrologerNetEarnings', '$astrologerEarnings'] } },
+                    todayCalls: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const todayChatData = todayChatStats[0] || { todayEarnings: 0, todayChats: 0 };
+        const todayCallData = todayCallStats[0] || { todayEarnings: 0, todayCalls: 0 };
+
+        const todayData = {
+            todayEarnings: (todayChatData.todayEarnings || 0) + (todayCallData.todayEarnings || 0),
+            todayChats: (todayChatData.todayChats || 0) + (todayCallData.todayCalls || 0)
+        };
 
         // Get Rating Distribution (Approved Only)
         const ratingDistribution = await ChatReview.aggregate([
@@ -1337,27 +1389,41 @@ export const getAstrologerAudience = async (req: Request, res: Response) => {
         let followers: { userId: string, date: Date, type: 'follower' }[] = [];
         try {
             const follows = await mongoose.model('AstrologerFollower').find({ astrologerId });
-            followers = follows.map((f: any) => ({
-                userId: f.userId.toString(),
-                date: f.createdAt,
-                type: 'follower'
-            }));
+            followers = follows
+                .filter((f: any) => f.userId)
+                .map((f: any) => ({
+                    userId: f.userId.toString(),
+                    date: f.createdAt,
+                    type: 'follower'
+                }));
         } catch (e) {
             console.warn('AstrologerFollower model error:', e);
         }
 
         // 2. Get Talked Users with dates
         const chatSessions = await ChatSession.find({ astrologerId }).select('userId createdAt').sort({ createdAt: -1 });
-        const chatUsers: { userId: string, date: Date, type: 'chat' }[] = chatSessions.map(c => ({
-            userId: c.userId.toString(),
-            date: (c as any).createdAt,
-            type: 'chat'
-        }));
+        const chatUsers: { userId: string, date: Date, type: 'chat' }[] = chatSessions
+            .filter(c => c.userId)
+            .map(c => ({
+                userId: c.userId.toString(),
+                date: (c as any).createdAt,
+                type: 'chat'
+            }));
+
+        // 3. Get Call Users (Voice and Video) with dates
+        const callSessions = await CallSession.find({ astrologerId }).select('userId createdAt').sort({ createdAt: -1 });
+        const callUsers: { userId: string, date: Date, type: 'call' }[] = callSessions
+            .filter(c => c.userId)
+            .map(c => ({
+                userId: c.userId.toString(),
+                date: (c as any).createdAt,
+                type: 'call'
+            }));
 
         // Merge and unique (keep most recent date)
         const userMap = new Map<string, { id: string, date: Date, types: string[] }>();
 
-        [...followers, ...chatUsers].forEach(item => {
+        [...followers, ...chatUsers, ...callUsers].forEach(item => {
             const existing = userMap.get(item.userId);
             if (existing) {
                 if (item.date && (!existing.date || item.date > existing.date)) existing.date = item.date;
