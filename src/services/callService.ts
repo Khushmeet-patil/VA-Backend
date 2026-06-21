@@ -599,9 +599,14 @@ class CallService {
             const durationMinutes = Math.max(0, durationMs / 60000);
 
             const totalExpectedCost = durationMinutes * session.ratePerMinute;
-            const remainingToCharge = Math.round(totalExpectedCost * 100) / 100;
+            
+            // Re-read session from DB to get the latest totalAmount (avoiding double charging)
+            const freshSession = await CallSession.findOne({ sessionId });
+            const alreadyCharged = freshSession?.totalAmount ?? session.totalAmount ?? 0;
+            let remainingToCharge = totalExpectedCost - alreadyCharged;
+            remainingToCharge = Math.round(remainingToCharge * 100) / 100;
 
-            console.log(`[CallService] End Call Billing: Duration=${durationMinutes.toFixed(2)}m, ExpectedCost=${totalExpectedCost}, Charging=${remainingToCharge}`);
+            console.log(`[CallService] End Call Billing: Duration=${durationMinutes.toFixed(2)}m, ExpectedCost=${totalExpectedCost}, AlreadyCharged=${alreadyCharged}, RemainingToCharge=${remainingToCharge}`);
 
             if (remainingToCharge > 0) {
                 const user = await User.findById(session.userId);
@@ -784,7 +789,7 @@ class CallService {
         const globalCommissionB = Number(commissionSettingB?.value ?? 40);
         const activeCommissionB = (perAstrologerComm !== undefined && perAstrologerComm !== null) ? perAstrologerComm : globalCommissionB;
         const realDeductedThisCycle = paymentResult.realDeducted || 0;
-        const astrologerEarningsThisCycle = Math.round((realDeductedThisCycle * activeCommissionB / 100) * 100) / 100;
+        const astrologerEarningsThisCycle = Math.round((realDeductedThisCycle * (100 - activeCommissionB) / 100) * 100) / 100;
 
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('BILLING_UPDATE', {
@@ -1062,7 +1067,7 @@ class CallService {
                 ? perAstrologerCommission
                 : globalCommission;
 
-            const astrologerShare = Math.round((realDeduction * activeCommission / 100) * 100) / 100;
+            const astrologerShare = Math.round((realDeduction * (100 - activeCommission) / 100) * 100) / 100;
 
             // TDS calculations
             const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });

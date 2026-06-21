@@ -406,16 +406,42 @@ export const getUserActivity = async (req: Request, res: Response) => {
         // 2. Fetch Chat Sessions
         const chatSessions = await ChatSession.find({ userId }).populate('astrologerId', 'firstName lastName').lean();
 
-        // 3. Combine and Sort
+        // 3. Fetch Call Sessions
+        const callSessions = await CallSession.find({ userId }).populate('astrologerId', 'firstName lastName').lean();
+
+        // 4. Filter out per-minute and settlement transactions related to chats/calls
+        const filteredTransactions = transactions.filter(t => {
+            const desc = t.description || '';
+            return !(
+                desc.startsWith('Chat:') ||
+                desc.startsWith('Chat session:') ||
+                desc.startsWith('Call session:') ||
+                desc.startsWith('Call:') ||
+                desc.startsWith('Free Chat System Payment:')
+            );
+        });
+
+        // 5. Combine and Sort
         const activity = [
-            ...transactions.map(t => ({ ...t, activityType: 'transaction' })),
+            ...filteredTransactions.map(t => ({ ...t, activityType: 'transaction' })),
             ...chatSessions.map(c => ({
                 ...c,
                 activityType: 'chat_session',
+                sessionType: 'chat',
                 amount: c.totalAmount, // Map for UI consistency
                 type: 'debit', // Chats are debits
                 status: c.status === 'ENDED' ? 'success' : c.status.toLowerCase(),
                 description: `Chat with ${c.astrologerId ? (c.astrologerId as any).firstName : 'Astrologer'}`,
+                createdAt: c.createdAt
+            })),
+            ...callSessions.map(c => ({
+                ...c,
+                activityType: 'call_session',
+                sessionType: c.sessionType || 'voice_call',
+                amount: c.totalAmount, // Map for UI consistency
+                type: 'debit', // Calls are debits
+                status: c.status === 'ENDED' ? 'success' : c.status.toLowerCase(),
+                description: `${(c.sessionType || 'voice_call') === 'video_call' ? 'Video Call' : 'Voice Call'} with ${c.astrologerId ? (c.astrologerId as any).firstName : 'Astrologer'}`,
                 createdAt: c.createdAt
             }))
         ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

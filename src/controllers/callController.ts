@@ -219,7 +219,8 @@ export const endCall = async (req: AuthRequest, res: Response) => {
             status: endedSession.status,
             totalMinutes: endedSession.totalMinutes,
             totalAmount: endedSession.totalAmount,
-            astrologerEarnings: endedSession.astrologerEarnings
+            astrologerEarnings: endedSession.astrologerEarnings,
+            ratePerMinute: endedSession.ratePerMinute
         });
 
     } catch (error: any) {

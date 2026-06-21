@@ -191,11 +191,18 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
             });
         }
 
-        // Save device ID — use findOneAndUpdate to avoid full-document validation
-        // on legacy astrologer records that might have empty required fields.
-        if (deviceId) {
-            await Astrologer.findByIdAndUpdate(astrologer._id, { $set: { activeDeviceId: deviceId } });
+        // Force offline status on login
+        if (astrologer.isOnline) {
+            await availabilityService.recordOffline(astrologer._id);
         }
+
+        // Save device ID & offline status — use findOneAndUpdate to avoid full-document validation
+        // on legacy astrologer records that might have empty required fields.
+        const updateFields: any = { isOnline: false };
+        if (deviceId) {
+            updateFields.activeDeviceId = deviceId;
+        }
+        await Astrologer.findByIdAndUpdate(astrologer._id, { $set: updateFields });
 
         // Generate token
         const token = jwt.sign(
@@ -220,7 +227,7 @@ export const verifyAstrologerOtp = async (req: Request, res: Response) => {
                 systemKnown: astrologer.systemKnown,
                 language: astrologer.language,
                 profilePhoto: astrologer.profilePhoto,
-                isOnline: astrologer.isOnline || false,
+                isOnline: false,
                 isBlocked: astrologer.isBlocked || false,
                 isVerified: astrologer.isVerified || false, // Return verification status
                 pricePerMin: astrologer.pricePerMin || 20,
@@ -748,11 +755,11 @@ export const updateChatRate = async (req: Request, res: Response) => {
         const maxRate = astrologer.priceRangeMax || 100;
 
         // ── Rate-change frequency guard ──────────────────────────────────────────
-        // Only relevant when price fields are being changed (not just toggles).
+        // Only relevant when price fields are being changed (not just toggles) AND they differ from current rates.
         const isPriceChangeRequested =
-            pricePerMin !== undefined ||
-            voiceCallPricePerMin !== undefined ||
-            videoCallPricePerMin !== undefined;
+            (pricePerMin !== undefined && pricePerMin !== astrologer.pricePerMin) ||
+            (voiceCallPricePerMin !== undefined && voiceCallPricePerMin !== astrologer.voiceCallPricePerMin) ||
+            (videoCallPricePerMin !== undefined && videoCallPricePerMin !== astrologer.videoCallPricePerMin);
 
         if (isPriceChangeRequested) {
             // 1. Block if there is already a pending rate_update request for this astrologer.
