@@ -16,6 +16,8 @@ export interface ICallSession extends Document {
     endTime?: Date;                     // Set when status becomes ENDED
     totalMinutes: number;               // Completed billing cycles
     totalAmount: number;                // Total amount deducted from user
+    totalRealDeducted: number;          // Total real money portion deducted from user
+    totalBonusDeducted: number;         // Total bonus money portion deducted from user
     astrologerEarnings: number;         // Gross earnings (after commission, before TDS)
     astrologerNetEarnings: number;      // Net earnings (after commission and TDS)
     endReason?: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'TIMEOUT' | 'FREE_TRIAL_ENDED' | 'ASTROLOGER_REJECTED' | 'ASTROLOGER_TIMEOUT' | 'USER_CANCEL_WHILE_PENDING' | 'ASTROLOGER_OFFLINE_DURING_REQUEST' | 'INSUFFICIENT_BALANCE_AT_ACCEPT';
@@ -74,6 +76,8 @@ const CallSessionSchema: Schema = new Schema({
     endTime: { type: Date },
     totalMinutes: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
+    totalRealDeducted: { type: Number, default: 0 },
+    totalBonusDeducted: { type: Number, default: 0 },
     astrologerEarnings: { type: Number, default: 0 },
     astrologerNetEarnings: { type: Number, default: 0 },
     penaltyAmount: { type: Number, default: 0 },

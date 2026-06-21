@@ -1504,6 +1504,8 @@ class ChatService {
             const sessionUpdate: any = {
                 $inc: {
                     totalAmount: totalToDeduct,
+                    totalRealDeducted: realDeduction,
+                    totalBonusDeducted: bonusDeduction,
                     astrologerEarnings: astrologerShare,
                     astrologerNetEarnings: netAstrologerShare
                 }
@@ -1522,6 +1524,8 @@ class ChatService {
             if (updatedSessionDoc) {
                 session.totalMinutes = updatedSessionDoc.totalMinutes;
                 session.totalAmount = updatedSessionDoc.totalAmount;
+                session.totalRealDeducted = updatedSessionDoc.totalRealDeducted;
+                session.totalBonusDeducted = updatedSessionDoc.totalBonusDeducted;
                 session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
                 (session as any).astrologerNetEarnings = (updatedSessionDoc as any).astrologerNetEarnings;
             }

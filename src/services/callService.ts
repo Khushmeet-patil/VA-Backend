@@ -789,7 +789,7 @@ class CallService {
         const globalCommissionB = Number(commissionSettingB?.value ?? 40);
         const activeCommissionB = (perAstrologerComm !== undefined && perAstrologerComm !== null) ? perAstrologerComm : globalCommissionB;
         const realDeductedThisCycle = paymentResult.realDeducted || 0;
-        const astrologerEarningsThisCycle = Math.round((realDeductedThisCycle * (100 - activeCommissionB) / 100) * 100) / 100;
+        const astrologerEarningsThisCycle = Math.round((realDeductedThisCycle * activeCommissionB / 100) * 100) / 100;
 
         if (this.io) {
             this.io.to(`user:${session.userId}`).emit('BILLING_UPDATE', {
@@ -1067,7 +1067,7 @@ class CallService {
                 ? perAstrologerCommission
                 : globalCommission;
 
-            const astrologerShare = Math.round((realDeduction * (100 - activeCommission) / 100) * 100) / 100;
+            const astrologerShare = Math.round((realDeduction * activeCommission / 100) * 100) / 100;
 
             // TDS calculations
             const tdsThresholdSetting = await systemSettingModel.findOne({ key: 'tdsThreshold' });
@@ -1122,6 +1122,8 @@ class CallService {
                 {
                     $inc: {
                         totalAmount: totalToDeduct,
+                        totalRealDeducted: realDeduction,
+                        totalBonusDeducted: bonusDeduction,
                         astrologerEarnings: astrologerShare,
                         astrologerNetEarnings: netAstrologerShare
                     }
@@ -1131,6 +1133,8 @@ class CallService {
 
             if (updatedSessionDoc) {
                 session.totalAmount = updatedSessionDoc.totalAmount;
+                session.totalRealDeducted = updatedSessionDoc.totalRealDeducted;
+                session.totalBonusDeducted = updatedSessionDoc.totalBonusDeducted;
                 session.astrologerEarnings = updatedSessionDoc.astrologerEarnings;
                 session.astrologerNetEarnings = updatedSessionDoc.astrologerNetEarnings;
             }
