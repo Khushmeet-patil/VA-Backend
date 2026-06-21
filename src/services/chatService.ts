@@ -152,10 +152,10 @@ class ChatService {
         const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
         const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
         
-        const isEligibleForIntroRate = !user.hasUsedFreeTrial;
+        const isEligibleForIntroRate = !user.hasUsedFreeTrial && sessionType === 'chat';
 
         if (isEligibleForIntroRate) {
-            ratePerMinute = newUserIntroRate;
+            ratePerMinute = 1;
             
             // For intro rate, we require BOTH the Minimum Recharge AND at least 5 minutes of balance
             const combinedBalance = user.walletBalance + (user.bonusBalance || 0);

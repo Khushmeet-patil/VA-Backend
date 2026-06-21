@@ -108,7 +108,7 @@ class CallService {
         // Intro rate eligibility check
         const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
         const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
-        const isEligibleForIntroRate = !user.hasUsedFreeTrial;
+        const isEligibleForIntroRate = false;
 
         if (isEligibleForIntroRate) {
             ratePerMinute = newUserIntroRate;
