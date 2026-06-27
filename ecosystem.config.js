@@ -99,7 +99,7 @@ module.exports = {
         // ══════════════════════════════════════════════════════════════════════
         {
             name: 'va-live',
-            script: '../LIVE_MICROSERVICE/dist/index.js',
+            script: '../livestream_feacture/dist/index.js',
 
             // ── Single process (fork mode) ────────────────────────────────────
             // liveSocketHandler.ts uses in-process Maps for viewer tracking.
@@ -122,8 +122,8 @@ module.exports = {
             // ── Logging ──────────────────────────────────────────────────────
             merge_logs: true,
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-            error_file: '../LIVE_MICROSERVICE/logs/err.log',
-            out_file: '../LIVE_MICROSERVICE/logs/out.log',
+            error_file: '../livestream_feacture/logs/err.log',
+            out_file: '../livestream_feacture/logs/out.log',
 
             // ── Environment ──────────────────────────────────────────────────
             env: {
