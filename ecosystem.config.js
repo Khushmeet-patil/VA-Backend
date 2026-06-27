@@ -86,5 +86,59 @@ module.exports = {
             //                               for short-lived request/response objects
             node_args: '--max-old-space-size=3072 --max-semi-space-size=256',
         },
+
+        // ══════════════════════════════════════════════════════════════════════
+        // Live Streaming Microservice (port 5001)
+        //
+        // Runs as a separate fork process on the same Hostinger KVM4 server.
+        // Completely isolated from va-backend — a crash here never affects
+        // chat/call billing in the main process.
+        //
+        // Memory: 1.5 GB max (main backend gets 3.5 GB)
+        // UV_THREADPOOL_SIZE: 64  (lighter I/O load than main backend)
+        // ══════════════════════════════════════════════════════════════════════
+        {
+            name: 'va-live',
+            script: '../LIVE_MICROSERVICE/dist/index.js',
+
+            // ── Single process (fork mode) ────────────────────────────────────
+            // liveSocketHandler.ts uses in-process Maps for viewer tracking.
+            // liveTimerService.ts uses in-process cron for session timers.
+            // These MUST run in the same process. Fork mode is required.
+            instances: 1,
+            exec_mode: 'fork',
+
+            // ── Memory guard ─────────────────────────────────────────────────
+            // Live microservice is lighter: 1.5 GB max.
+            // Combined with va-backend (3.5 GB) = 5 GB of the 8 GB KVM4 RAM.
+            max_memory_restart: '1500M',
+
+            // ── Restart policy ───────────────────────────────────────────────
+            autorestart: true,
+            restart_delay: 2000,
+            max_restarts: 10,
+            min_uptime: '10s',
+
+            // ── Logging ──────────────────────────────────────────────────────
+            merge_logs: true,
+            log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+            error_file: '../LIVE_MICROSERVICE/logs/err.log',
+            out_file: '../LIVE_MICROSERVICE/logs/out.log',
+
+            // ── Environment ──────────────────────────────────────────────────
+            env: {
+                NODE_ENV: 'development',
+                LIVE_PORT: 5001,
+                UV_THREADPOOL_SIZE: 64,
+            },
+            env_production: {
+                NODE_ENV: 'production',
+                LIVE_PORT: 5001,
+                UV_THREADPOOL_SIZE: 64,
+            },
+
+            // ── Node.js V8 / memory flags ─────────────────────────────────────
+            node_args: '--max-old-space-size=1500 --max-semi-space-size=128',
+        },
     ],
 };

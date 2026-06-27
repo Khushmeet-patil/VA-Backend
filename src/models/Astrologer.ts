@@ -83,6 +83,11 @@ export interface IAstrologer extends Document {
     voiceCallCommissionPercentage?: number | null; // Voice call commission override (null = use global)
     videoCallCommissionPercentage?: number | null; // Video call commission override (null = use global)
     lastRateChangeAt?: Date;                        // Timestamp of last approved rate change (for once-per-month limit)
+    // Live Streaming fields
+    liveStreamEnabled?: boolean;            // Admin grants/revokes live streaming access
+    liveStreamMaxMinutes?: number | null;   // Per-astrologer limit (null = use global SystemSetting)
+    isCurrentlyLive?: boolean;             // True when actively broadcasting
+    currentLiveSessionId?: string | null;  // Active live session ID in live microservice
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -177,6 +182,11 @@ const AstrologerSchema: Schema = new Schema({
     voiceCallCommissionPercentage: { type: Number, default: null },  // Voice call commission override
     videoCallCommissionPercentage: { type: Number, default: null },  // Video call commission override
     lastRateChangeAt: { type: Date, default: null },                 // Timestamp of last approved rate change
+    // Live Streaming
+    liveStreamEnabled: { type: Boolean, default: false },            // Admin grants access
+    liveStreamMaxMinutes: { type: Number, default: null },           // null = use global setting
+    isCurrentlyLive: { type: Boolean, default: false, index: true }, // Quick lookup
+    currentLiveSessionId: { type: String, default: null },           // Active live session
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);
