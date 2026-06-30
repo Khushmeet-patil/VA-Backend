@@ -933,15 +933,14 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
         const existingUser = await User.findOne({ mobile: mobileNumber });
 
         if (existingUser) {
-            // Check if they already have an astrologer record regardless of role (production check)
+            // Check if they already have an astrologer record (production check)
             const profileCheck = await Astrologer.findOne({ userId: existingUser._id });
-            if (profileCheck || existingUser.role === 'astrologer') {
+            if (profileCheck) {
                 return res.status(400).json({ success: false, message: 'This mobile number is already registered as an astrologer' });
             }
 
             // Upgrade user to astrologer
             existingUser.role = 'astrologer';
-            existingUser.isVerified = true; 
             existingUser.name = `${firstName} ${lastName}`.trim(); 
             savedUser = await existingUser.save();
             console.log(`[Admin] Upgraded existing user ${existingUser._id} (${mobileNumber}) to astrologer`);
@@ -951,7 +950,7 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
                 name: `${firstName} ${lastName}`.trim(),
                 mobile: mobileNumber,
                 role: 'astrologer',
-                isVerified: true,
+                isVerified: false,
                 isBlocked: false
             });
             savedUser = await newUser.save();
@@ -1021,8 +1020,45 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
 export const getAstrologers = async (req: Request, res: Response) => {
     try {
         const { status } = req.query;
-        const query = status ? { status } : {};
 
+        // 1. Sync: Find all users with role 'astrologer' and ensure they have an Astrologer profile
+        const astrologerUsers = await User.find({ role: 'astrologer' });
+        for (const user of astrologerUsers) {
+            const profileCheck = await Astrologer.findOne({ userId: user._id });
+            if (!profileCheck) {
+                const nameParts = (user.name || '').trim().split(/\s+/);
+                const firstName = nameParts[0] || 'Astrologer';
+                const lastName = nameParts.slice(1).join(' ') || 'Profile';
+                const newProfile = new Astrologer({
+                    userId: user._id,
+                    firstName,
+                    lastName,
+                    gender: user.gender || 'male',
+                    mobileNumber: user.mobile,
+                    email: user.email || `${user.mobile}@vedicastro.com`,
+                    city: 'Unknown',
+                    country: 'India',
+                    status: 'approved',
+                    isVerified: false
+                });
+                await newProfile.save();
+                console.log(`[Admin Sync] Created missing Astrologer profile for User ${user._id}`);
+            }
+        }
+
+        // 2. Sync: Find all Astrologer profiles and ensure their linked User has role 'astrologer'
+        const allProfiles = await Astrologer.find({});
+        for (const profile of allProfiles) {
+            const user = await User.findById(profile.userId);
+            if (user && user.role !== 'astrologer') {
+                user.role = 'astrologer';
+                await user.save();
+                console.log(`[Admin Sync] Upgraded User ${user._id} role to 'astrologer' to match profile`);
+            }
+        }
+
+        // 3. Query the final synced list of astrologers
+        const query = status ? { status } : {};
         const astrologers = await Astrologer.find(query).populate('userId', 'name mobile');
 
         // Prevent caching
@@ -1032,6 +1068,7 @@ export const getAstrologers = async (req: Request, res: Response) => {
 
         res.status(200).json({ success: true, data: astrologers });
     } catch (error) {
+        console.error('Error in getAstrologers:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
     }
 };
