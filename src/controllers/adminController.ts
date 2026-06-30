@@ -918,7 +918,9 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
         const {
             firstName, lastName, gender, email,
             experience, city, country, systemKnown, language, bio, aboutMe,
-            pricePerMin, priceRangeMin, priceRangeMax, tag, specialties, profileImage
+            pricePerMin, priceRangeMin, priceRangeMax, tag, specialties, profileImage,
+            voiceCallPricePerMin, videoCallPricePerMin,
+            commissionPercentage, voiceCallCommissionPercentage, videoCallCommissionPercentage
         } = req.body;
         let { mobileNumber } = req.body;
 
@@ -972,6 +974,9 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Astrologer profile already exists for this user.' });
         }
 
+        const parsedVoiceCallPrice = voiceCallPricePerMin !== undefined && voiceCallPricePerMin !== '' ? Number(voiceCallPricePerMin) : 20;
+        const parsedVideoCallPrice = videoCallPricePerMin !== undefined && videoCallPricePerMin !== '' ? Number(videoCallPricePerMin) : 30;
+
         const newAstrologer = new Astrologer({
             userId: savedUser._id,
             firstName,
@@ -988,6 +993,14 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
             aboutMe: aboutMe || '',
             status: 'approved', // Admin created are approved by default
             pricePerMin: pricePerMin || 20,
+            voiceCallPricePerMin: parsedVoiceCallPrice,
+            videoCallPricePerMin: parsedVideoCallPrice,
+            isChatEnabled: true,
+            isVoiceCallEnabled: parsedVoiceCallPrice > 0,
+            isVideoCallEnabled: parsedVideoCallPrice > 0,
+            commissionPercentage: commissionPercentage !== undefined && commissionPercentage !== '' ? Number(commissionPercentage) : null,
+            voiceCallCommissionPercentage: voiceCallCommissionPercentage !== undefined && voiceCallCommissionPercentage !== '' ? Number(voiceCallCommissionPercentage) : null,
+            videoCallCommissionPercentage: videoCallCommissionPercentage !== undefined && videoCallCommissionPercentage !== '' ? Number(videoCallCommissionPercentage) : null,
             priceRangeMin: priceRangeMin || 10,
             priceRangeMax: priceRangeMax || 100,
             tag: tag || 'None',
