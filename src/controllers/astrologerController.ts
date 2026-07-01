@@ -408,7 +408,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
         const userId = (req as any).userId; // Optional - may be undefined for unauthenticated requests
 
         const astrologer = await Astrologer.findById(id)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties totalChats tag')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy isCurrentlyLive currentLiveSessionId pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties totalChats tag')
             .lean();
 
         if (!astrologer) {

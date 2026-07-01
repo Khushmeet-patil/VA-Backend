@@ -118,6 +118,13 @@ class ChatService {
             throw new Error('ASTROLOGER_BUSY: Astrologer is busy with another chat');
         }
 
+        // ─── Live stream check ────────────────────────────────────────────────
+        // Astrologer is currently streaming — 1-on-1 consultations are blocked.
+        // The client should detect this code and offer the user to join the stream.
+        if ((astrologer as any).isCurrentlyLive) {
+            throw new Error('ASTROLOGER_IN_LIVE_STREAM: Astrologer is currently in a live stream');
+        }
+
         // ─── Channel availability check ───────────────────────────────────────
         // Reject immediately if the astrologer has disabled chat.
         if (astrologer.isChatEnabled === false) {

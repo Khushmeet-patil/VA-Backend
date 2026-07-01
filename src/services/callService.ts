@@ -70,6 +70,13 @@ class CallService {
             throw new Error('ASTROLOGER_BUSY: Astrologer is busy with another session');
         }
 
+        // ─── Live stream check ────────────────────────────────────────────────
+        // Astrologer is currently streaming — 1-on-1 call sessions are blocked.
+        // The client should detect this code and offer the user to join the stream.
+        if ((astrologer as any).isCurrentlyLive) {
+            throw new Error('ASTROLOGER_IN_LIVE_STREAM: Astrologer is currently in a live stream');
+        }
+
         // ─── Channel availability checks ─────────────────────────────────────
         // Reject immediately if the astrologer has disabled this consultation type.
         if (sessionType === 'voice_call' && astrologer.isVoiceCallEnabled === false) {
