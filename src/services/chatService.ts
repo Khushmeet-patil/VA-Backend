@@ -88,7 +88,8 @@ class ChatService {
         userId: string,
         astrologerId: string,
         intakeDetails?: object,
-        sessionType: 'chat' | 'voice_call' | 'video_call' = 'chat'
+        sessionType: 'chat' | 'voice_call' | 'video_call' = 'chat',
+        initiatedFromLive: boolean = false
     ): Promise<IChatSession> {
         // Validate user exists and has sufficient balance
         const user = await User.findById(userId);
@@ -121,7 +122,7 @@ class ChatService {
         // ─── Live stream check ────────────────────────────────────────────────
         // Astrologer is currently streaming — 1-on-1 consultations are blocked.
         // The client should detect this code and offer the user to join the stream.
-        if ((astrologer as any).isCurrentlyLive) {
+        if ((astrologer as any).isCurrentlyLive && !initiatedFromLive) {
             throw new Error('ASTROLOGER_IN_LIVE_STREAM: Astrologer is currently in a live stream');
         }
 
@@ -201,6 +202,7 @@ class ChatService {
             isFreeTrialSession: false, // Legacy field, set to false
             isIntroSession: isEligibleForIntroRate,
             sessionType,
+            initiatedFromLive,
         });
 
         await session.save();
@@ -241,18 +243,21 @@ class ChatService {
                 isFreeTrialSession: session.isFreeTrialSession || false,
                 freeTrialDurationSeconds: session.freeTrialDurationSeconds || 0,
                 sessionType,
+                initiatedFromLive,
             };
 
             // FCM wake-up (best-effort, works even if app is killed/background)
-            notificationService.sendHighPriorityChatRequest(astrologerId, {
-                sessionId: session.sessionId,
-                userId: user._id.toString(),
-                userName: sanitizedName,
-                userMobile: '', // REDACTED for privacy
-                ratePerMinute,
-                intakeDetails: sanitizedIntake,
-                sessionType,
-            }).catch(e => console.error('[ChatService] FCM chat request send failed:', e));
+            if (!initiatedFromLive) {
+                notificationService.sendHighPriorityChatRequest(astrologerId, {
+                    sessionId: session.sessionId,
+                    userId: user._id.toString(),
+                    userName: sanitizedName,
+                    userMobile: '', // REDACTED for privacy
+                    ratePerMinute,
+                    intakeDetails: sanitizedIntake,
+                    sessionType,
+                }).catch(e => console.error('[ChatService] FCM chat request send failed:', e));
+            }
 
             // Socket emit — fire and forget, no ACK, no retry
             this.io.to(roomName).emit('CHAT_REQUEST', requestPayload);

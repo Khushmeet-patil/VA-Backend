@@ -46,7 +46,8 @@ class CallService {
         userId: string,
         astrologerId: string,
         intakeDetails?: object,
-        sessionType: 'voice_call' | 'video_call' = 'voice_call'
+        sessionType: 'voice_call' | 'video_call' = 'voice_call',
+        initiatedFromLive: boolean = false
     ): Promise<ICallSession> {
         const user = await User.findById(userId);
         if (!user) {
@@ -73,7 +74,7 @@ class CallService {
         // ─── Live stream check ────────────────────────────────────────────────
         // Astrologer is currently streaming — 1-on-1 call sessions are blocked.
         // The client should detect this code and offer the user to join the stream.
-        if ((astrologer as any).isCurrentlyLive) {
+        if ((astrologer as any).isCurrentlyLive && !initiatedFromLive) {
             throw new Error('ASTROLOGER_IN_LIVE_STREAM: Astrologer is currently in a live stream');
         }
 
@@ -158,6 +159,7 @@ class CallService {
             isFreeTrialSession: false,
             isIntroSession: isEligibleForIntroRate,
             sessionType,
+            initiatedFromLive,
         });
 
         await session.save();
@@ -193,18 +195,21 @@ class CallService {
                 isFreeTrialSession: false,
                 freeTrialDurationSeconds: 0,
                 sessionType,
+                initiatedFromLive,
             };
 
             // FCM wake-up
-            notificationService.sendHighPriorityChatRequest(astrologerId, {
-                sessionId: session.sessionId,
-                userId: user._id.toString(),
-                userName: sanitizedName,
-                userMobile: '',
-                ratePerMinute,
-                intakeDetails: sanitizedIntake,
-                sessionType,
-            }).catch(e => console.error('[CallService] FCM call request send failed:', e));
+            if (!initiatedFromLive) {
+                notificationService.sendHighPriorityChatRequest(astrologerId, {
+                    sessionId: session.sessionId,
+                    userId: user._id.toString(),
+                    userName: sanitizedName,
+                    userMobile: '',
+                    ratePerMinute,
+                    intakeDetails: sanitizedIntake,
+                    sessionType,
+                }).catch(e => console.error('[CallService] FCM call request send failed:', e));
+            }
 
             // Socket emit (using CHAT_REQUEST so client is notified seamlessly)
             this.io.to(roomName).emit('CHAT_REQUEST', requestPayload);
