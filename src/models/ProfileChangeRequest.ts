@@ -15,7 +15,7 @@ const ProfileChangeRequestSchema: Schema = new Schema({
     astrologerId: { type: Schema.Types.ObjectId, ref: 'Astrologer', required: true },
     requestType: {
         type: String,
-        enum: ['profile_update', 'rate_update', 'photo_update'],
+        enum: ['profile_update', 'rate_update', 'photo_update', 'live_permission'],
         required: true
     },
     beforeData: { type: Schema.Types.Mixed, required: true },
