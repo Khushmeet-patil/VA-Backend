@@ -327,6 +327,16 @@ class NotificationService {
                         // TTL of 30 seconds (matches incoming call timeout)
                         ttl: 30 * 1000,
                     },
+                    apns: {
+                        headers: {
+                            'apns-priority': '10',
+                        },
+                        payload: {
+                            aps: {
+                                'content-available': 1,
+                            },
+                        },
+                    },
                 };
 
                 const response = await admin.messaging().send(message);
@@ -400,6 +410,16 @@ class NotificationService {
                     priority: 'high',
                     ttl: 30 * 1000, // 30s TTL
                 },
+                apns: {
+                    headers: {
+                        'apns-priority': '10',
+                    },
+                    payload: {
+                        aps: {
+                            'content-available': 1,
+                        },
+                    },
+                },
             };
 
             const response = await admin.messaging().send(message);
@@ -448,6 +468,16 @@ class NotificationService {
                     priority: 'high',
                     ttl: 30 * 1000,
                 },
+                apns: {
+                    headers: {
+                        'apns-priority': '10',
+                    },
+                    payload: {
+                        aps: {
+                            'content-available': 1,
+                        },
+                    },
+                },
             };
 
             const response = await admin.messaging().send(message);
@@ -491,6 +521,7 @@ class NotificationService {
                     token: user.fcmToken,
                     data: payload,
                     android: { priority: 'high', ttl: 60 * 1000 },
+                    apns: { headers: { 'apns-priority': '10' }, payload: { aps: { 'content-available': 1 } } },
                 };
                 await admin.messaging().send(userMsg);
                 console.log(`[NotificationService] chat_ended FCM sent to user ${userId}`);
@@ -508,6 +539,7 @@ class NotificationService {
                     token: astrologer.fcmToken,
                     data: payload,
                     android: { priority: 'high', ttl: 60 * 1000 },
+                    apns: { headers: { 'apns-priority': '10' }, payload: { aps: { 'content-available': 1 } } },
                 };
                 await admin.messaging().send(astroMsg);
                 console.log(`[NotificationService] chat_ended FCM sent to astrologer ${astrologerId}`);
@@ -553,6 +585,16 @@ class NotificationService {
                 android: {
                     priority: 'high',
                     ttl: 10 * 1000, // Short TTL since this is time-sensitive
+                },
+                apns: {
+                    headers: {
+                        'apns-priority': '10',
+                    },
+                    payload: {
+                        aps: {
+                            'content-available': 1,
+                        },
+                    },
                 },
             };
 
