@@ -809,9 +809,9 @@ export const updateChatRate = async (req: Request, res: Response) => {
         // ── Rate-change frequency guard ──────────────────────────────────────────
         // Only relevant when price fields are being changed (not just toggles) AND they differ from current rates.
         const isPriceChangeRequested =
-            (pricePerMin !== undefined && pricePerMin !== astrologer.pricePerMin) ||
-            (voiceCallPricePerMin !== undefined && voiceCallPricePerMin !== astrologer.voiceCallPricePerMin) ||
-            (videoCallPricePerMin !== undefined && videoCallPricePerMin !== astrologer.videoCallPricePerMin);
+            (pricePerMin !== undefined && Number(pricePerMin) !== astrologer.pricePerMin) ||
+            (voiceCallPricePerMin !== undefined && Number(voiceCallPricePerMin) !== astrologer.voiceCallPricePerMin) ||
+            (videoCallPricePerMin !== undefined && Number(videoCallPricePerMin) !== astrologer.videoCallPricePerMin);
 
         if (isPriceChangeRequested) {
             // 1. Block if there is already a pending rate_update request for this astrologer.
@@ -826,25 +826,8 @@ export const updateChatRate = async (req: Request, res: Response) => {
                     message: 'You already have a pending rate change request. Please wait for admin approval before submitting a new one.'
                 });
             }
-
-            // 2. Block if the last approved rate change was within the last 30 days.
-            if (astrologer.lastRateChangeAt) {
-                const daysSinceLast =
-                    (Date.now() - new Date(astrologer.lastRateChangeAt).getTime()) /
-                    (1000 * 60 * 60 * 24);
-                if (daysSinceLast < 30) {
-                    const nextAllowedDate = new Date(astrologer.lastRateChangeAt);
-                    nextAllowedDate.setDate(nextAllowedDate.getDate() + 30);
-                    const formattedDate = nextAllowedDate.toLocaleDateString('en-IN', {
-                        day: '2-digit', month: 'short', year: 'numeric'
-                    });
-                    return res.status(429).json({
-                        success: false,
-                        message: `Rate can only be changed once per month. You can submit a new rate change request after ${formattedDate}.`,
-                        nextAllowedDate: nextAllowedDate.toISOString()
-                    });
-                }
-            }
+            
+            // 30-day restriction removed as per user request
         }
         // ─────────────────────────────────────────────────────────────────────────
 
