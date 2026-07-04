@@ -788,12 +788,19 @@ export const updateChatRate = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
         }
 
+        const parseBool = (val: any, defaultVal: boolean) => {
+            if (val === undefined) return defaultVal;
+            if (val === 'true' || val === 1 || val === '1' || val === true) return true;
+            if (val === 'false' || val === 0 || val === '0' || val === false) return false;
+            return Boolean(val);
+        };
+
+        const finalChat = parseBool(isChatEnabled, astrologer.isChatEnabled !== false);
+        const finalVoice = parseBool(isVoiceCallEnabled, astrologer.isVoiceCallEnabled !== false);
+        const finalVideo = parseBool(isVideoCallEnabled, astrologer.isVideoCallEnabled !== false);
+
         // Check if updating the toggles would result in 0 active services while online
         if (astrologer.isOnline) {
-            const finalChat = isChatEnabled !== undefined ? isChatEnabled : (astrologer.isChatEnabled !== false);
-            const finalVoice = isVoiceCallEnabled !== undefined ? isVoiceCallEnabled : (astrologer.isVoiceCallEnabled !== false);
-            const finalVideo = isVideoCallEnabled !== undefined ? isVideoCallEnabled : (astrologer.isVideoCallEnabled !== false);
-
             if (!finalChat && !finalVoice && !finalVideo) {
                 return res.status(400).json({
                     success: false,
@@ -834,31 +841,25 @@ export const updateChatRate = async (req: Request, res: Response) => {
         // Handle status toggles directly (no admin approval required)
         let togglesChanged = false;
         if (isChatEnabled !== undefined) {
-            if (typeof isChatEnabled !== 'boolean') {
-                return res.status(400).json({ success: false, message: 'Invalid Chat Enable state' });
-            }
-            if (isChatEnabled !== astrologer.isChatEnabled) {
-                astrologer.isChatEnabled = isChatEnabled;
+            const parsedVal = parseBool(isChatEnabled, false);
+            if (parsedVal !== astrologer.isChatEnabled) {
+                astrologer.isChatEnabled = parsedVal;
                 togglesChanged = true;
             }
         }
 
         if (isVoiceCallEnabled !== undefined) {
-            if (typeof isVoiceCallEnabled !== 'boolean') {
-                return res.status(400).json({ success: false, message: 'Invalid Voice Call Enable state' });
-            }
-            if (isVoiceCallEnabled !== astrologer.isVoiceCallEnabled) {
-                astrologer.isVoiceCallEnabled = isVoiceCallEnabled;
+            const parsedVal = parseBool(isVoiceCallEnabled, false);
+            if (parsedVal !== astrologer.isVoiceCallEnabled) {
+                astrologer.isVoiceCallEnabled = parsedVal;
                 togglesChanged = true;
             }
         }
 
         if (isVideoCallEnabled !== undefined) {
-            if (typeof isVideoCallEnabled !== 'boolean') {
-                return res.status(400).json({ success: false, message: 'Invalid Video Call Enable state' });
-            }
-            if (isVideoCallEnabled !== astrologer.isVideoCallEnabled) {
-                astrologer.isVideoCallEnabled = isVideoCallEnabled;
+            const parsedVal = parseBool(isVideoCallEnabled, false);
+            if (parsedVal !== astrologer.isVideoCallEnabled) {
+                astrologer.isVideoCallEnabled = parsedVal;
                 togglesChanged = true;
             }
         }
