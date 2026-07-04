@@ -809,37 +809,12 @@ export const updateChatRate = async (req: Request, res: Response) => {
             }
         }
 
-        // Validate rates are within admin-defined range
-        const minRate = astrologer.priceRangeMin || 10;
-        const maxRate = astrologer.priceRangeMax || 100;
 
-        // ── Rate-change frequency guard ──────────────────────────────────────────
-        // Only relevant when price fields are being changed (not just toggles) AND they differ from current rates.
-        const isPriceChangeRequested =
-            (pricePerMin !== undefined && Number(pricePerMin) !== astrologer.pricePerMin) ||
-            (voiceCallPricePerMin !== undefined && Number(voiceCallPricePerMin) !== astrologer.voiceCallPricePerMin) ||
-            (videoCallPricePerMin !== undefined && Number(videoCallPricePerMin) !== astrologer.videoCallPricePerMin);
 
-        if (isPriceChangeRequested) {
-            // 1. Block if there is already a pending rate_update request for this astrologer.
-            const existingPending = await ProfileChangeRequest.findOne({
-                astrologerId: astrologer._id,
-                requestType: 'rate_update',
-                status: 'pending'
-            });
-            if (existingPending) {
-                return res.status(429).json({
-                    success: false,
-                    message: 'You already have a pending rate change request. Please wait for admin approval before submitting a new one.'
-                });
-            }
-            
-            // 30-day restriction removed as per user request
-        }
-        // ─────────────────────────────────────────────────────────────────────────
-
-        // Handle status toggles directly (no admin approval required)
+        // Handle status toggles and rates directly (no admin approval required)
         let togglesChanged = false;
+        let ratesChanged = false;
+
         if (isChatEnabled !== undefined) {
             const parsedVal = parseBool(isChatEnabled, false);
             if (parsedVal !== astrologer.isChatEnabled) {
@@ -864,86 +839,33 @@ export const updateChatRate = async (req: Request, res: Response) => {
             }
         }
 
-        if (togglesChanged) {
+        if (pricePerMin !== undefined && Number(pricePerMin) !== astrologer.pricePerMin) {
+            astrologer.pricePerMin = Number(pricePerMin);
+            ratesChanged = true;
+        }
+
+        if (voiceCallPricePerMin !== undefined && Number(voiceCallPricePerMin) !== astrologer.voiceCallPricePerMin) {
+            astrologer.voiceCallPricePerMin = Number(voiceCallPricePerMin);
+            ratesChanged = true;
+        }
+
+        if (videoCallPricePerMin !== undefined && Number(videoCallPricePerMin) !== astrologer.videoCallPricePerMin) {
+            astrologer.videoCallPricePerMin = Number(videoCallPricePerMin);
+            ratesChanged = true;
+        }
+
+        if (togglesChanged || ratesChanged) {
             await astrologer.save();
-            console.log(`[AstrologerPanel] Toggles updated directly for ${astrologerId}`);
+            console.log(`[AstrologerPanel] Settings updated directly for ${astrologerId}`);
         }
 
-        // Handle price rates via admin approval flow
-        const beforeData: any = {};
-        const afterData: any = {};
-
-        if (pricePerMin !== undefined) {
-            if (typeof pricePerMin !== 'number' || pricePerMin < 1 || pricePerMin < minRate || pricePerMin > maxRate) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Chat rate must be between ₹${minRate} and ₹${maxRate} per minute`
-                });
-            }
-            if (pricePerMin !== astrologer.pricePerMin) {
-                beforeData.pricePerMin = astrologer.pricePerMin;
-                afterData.pricePerMin = pricePerMin;
-            }
-        }
-
-        if (voiceCallPricePerMin !== undefined) {
-            if (typeof voiceCallPricePerMin !== 'number' || voiceCallPricePerMin < 1 || voiceCallPricePerMin < minRate || voiceCallPricePerMin > maxRate) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Voice call rate must be between ₹${minRate} and ₹${maxRate} per minute`
-                });
-            }
-            if (voiceCallPricePerMin !== astrologer.voiceCallPricePerMin) {
-                beforeData.voiceCallPricePerMin = astrologer.voiceCallPricePerMin;
-                afterData.voiceCallPricePerMin = voiceCallPricePerMin;
-            }
-        }
-
-        if (videoCallPricePerMin !== undefined) {
-            if (typeof videoCallPricePerMin !== 'number' || videoCallPricePerMin < 1 || videoCallPricePerMin < minRate || videoCallPricePerMin > maxRate) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Video call rate must be between ₹${minRate} and ₹${maxRate} per minute`
-                });
-            }
-            if (videoCallPricePerMin !== astrologer.videoCallPricePerMin) {
-                beforeData.videoCallPricePerMin = astrologer.videoCallPricePerMin;
-                afterData.videoCallPricePerMin = videoCallPricePerMin;
-            }
-        }
-
-        if (Object.keys(afterData).length === 0) {
-            return res.json({
-                success: true,
-                message: togglesChanged ? 'Consultation status updated successfully' : 'No changes detected',
-                data: {
-                    pricePerMin: astrologer.pricePerMin,
-                    voiceCallPricePerMin: astrologer.voiceCallPricePerMin,
-                    videoCallPricePerMin: astrologer.videoCallPricePerMin,
-                    isChatEnabled: astrologer.isChatEnabled !== false,
-                    isVoiceCallEnabled: astrologer.isVoiceCallEnabled !== false,
-                    isVideoCallEnabled: astrologer.isVideoCallEnabled !== false,
-                }
-            });
-        }
-
-        // Create change request instead of direct update for rate updates
-        const changeRequest = new ProfileChangeRequest({
-            astrologerId: astrologer._id,
-            requestType: 'rate_update',
-            beforeData,
-            afterData,
-            status: 'pending'
-        });
-        await changeRequest.save();
-
-        console.log(`[AstrologerPanel] Rate change request created: ${changeRequest._id}`);
-
-        res.json({
+        return res.json({
             success: true,
-            message: 'Rate change submitted for admin approval',
+            message: togglesChanged ? 'Consultation status updated successfully' : 'No changes detected',
             data: {
-                ...afterData,
+                pricePerMin: astrologer.pricePerMin,
+                voiceCallPricePerMin: astrologer.voiceCallPricePerMin,
+                videoCallPricePerMin: astrologer.videoCallPricePerMin,
                 isChatEnabled: astrologer.isChatEnabled !== false,
                 isVoiceCallEnabled: astrologer.isVoiceCallEnabled !== false,
                 isVideoCallEnabled: astrologer.isVideoCallEnabled !== false,
