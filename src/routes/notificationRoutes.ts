@@ -143,4 +143,29 @@ router.post('/test-broadcast', authMiddleware, async (req: Request, res: Respons
     }
 });
 
+/**
+ * POST /api/notifications/astrologer-live
+ * Broadcast a live notification when an astrologer starts live stream.
+ * Authenticated via internal key matching JWT_SECRET.
+ */
+router.post('/astrologer-live', async (req: Request, res: Response) => {
+    try {
+        const internalKey = req.headers['x-internal-key'];
+        if (internalKey !== process.env.JWT_SECRET) {
+            return res.status(403).json({ success: false, message: 'Forbidden: Invalid internal key' });
+        }
+
+        const { astrologerId, astrologerName } = req.body;
+        if (!astrologerId || !astrologerName) {
+            return res.status(400).json({ success: false, message: 'astrologerId and astrologerName are required' });
+        }
+
+        const result = await notificationService.broadcastAstrologerLiveToAll(astrologerId, astrologerName);
+        res.json({ success: true, message: 'Live broadcast completed', result });
+    } catch (error) {
+        console.error('[NotificationRoutes] Astrologer live broadcast error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
 export default router;

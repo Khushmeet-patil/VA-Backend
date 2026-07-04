@@ -206,7 +206,7 @@ class NotificationService {
         recipientType: 'user' | 'astrologer',
         notification: { title: string; body: string },
         data?: Record<string, string>,
-        type: 'info' | 'promo' | 'alert' = 'info'
+        type: 'info' | 'promo' | 'alert' | 'live' = 'info'
     ): Promise<boolean> {
         try {
             // 1. Save to Database
@@ -1010,6 +1010,121 @@ class NotificationService {
             return { success: successCount, failure: failureCount };
         } catch (error) {
             console.error('[NotificationService] broadcastAstrologerOnlineToAll error:', error);
+            return { success: 0, failure: 0 };
+        }
+    }
+
+    /**
+     * Send a notification to all users when an astrologer goes live.
+     * Saves the notification to the database (audience: 'users', type: 'live')
+     * and broadcasts FCM push notifications to all users.
+     */
+    async broadcastAstrologerLiveToAll(
+        astrologerId: string,
+        astrologerName: string
+    ): Promise<{ success: number; failure: number }> {
+        if (!this.initialized) {
+            console.warn('[NotificationService] Not initialized, cannot broadcastAstrologerLiveToAll');
+            return { success: 0, failure: 0 };
+        }
+
+        try {
+            const title = `${astrologerName} is Live Now!`;
+            const body = `${astrologerName} is live broadcasting right now. Join and ask your questions!`;
+
+            // 1. Save to database for all users (audience: 'users', type: 'live')
+            const newNotif = new Notification({
+                title,
+                message: body,
+                type: 'live',
+                audience: 'users',
+                isRead: false,
+                isActive: true,
+                navigateType: 'screen',
+                navigateTarget: 'LiveList'
+            });
+            await newNotif.save();
+
+            // 2. Fetch FCM tokens for all users (role 'user')
+            const users = await User.find({
+                fcmToken: { $exists: true, $ne: '' },
+                role: 'user'
+            }).select('fcmToken').lean();
+
+            const tokens = users.map((u: any) => u.fcmToken).filter((t: any) => !!t) as string[];
+
+            if (tokens.length === 0) {
+                console.log(`[NotificationService] No FCM tokens found for any user`);
+                return { success: 0, failure: 0 };
+            }
+
+            const uniqueTokens = Array.from(new Set(tokens));
+            console.log(`[NotificationService] Broadcasting live notification to ${uniqueTokens.length} unique devices for astrologer ${astrologerId}`);
+
+            // 3. Send in batches of 500 (FCM limit)
+            const batchSize = 500;
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (let i = 0; i < uniqueTokens.length; i += batchSize) {
+                const batch = uniqueTokens.slice(i, i + batchSize);
+                const message: admin.messaging.MulticastMessage = {
+                    tokens: batch,
+                    notification: {
+                        title,
+                        body,
+                    },
+                    data: {
+                        type: 'live',
+                        astrologerId,
+                        astrologerName,
+                        navigateType: 'screen',
+                        navigateTarget: 'LiveList',
+                    },
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            channelId: 'general',
+                            priority: 'high',
+                            defaultSound: true,
+                        },
+                    },
+                    apns: {
+                        payload: {
+                            aps: {
+                                sound: 'default',
+                                badge: 1,
+                            },
+                        },
+                    },
+                };
+
+                const response = await admin.messaging().sendEachForMulticast(message);
+                successCount += response.successCount;
+                failureCount += response.failureCount;
+
+                console.log(`[Live notification batch ${Math.floor(i / batchSize) + 1} sent: ${response.successCount} success, ${response.failureCount} failure`);
+
+                // Cleanup dead tokens
+                const deadTokens = response.responses
+                    .map((resp, idx) => {
+                        if (!resp.success &&
+                            (resp.error?.code === 'messaging/registration-token-not-registered' ||
+                                resp.error?.code === 'messaging/invalid-registration-token')) {
+                            return batch[idx];
+                        }
+                        return null;
+                    })
+                    .filter((t): t is string => !!t);
+
+                if (deadTokens.length > 0) {
+                    await Promise.all(deadTokens.map(token => this.cleanupToken(token)));
+                }
+            }
+
+            return { success: successCount, failure: failureCount };
+        } catch (error) {
+            console.error('[NotificationService] broadcastAstrologerLiveToAll error:', error);
             return { success: 0, failure: 0 };
         }
     }
