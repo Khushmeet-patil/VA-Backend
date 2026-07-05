@@ -76,13 +76,29 @@ const scheduleAutoOnline = () => {
                         await astro.save();
                     } else {
                         console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Setting isOnline=${shouldBeOnline}`);
-                        astro.isOnline = shouldBeOnline;
+                        
+                        let isSocketConnected = false;
+                        if (ioInstance) {
+                            const roomName = `astrologer:${astro._id.toString()}`;
+                            const room = ioInstance.sockets.adapter.rooms.get(roomName);
+                            if (room && room.size > 0) {
+                                isSocketConnected = true;
+                            }
+                        }
+
+                        if (shouldBeOnline && !isSocketConnected) {
+                            console.log(`[Scheduler] >>> BOUNDARY CROSSED to ONLINE for ${astro.firstName}, but not connected via socket. Keeping isOnline=false.`);
+                            astro.isOnline = false;
+                        } else {
+                            astro.isOnline = shouldBeOnline;
+                        }
+                        
                         astro.isManualOverride = false;
                         (astro as any).expectedScheduleState = newExpected;
                         await astro.save();
 
                         // Record in availability log
-                        if (shouldBeOnline) {
+                        if (astro.isOnline) {
                             await availabilityService.recordOnline(astro._id as any);
                         } else {
                             await availabilityService.recordOffline(astro._id as any);
@@ -93,14 +109,14 @@ const scheduleAutoOnline = () => {
                         // Emit socket event
                         if (ioInstance) {
                             const room = `astrologer:${astro._id.toString()}`;
-                            ioInstance.to(room).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: shouldBeOnline });
+                            ioInstance.to(room).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: astro.isOnline });
                             console.log(`[Scheduler] >>> Emitted ASTROLOGER_STATUS_UPDATED to room ${room}`);
                         } else {
                             console.warn(`[Scheduler] >>> IO instance not available, cannot emit socket event!`);
                         }
 
                         // Send notification to all users when astrologer goes online
-                        if (shouldBeOnline) {
+                        if (astro.isOnline) {
                             try {
                                 const firstName = astro.firstName.charAt(0).toUpperCase() + astro.firstName.slice(1);
                                 const lastName = astro.lastName.charAt(0).toUpperCase() + astro.lastName.slice(1);
@@ -118,12 +134,25 @@ const scheduleAutoOnline = () => {
                 }
                 // CASE 2: Same expected state, but actual status doesn't match (manual override handling)
                 else if (shouldBeOnline && !astro.isOnline && !astro.isManualOverride) {
-                    console.log(`[Scheduler] Enforcing ONLINE for ${astro.firstName} (override cleared, schedule active)`);
-                    astro.isOnline = true;
-                    await astro.save();
-                    await availabilityService.recordOnline(astro._id as any);
+                    let isSocketConnected = false;
                     if (ioInstance) {
-                        ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
+                        const roomName = `astrologer:${astro._id.toString()}`;
+                        const room = ioInstance.sockets.adapter.rooms.get(roomName);
+                        if (room && room.size > 0) {
+                            isSocketConnected = true;
+                        }
+                    }
+
+                    if (isSocketConnected) {
+                        console.log(`[Scheduler] Enforcing ONLINE for ${astro.firstName} (override cleared, schedule active, connected)`);
+                        astro.isOnline = true;
+                        await astro.save();
+                        await availabilityService.recordOnline(astro._id as any);
+                        if (ioInstance) {
+                            ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
+                        }
+                    } else {
+                        console.log(`[Scheduler] Skip enforcing ONLINE for ${astro.firstName} - schedule active but not connected via socket.`);
                     }
                 }
                 else if (!shouldBeOnline && astro.isOnline && !astro.isManualOverride) {

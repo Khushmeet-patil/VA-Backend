@@ -750,6 +750,15 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         // Handle disconnect
         socket.on('disconnect', () => {
             console.log(`[Socket] ${userType} disconnected: ${userId}`);
+            
+            // If it's an astrologer, we ALWAYS trigger chatService.handleDisconnect
+            // to ensure they are marked offline after the 15-second grace period if they turned off their net.
+            if (userType === 'astrologer') {
+                chatService.handleDisconnect(userId, true).catch(err => {
+                    console.error('[Socket] chatService.handleDisconnect error:', err);
+                });
+            }
+
             // Check active call first, then active chat
             callService.getActiveCallForUser(userId).then(activeCallUser => {
                 if (activeCallUser) {
@@ -758,14 +767,16 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     callService.getActiveCallForAstrologer(userId).then(activeCallAstro => {
                         if (activeCallAstro) {
                             callService.handleDisconnect(userId, true);
-                        } else {
-                            chatService.handleDisconnect(userId, userType === 'astrologer');
+                        } else if (userType !== 'astrologer') {
+                            chatService.handleDisconnect(userId, false);
                         }
                     });
                 }
             }).catch(err => {
                 console.error('[Socket] Disconnect check error:', err);
-                chatService.handleDisconnect(userId, userType === 'astrologer');
+                if (userType !== 'astrologer') {
+                    chatService.handleDisconnect(userId, false);
+                }
             });
         });
     });
