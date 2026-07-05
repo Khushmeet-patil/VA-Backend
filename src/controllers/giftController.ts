@@ -7,6 +7,13 @@ import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import { AuthRequest } from '../middleware/auth';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID || '',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || ''
+});
 
 // Helper: get or create gift settings
 const getGiftSettings = async () => {
@@ -431,5 +438,191 @@ export const adminGetGiftTransactions = async (req: Request, res: Response) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Failed to fetch gift transactions' });
+    }
+};
+
+// POST /api/gifts/order - create Razorpay order for regular gift
+export const createGiftOrder = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.userId!;
+        const { astrologerId, giftItemId, sessionId } = req.body;
+
+        if (!astrologerId || !giftItemId) {
+            return res.status(400).json({ success: false, message: 'astrologerId and giftItemId are required' });
+        }
+
+        // Validate gift item
+        const giftItem = await GiftItem.findById(giftItemId);
+        if (!giftItem || !giftItem.isActive) {
+            return res.status(404).json({ success: false, message: 'Gift item not found or inactive' });
+        }
+
+        // Validate astrologer
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        const options = {
+            amount: Math.round(giftItem.amount * 100), // Convert to paise
+            currency: 'INR',
+            receipt: `gift_${astrologerId}_${Date.now()}`,
+            notes: {
+                userId: userId.toString(),
+                astrologerId: astrologerId.toString(),
+                giftItemId: giftItemId.toString(),
+                sessionId: sessionId || '',
+                type: 'direct_gift',
+            }
+        };
+
+        const order = await razorpay.orders.create(options);
+
+        res.json({
+            success: true,
+            orderId: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            key_id: process.env.RAZORPAY_KEY_ID
+        });
+
+    } catch (error: any) {
+        console.error('[Gift] createGiftOrder error:', error);
+        res.status(500).json({ success: false, message: 'Failed to create gift order', error: error.message });
+    }
+};
+
+// POST /api/gifts/verify - verify Razorpay payment and credit astrologer for regular gift
+export const verifyGiftPayment = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.userId!;
+        const {
+            astrologerId,
+            giftItemId,
+            sessionId,
+            razorpay_order_id,
+            razorpay_payment_id,
+            razorpay_signature
+        } = req.body;
+
+        if (!astrologerId || !giftItemId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'All payment verification details are required' });
+        }
+
+        // 1. Verify Signature
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
+            .update(body.toString())
+            .digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+        }
+
+        // 2. Idempotency Check
+        const existingTx = await GiftTransaction.findOne({ paymentId: razorpay_payment_id });
+        if (existingTx) {
+            const user = await User.findById(userId);
+            return res.status(200).json({
+                success: true,
+                message: 'Gift already processed',
+                data: {
+                    giftTransaction: existingTx,
+                    newWalletBalance: user?.walletBalance || 0,
+                    newBonusBalance: user?.bonusBalance || 0,
+                }
+            });
+        }
+
+        // Validate gift item
+        const giftItem = await GiftItem.findById(giftItemId);
+        if (!giftItem || !giftItem.isActive) {
+            return res.status(404).json({ success: false, message: 'Gift item not found or inactive' });
+        }
+
+        // Validate astrologer
+        const astrologer = await Astrologer.findById(astrologerId);
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        const giftAmount = giftItem.amount;
+
+        // Calculate commission
+        const settings = await getGiftSettings();
+        const commissionPercent = settings.commissionPercent;
+        const commissionAmount = Math.round((giftAmount * commissionPercent) / 100);
+        const astrologerAmount = giftAmount - commissionAmount;
+
+        const now = new Date();
+        const currentFYStart = new Date(now.getFullYear(), 3, 1);
+        if (now.getMonth() < 3) currentFYStart.setFullYear(now.getFullYear() - 1);
+
+        const freshAstrologer = await Astrologer.findById(astrologerId);
+        if (!freshAstrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        let fyResetUpdate: any = {};
+        if (!freshAstrologer.yearlyEarningsStartDate || new Date(freshAstrologer.yearlyEarningsStartDate) < currentFYStart) {
+            fyResetUpdate = {
+                yearlyEarningsStartDate: currentFYStart,
+                yearlyGiftEarnings: 0
+            };
+        }
+
+        // Credit astrologer
+        await Astrologer.findByIdAndUpdate(astrologerId, {
+            $inc: {
+                giftEarnings: astrologerAmount,
+                yearlyGiftEarnings: astrologerAmount
+            },
+            $set: {
+                yearlyEarningsStartDate: fyResetUpdate.yearlyEarningsStartDate || freshAstrologer.yearlyEarningsStartDate
+            }
+        });
+
+        // Record gift transaction (storing paymentId)
+        const giftTx = await GiftTransaction.create({
+            fromUser: userId,
+            toAstrologer: astrologerId,
+            giftItem: giftItemId,
+            giftName: giftItem.name,
+            giftEmoji: giftItem.emoji,
+            amount: giftAmount,
+            commissionPercent,
+            commissionAmount,
+            astrologerAmount,
+            sessionId: sessionId || undefined,
+            paymentId: razorpay_payment_id,
+        });
+
+        // Record in Transaction history for user expense history (DEBIT)
+        await Transaction.create({
+            paymentId: razorpay_payment_id,
+            fromUser: userId,
+            toAstrologer: astrologerId,
+            amount: giftAmount,
+            type: 'debit',
+            status: 'success',
+            description: `Gift sent (Direct Paid): ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName}`,
+        });
+
+        const user = await User.findById(userId);
+
+        res.json({
+            success: true,
+            message: `${giftItem.emoji} ${giftItem.name} sent successfully!`,
+            data: {
+                giftTransaction: giftTx,
+                newWalletBalance: user?.walletBalance || 0,
+                newBonusBalance: user?.bonusBalance || 0,
+            }
+        });
+
+    } catch (error: any) {
+        console.error('[Gift] verifyGiftPayment error:', error);
+        res.status(500).json({ success: false, message: 'Failed to verify payment and send gift', error: error.message });
     }
 };

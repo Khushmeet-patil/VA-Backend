@@ -2,6 +2,8 @@ import express from 'express';
 import {
     getGiftItems,
     sendGift,
+    createGiftOrder,
+    verifyGiftPayment,
     getSentGifts,
     getReceivedGifts,
     adminGetGiftItems,
@@ -21,6 +23,8 @@ router.get('/items', getGiftItems);
 
 // ── User (authenticated) ─────────────────────────────
 router.post('/send', authMiddleware, sendGift);
+router.post('/order', authMiddleware, createGiftOrder);
+router.post('/verify', authMiddleware, verifyGiftPayment);
 router.get('/sent', authMiddleware, getSentGifts);
 
 // ── Astrologer panel ─────────────────────────────────
