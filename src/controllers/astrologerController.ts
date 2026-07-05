@@ -479,10 +479,30 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
             ratingCounts[r._id] = r.count;
         });
 
+        // Temporary restrict Acharya Anil (mobile: 2345678901) to user 7990358824 only
+        let isCurrentlyLive = astrologer.isCurrentlyLive;
+        let currentLiveSessionId = astrologer.currentLiveSessionId;
+
+        if (isCurrentlyLive && astrologer.mobileNumber === '2345678901') {
+            let isTargetUser = false;
+            if (userId) {
+                const requestingUser = await User.findById(userId).select('mobile').lean();
+                if (requestingUser && requestingUser.mobile === '7990358824') {
+                    isTargetUser = true;
+                }
+            }
+            if (!isTargetUser) {
+                isCurrentlyLive = false;
+                currentLiveSessionId = undefined;
+            }
+        }
+
         res.json({
             success: true,
             data: {
                 ...astrologer,
+                isCurrentlyLive,
+                currentLiveSessionId,
                 isFollowing,
                 hasChatted,
                 userRating,
