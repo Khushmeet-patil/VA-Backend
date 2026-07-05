@@ -466,7 +466,7 @@ export const createGiftOrder = async (req: AuthRequest, res: Response) => {
         const options = {
             amount: Math.round(giftItem.amount * 100), // Convert to paise
             currency: 'INR',
-            receipt: `gift_${astrologerId}_${Date.now()}`,
+            receipt: `g_${astrologerId.toString().substring(12)}_${Date.now()}`,
             notes: {
                 userId: userId.toString(),
                 astrologerId: astrologerId.toString(),
