@@ -4,11 +4,13 @@ import ChatSession from '../models/ChatSession';
 import CallSession from '../models/CallSession';
 import availabilityService from './availabilityService';
 import { Server as SocketIOServer } from 'socket.io';
+import * as admin from 'firebase-admin';
 
 class HeartbeatService {
     private io: SocketIOServer | null = null;
     private localHeartbeats: Map<string, number> = new Map();
     private monitorInterval: NodeJS.Timeout | null = null;
+    private pingPromises: Map<string, (received: boolean) => void> = new Map();
 
     /**
      * Initialize the heartbeat service and start the background monitor
@@ -66,6 +68,77 @@ class HeartbeatService {
     }
 
     /**
+     * Send a silent high-priority data message to ping the device
+     */
+    private async sendSilentPing(fcmToken: string, userId: string): Promise<boolean> {
+        try {
+            const message: admin.messaging.Message = {
+                token: fcmToken,
+                data: {
+                    type: 'ping',
+                    astrologerId: userId,
+                    timestamp: Date.now().toString()
+                },
+                android: {
+                    priority: 'high',
+                    ttl: 15 * 1000 // 15 seconds TTL
+                },
+                apns: {
+                    headers: {
+                        'apns-priority': '10',
+                    },
+                    payload: {
+                        aps: {
+                            'content-available': 1,
+                        },
+                    },
+                },
+            };
+
+            await admin.messaging().send(message);
+            return true;
+        } catch (error: any) {
+            console.error(`[HeartbeatService] Error sending silent FCM ping to astrologer ${userId}:`, error.message);
+            return false;
+        }
+    }
+
+    /**
+     * Ping the device and wait up to 6 seconds for a response from the background handler
+     */
+    async pingDevice(userId: string, fcmToken: string): Promise<boolean> {
+        return new Promise<boolean>(async (resolve) => {
+            const timeout = setTimeout(() => {
+                this.pingPromises.delete(userId);
+                resolve(false); // No response, likely network is offline
+            }, 6000); // 6 seconds timeout
+
+            this.pingPromises.set(userId, (received: boolean) => {
+                clearTimeout(timeout);
+                this.pingPromises.delete(userId);
+                resolve(received);
+            });
+
+            const sent = await this.sendSilentPing(fcmToken, userId);
+            if (!sent) {
+                clearTimeout(timeout);
+                this.pingPromises.delete(userId);
+                resolve(false);
+            }
+        });
+    }
+
+    /**
+     * Resolve a pending ping promise when the client responds via REST endpoint
+     */
+    resolvePing(userId: string) {
+        const cb = this.pingPromises.get(userId);
+        if (cb) {
+            cb(true);
+        }
+    }
+
+    /**
      * Start the background presence scanning interval
      */
     startMonitor() {
@@ -101,7 +174,24 @@ class HeartbeatService {
 
             // If no heartbeat has ever been registered, or it is older than 60 seconds
             if (!lastHeartbeat || (now - lastHeartbeat > 60000)) {
-                console.log(`[HeartbeatService] Astrologer ${astro.firstName} (${userId}) exceeded 60s heartbeat limit. Running safety checks...`);
+                // If they have an FCM token, double check if their device is connected to the internet.
+                // If the device is connected to the internet (even if the app is killed), it will receive the high-priority
+                // silent FCM ping and respond back. If they respond, we keep them online.
+                if (astro.fcmToken) {
+                    console.log(`[HeartbeatService] Astrologer ${astro.firstName} (${userId}) heartbeat expired. Pinging device via FCM...`);
+                    const isReachable = await this.pingDevice(userId, astro.fcmToken);
+                    if (isReachable) {
+                        console.log(`[HeartbeatService] Astrologer ${astro.firstName} (${userId}) device responded to FCM ping. Device has internet. Keeping online.`);
+                        // Register a fresh heartbeat so we don't spam pings on every monitor cycle
+                        await this.registerHeartbeat(userId);
+                        continue;
+                    }
+                    console.log(`[HeartbeatService] Astrologer ${astro.firstName} (${userId}) device did NOT respond to FCM ping within timeout. Assuming internet is offline.`);
+                } else {
+                    console.log(`[HeartbeatService] Astrologer ${astro.firstName} (${userId}) has no FCM token. Cannot verify internet status.`);
+                }
+
+                console.log(`[HeartbeatService] Astrologer ${astro.firstName} (${userId}) exceeded 60s heartbeat limit. Running presence safety checks...`);
 
                 // Check 1: Verify there is no active socket connection in their room
                 const roomName = `astrologer:${userId}`;
