@@ -60,6 +60,13 @@ class ChatService {
     private activeDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
     private readonly ACTIVE_DISCONNECT_GRACE_MS = 30000; // 30 seconds
 
+    // ── Network Offline Grace Timers: userId → NodeJS.Timeout ─────────────────
+    // When an astrologer's socket disconnects (network loss, airplane mode, etc.)
+    // a 1-minute grace timer starts. If they reconnect before it fires, the timer
+    // is cancelled and they stay ONLINE. If not, they are marked OFFLINE.
+    // This Map lets handleReconnect cancel the timer before it fires.
+    private networkOfflineTimers: Map<string, NodeJS.Timeout> = new Map();
+
     // ─── Astrologer Waitlist ─────────────────────────────────────────────────
     // Tracks users who tried to reach a busy astrologer.
     // Key: astrologerId  Value: Set of userId strings
@@ -1956,54 +1963,68 @@ class ChatService {
                 }, 10000);
             }
 
-            // 2. Global "Zombie Detection" (Disconnect Handler)
-            // If an astrologer is marked ONLINE but disconnects their socket, 
-            // we wait for a 15-second grace period. If they don't reconnect and aren't in an ACTIVE chat or call, we mark them offline.
+            // 2. Network Offline Grace Period
+            // If an astrologer is marked ONLINE but their socket disconnects (network loss, airplane mode, etc.)
+            // we wait for a 1-minute grace period. If they reconnect within that window, the timer is cancelled
+            // and they remain ONLINE. If not, we mark them OFFLINE.
+            //
+            // This satisfies: "Wi-Fi OFF for > 1 min → OFFLINE" and "Wi-Fi OFF then ON within 1 min → stays ONLINE".
+            // The networkOfflineTimers Map allows handleReconnect to cancel this timer.
             const astrologer = await Astrologer.findById(userId);
             if (astrologer && astrologer.isOnline) {
-                const gracePeriodMs = 15000; // 15 seconds grace period
-                console.log(`[ChatService] Online astrologer ${userId} disconnected. Starting 15s grace timer.`);
+                // Cancel any existing pending offline timer for this user (safety — prevents duplicate timers)
+                const existingTimer = this.networkOfflineTimers.get(userId);
+                if (existingTimer) {
+                    clearTimeout(existingTimer);
+                    this.networkOfflineTimers.delete(userId);
+                }
+
+                const gracePeriodMs = 60000; // 1 minute grace period
+                console.log(`[ChatService] Online astrologer ${userId} disconnected. Starting 60s network-loss grace timer.`);
                 
-                setTimeout(async () => {
+                const timer = setTimeout(async () => {
+                    this.networkOfflineTimers.delete(userId); // Clean up map entry
                     try {
                         // Re-fetch current state
                         const currentAstro = await Astrologer.findById(userId);
                         if (!currentAstro || !currentAstro.isOnline) return;
 
-                        // Check if they reconnected
+                        // Check if they reconnected (socket room is alive)
                         const roomName = `astrologer:${userId}`;
                         const room = this.io?.sockets.adapter.rooms.get(roomName);
                         if (room && room.size > 0) {
-                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} reconnected. Keeping online.`);
+                            console.log(`[ChatService] Network Offline Grace: Astrologer ${userId} reconnected. Keeping online.`);
                             return;
                         }
 
-                        // Check if they are in an ACTIVE chat session
+                        // Check if they are in an ACTIVE chat session — do not interrupt it
                         const activeChat = await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' });
                         if (activeChat) {
-                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} still disconnected but in ACTIVE chat. Preserving online status.`);
+                            console.log(`[ChatService] Network Offline Grace: Astrologer ${userId} in ACTIVE chat. Preserving online status.`);
                             return;
                         }
 
-                        // Check if they are in an ACTIVE call session
+                        // Check if they are in an ACTIVE call session — do not interrupt it
                         const activeCall = await CallSession.findOne({ astrologerId: userId, status: 'ACTIVE' });
                         if (activeCall) {
-                            console.log(`[ChatService] Zombie Detection: Astrologer ${userId} still disconnected but in ACTIVE call. Preserving online status.`);
+                            console.log(`[ChatService] Network Offline Grace: Astrologer ${userId} in ACTIVE call. Preserving online status.`);
                             return;
                         }
 
-                        // If still disconnected and no active session, mark offline (act like manual offline so they stay offline)
-                        console.log(`[ChatService] Zombie Detection: Astrologer ${userId} persistently disconnected for 15s. Marking OFFLINE.`);
+                        // Grace period expired — mark offline (isManualOverride=true so scheduler does not force them back online)
+                        console.log(`[ChatService] Network Offline Grace: Astrologer ${userId} offline for 60s with no active session. Marking OFFLINE.`);
                         await Astrologer.findByIdAndUpdate(userId, { $set: { isOnline: false, isManualOverride: true } });
                         await availabilityService.recordOffline(userId);
 
                         if (this.io) {
                             this.io.to(roomName).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                         }
-                    } catch (zombieErr) {
-                        console.error(`[ChatService] Error in Zombie Detection for ${userId}:`, zombieErr);
+                    } catch (timerErr) {
+                        console.error(`[ChatService] Error in Network Offline Grace timer for ${userId}:`, timerErr);
                     }
                 }, gracePeriodMs);
+
+                this.networkOfflineTimers.set(userId, timer);
             }
         }
     }
@@ -2014,6 +2035,18 @@ class ChatService {
     async handleReconnect(userId: string, isAstrologer: boolean): Promise<void> {
         const userType = isAstrologer ? 'astrologer' : 'user';
         console.log(`[ChatService] ${userType} reconnected: ${userId}`);
+
+        // ── Cancel the network-offline grace timer if it was running ──────────
+        // This is the critical step: if the astrologer's network dropped and they
+        // reconnect within the 1-minute window, we cancel the timer so they stay ONLINE.
+        if (isAstrologer) {
+            const offlineTimer = this.networkOfflineTimers.get(userId);
+            if (offlineTimer) {
+                clearTimeout(offlineTimer);
+                this.networkOfflineTimers.delete(userId);
+                console.log(`[ChatService] Astrologer ${userId} reconnected — cancelled 1-minute network-offline grace timer. Staying ONLINE.`);
+            }
+        }
 
         // Find active session for this user
         const session = isAstrologer
