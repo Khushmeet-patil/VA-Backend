@@ -23,6 +23,7 @@ import chatRoutes from './routes/chatRoutes';
 import callRoutes from './routes/callRoutes';
 import profileRoutes from './routes/profileRoutes';
 import initializeSocketHandlers from './services/socketHandlers';
+import heartbeatService from './services/heartbeatService';
 import { checkR2Connection } from './services/r2Service';
 import notificationService from './services/notificationService';
 import notificationRoutes from './routes/notificationRoutes';
@@ -144,6 +145,9 @@ console.log('[Socket.IO] Redis adapter attached');
 
 // Initialize socket handlers
 initializeSocketHandlers(io);
+
+// Initialize heartbeat-based presence monitoring
+heartbeatService.initialize(io);
 
 // NOW inject io into the scheduler so it can emit socket events
 setIOInstance(io);

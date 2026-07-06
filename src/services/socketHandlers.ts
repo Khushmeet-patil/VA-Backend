@@ -5,6 +5,7 @@ import Astrologer from '../models/Astrologer';
 import chatService from './chatService';
 import callService from './callService';
 import notificationService from './notificationService';
+import heartbeatService from './heartbeatService';
 
 /**
  * Socket.IO Event Handlers
@@ -119,6 +120,13 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         // NOW handle reconnect — session room is joined, safe to redeliver
         await chatService.handleReconnect(userId, userType === 'astrologer');
         await callService.handleReconnect(userId, userType === 'astrologer');
+
+        // Handle heartbeat presence updates
+        socket.on('heartbeat', async () => {
+            if (userId && userType === 'astrologer') {
+                await heartbeatService.registerHeartbeat(userId);
+            }
+        });
 
         // Handle sending messages.
         // Supports an optional ACK callback: socket.emit('send_message', data, (res) => {...})
@@ -747,33 +755,14 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             }
         });
 
-        // ── Network loss / restore events (astrologer-only) ───────────────────────
-        // Emitted by the VedicPannel client via @react-native-community/netinfo.
-        // These are the ONLY triggers for the 1-minute offline grace timer.
-        // Socket disconnect is NOT used for this — it fires on app kill / logout too.
-        if (userType === 'astrologer') {
-            socket.on('network_lost', () => {
-                console.log(`[Socket] Astrologer ${userId} reported network_lost.`);
-                chatService.handleNetworkLost(userId).catch(err => {
-                    console.error('[Socket] handleNetworkLost error:', err);
-                });
-            });
-
-            socket.on('network_restored', () => {
-                console.log(`[Socket] Astrologer ${userId} reported network_restored.`);
-                chatService.handleNetworkRestored(userId);
-            });
-        }
-
         // Handle disconnect
         socket.on('disconnect', () => {
             console.log(`[Socket] ${userType} disconnected: ${userId}`);
 
-            // NOTE: For astrologers, we do NOT start an offline timer here.
-            // Socket disconnect fires for many reasons (app kill, crash, logout, server restart)
-            // and cannot be used to uniquely identify network loss.
-            // Network loss is detected on the client via NetInfo which emits explicit
-            // 'network_lost' / 'network_restored' events handled above.
+            // NOTE: The 60-second offline grace timer lives entirely on the client (SocketContext.tsx).
+            // It is driven by @react-native-community/netinfo and calls the REST API when internet
+            // restores after >60s. We do NOT start an offline timer here because socket disconnect
+            // fires for many reasons (app kill, crash, logout) — not just network loss.
             if (userType === 'astrologer') {
                 chatService.handleDisconnect(userId, true).catch(err => {
                     console.error('[Socket] chatService.handleDisconnect error:', err);

@@ -16,6 +16,7 @@ import { notificationService } from '../services/notificationService';
 import { sendSmsOtp } from '../services/smsService';
 import DeletionRequest from '../models/DeletionRequest';
 import availabilityService from '../services/availabilityService';
+import heartbeatService from '../services/heartbeatService';
 import AstrologerAvailabilityLog from '../models/AstrologerAvailabilityLog';
 import AstrologerNotificationLog from '../models/AstrologerNotificationLog';
 import SystemSetting from '../models/SystemSetting';
@@ -262,6 +263,7 @@ export const logoutAstrologer = async (req: Request, res: Response) => {
             if (astrologer.isOnline) {
                 await availabilityService.recordOffline(astrologerId);
             }
+            await heartbeatService.removeHeartbeat(astrologerId);
             await Astrologer.findByIdAndUpdate(astrologerId, {
                 $unset: { activeDeviceId: 1, fcmToken: 1, fcmTokenUpdatedAt: 1 },
                 $set: { isOnline: false }
@@ -448,6 +450,7 @@ export const toggleStatus = async (req: Request, res: Response) => {
         // Send notification to all users when they come online
         if (isOnline) {
             await availabilityService.recordOnline(astrologerId);
+            await heartbeatService.registerHeartbeat(astrologerId);
             notificationService.broadcastAstrologerOnlineToAll(astrologer._id.toString(), {
                 title: 'Astrologer Online!',
                 body: `${astrologer.firstName} ${astrologer.lastName} is now available for consultation.`
@@ -457,6 +460,7 @@ export const toggleStatus = async (req: Request, res: Response) => {
             }).catch(err => console.error('[toggleStatus] Broadcast error:', err));
         } else {
             await availabilityService.recordOffline(astrologerId);
+            await heartbeatService.removeHeartbeat(astrologerId);
         }
 
         res.json({ success: true, message: `Status updated to ${isOnline ? 'online' : 'offline'}` });

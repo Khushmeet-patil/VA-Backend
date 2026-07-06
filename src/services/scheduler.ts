@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import Astrologer from '../models/Astrologer';
 import { notificationService } from './notificationService';
 import availabilityService from './availabilityService';
+import heartbeatService from './heartbeatService';
 import mongoose from 'mongoose';
 
 // We need io but it's created AFTER this module loads in index.ts.
@@ -100,8 +101,10 @@ const scheduleAutoOnline = () => {
                         // Record in availability log
                         if (astro.isOnline) {
                             await availabilityService.recordOnline(astro._id as any);
+                            await heartbeatService.registerHeartbeat(astro._id.toString());
                         } else {
                             await availabilityService.recordOffline(astro._id as any);
+                            await heartbeatService.removeHeartbeat(astro._id.toString());
                         }
 
                         console.log(`[Scheduler] >>> SAVED ${astro.firstName}: isOnline=${astro.isOnline}`);
@@ -148,6 +151,7 @@ const scheduleAutoOnline = () => {
                         astro.isOnline = true;
                         await astro.save();
                         await availabilityService.recordOnline(astro._id as any);
+                        await heartbeatService.registerHeartbeat(astro._id.toString());
                         if (ioInstance) {
                             ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
                         }
@@ -160,6 +164,7 @@ const scheduleAutoOnline = () => {
                     astro.isOnline = false;
                     await astro.save();
                     await availabilityService.recordOffline(astro._id as any);
+                    await heartbeatService.removeHeartbeat(astro._id.toString());
                     if (ioInstance) {
                         ioInstance.to(`astrologer:${astro._id.toString()}`).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
                     }
