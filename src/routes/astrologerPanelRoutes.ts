@@ -44,6 +44,7 @@ router.post('/heartbeat-ping', async (req, res) => {
         }
         heartbeatService.resolvePing(astrologerId);
         await heartbeatService.registerHeartbeat(astrologerId);
+        await heartbeatService.restoreOnlineStatus(astrologerId);
         return res.status(200).json({ success: true });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });

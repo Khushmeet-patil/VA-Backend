@@ -88,6 +88,7 @@ export interface IAstrologer extends Document {
     liveStreamMaxMinutes?: number | null;   // Per-astrologer limit (null = use global SystemSetting)
     isCurrentlyLive?: boolean;             // True when actively broadcasting
     currentLiveSessionId?: string | null;  // Active live session ID in live microservice
+    isNetworkOffline?: boolean;
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -187,6 +188,7 @@ const AstrologerSchema: Schema = new Schema({
     liveStreamMaxMinutes: { type: Number, default: null },           // null = use global setting
     isCurrentlyLive: { type: Boolean, default: false, index: true }, // Quick lookup
     currentLiveSessionId: { type: String, default: null },           // Active live session
+    isNetworkOffline: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

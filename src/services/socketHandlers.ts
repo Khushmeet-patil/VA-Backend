@@ -101,6 +101,12 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
         const roomSize = room ? room.size : 0;
         console.log(`[Socket] ${userType} connected & joined room: ID=${userId}, Room=${roomName}, RoomSize=${roomSize}, SocketID=${socket.id}`);
 
+        if (userType === 'astrologer') {
+            heartbeatService.restoreOnlineStatus(userId).catch(err => {
+                console.error(`[Socket] Error restoring status for astrologer ${userId}:`, err.message);
+            });
+        }
+
         // Join session room FIRST, then redeliver missed messages.
         // Both steps must be sequential — messages must not be emitted to a
         // room before the socket has joined it (race condition fix).
