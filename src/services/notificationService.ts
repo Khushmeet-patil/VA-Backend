@@ -751,7 +751,50 @@ class NotificationService {
         try {
             const updatedAt = new Date();
             // 1. Update User doc
-            await User.findByIdAndUpdate(userId, { fcmToken, fcmTokenUpdatedAt: updatedAt });
+            const user = await User.findById(userId);
+            if (user) {
+                user.fcmToken = fcmToken;
+                user.fcmTokenUpdatedAt = updatedAt;
+
+                if (!user.welcomeNotificationSent) {
+                    user.welcomeNotificationSent = true;
+                    await user.save();
+
+                    // Check if database notification already exists to avoid duplicate entries
+                    const existingNotif = await Notification.findOne({
+                        userId: user._id,
+                        title: '🌟 Welcome to Vedic Astro! 🔮✨'
+                    });
+
+                    if (existingNotif) {
+                        // DB notification exists, send only push notification via FCM
+                        await this.sendToUser(
+                            user._id.toString(),
+                            {
+                                title: '🌟 Welcome to Vedic Astro! 🔮✨',
+                                body: '🙏 Welcome aboard! Begin your spiritual journey with personalized Vedic astrology insights. 🌙✨ Recharge your wallet today and enjoy **up to 50% OFF** on your first recharge! 🎉💰 Your path to guidance and clarity starts here. 🌟'
+                            },
+                            { navigateType: 'screen', navigateTarget: 'Wallet' }
+                        );
+                    } else {
+                        // Create and send notification (DB + FCM)
+                        await this.createAndSendNotification(
+                            user._id.toString(),
+                            'user',
+                            {
+                                title: '🌟 Welcome to Vedic Astro! 🔮✨',
+                                body: '🙏 Welcome aboard! Begin your spiritual journey with personalized Vedic astrology insights. 🌙✨ Recharge your wallet today and enjoy **up to 50% OFF** on your first recharge! 🎉💰 Your path to guidance and clarity starts here. 🌟'
+                            },
+                            { navigateType: 'screen', navigateTarget: 'Wallet' },
+                            'promo'
+                        );
+                    }
+                } else {
+                    await user.save();
+                }
+            } else {
+                console.warn(`[NotificationService] User ${userId} not found for token registration`);
+            }
             
             // 2. STRICT SEPARATION: Ensure this token is NOT present in the Astrologer doc for this user
             // This prevents a User App token from lingering in the Astrologer collection

@@ -204,8 +204,30 @@ export const verifyOtp = async (req: Request, res: Response) => {
         // Clear OTP after successful verification
         user.otp = undefined;
         user.otpExpires = undefined;
+        
+        const isNewUser = !user.isVerified;
         user.isVerified = true;
         if (deviceId) user.activeDeviceId = deviceId;
+
+        if (isNewUser) {
+            try {
+                await notificationService.createAndSendNotification(
+                    user._id.toString(),
+                    'user',
+                    {
+                        title: '🌟 Welcome to Vedic Astro! 🔮✨',
+                        body: '🙏 Welcome aboard! Begin your spiritual journey with personalized Vedic astrology insights. 🌙✨ Recharge your wallet today and enjoy **up to 50% OFF** on your first recharge! 🎉💰 Your path to guidance and clarity starts here. 🌟'
+                    },
+                    { navigateType: 'screen', navigateTarget: 'Wallet' },
+                    'promo'
+                );
+            } catch (err) {
+                console.error('[Auth] Error sending welcome notification:', err);
+            }
+        } else {
+            user.welcomeNotificationSent = true;
+        }
+
         await user.save();
 
         // Generate Token immediately upon verification
@@ -978,6 +1000,7 @@ export const facebookLogin = async (req: Request, res: Response) => {
             }
         }
 
+        let isNewUser = false;
         if (!user) {
             // 4. Create new user if not found
             // Since 'mobile' is required and unique, we generate a placeholder
@@ -991,6 +1014,9 @@ export const facebookLogin = async (req: Request, res: Response) => {
                 isVerified: true,
                 role: 'user'
             });
+            isNewUser = true;
+        } else {
+            user.welcomeNotificationSent = true;
         }
 
         // Device-based login restriction (same as verifyOtp)
@@ -1009,6 +1035,23 @@ export const facebookLogin = async (req: Request, res: Response) => {
 
         if (deviceId) user.activeDeviceId = deviceId;
         await user.save();
+
+        if (isNewUser) {
+            try {
+                await notificationService.createAndSendNotification(
+                    user._id.toString(),
+                    'user',
+                    {
+                        title: '🌟 Welcome to Vedic Astro! 🔮✨',
+                        body: '🙏 Welcome aboard! Begin your spiritual journey with personalized Vedic astrology insights. 🌙✨ Recharge your wallet today and enjoy **up to 50% OFF** on your first recharge! 🎉💰 Your path to guidance and clarity starts here. 🌟'
+                    },
+                    { navigateType: 'screen', navigateTarget: 'Wallet' },
+                    'promo'
+                );
+            } catch (err) {
+                console.error('[Auth] Error sending welcome notification (FB):', err);
+            }
+        }
 
         // 5. Generate JWT Token
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
