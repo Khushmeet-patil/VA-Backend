@@ -6,6 +6,7 @@ import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import ChatSession from '../models/ChatSession'; // Added import
 import CallSession from '../models/CallSession';
+import AstrologerAvailabilityLog from '../models/AstrologerAvailabilityLog';
 import Withdrawal from '../models/Withdrawal'; // Added import
 import Notification from '../models/Notification';
 import ChatReview from '../models/ChatReview';
@@ -1032,7 +1033,7 @@ export const adminAddAstrologer = async (req: Request, res: Response) => {
 
 export const getAstrologers = async (req: Request, res: Response) => {
     try {
-        const { status } = req.query;
+        const { status, startDate, endDate } = req.query;
 
         // 1. Sync: Find all users with role 'astrologer' and ensure they have an Astrologer profile
         const astrologerUsers = await User.find({ role: 'astrologer' });
@@ -1074,12 +1075,116 @@ export const getAstrologers = async (req: Request, res: Response) => {
         const query = status ? { status } : {};
         const astrologers = await Astrologer.find(query).populate('userId', 'name mobile');
 
+        // Parse date strings to Date objects if provided
+        const start = startDate ? new Date(startDate as string) : null;
+        if (start) start.setHours(0, 0, 0, 0);
+
+        const end = endDate ? new Date(endDate as string) : null;
+        if (end) end.setHours(23, 59, 59, 999);
+
+        // Build filtering matches for date ranges
+        const chatCallMatch: any = { status: 'ENDED' };
+        const availabilityMatch: any = {};
+
+        if (start || end) {
+            const timeField: any = {};
+            if (start) timeField.$gte = start;
+            if (end) timeField.$lte = end;
+            chatCallMatch.startTime = timeField;
+            availabilityMatch.startTime = timeField;
+        }
+
+        // Run aggregations in parallel
+        const [chatStats, callStats, availabilityStats] = await Promise.all([
+            ChatSession.aggregate([
+                { $match: chatCallMatch },
+                {
+                    $group: {
+                        _id: '$astrologerId',
+                        chatCount: { $sum: 1 },
+                        chatDuration: { $sum: '$totalMinutes' }
+                    }
+                }
+            ]),
+            CallSession.aggregate([
+                { $match: chatCallMatch },
+                {
+                    $group: {
+                        _id: { astrologerId: '$astrologerId', sessionType: '$sessionType' },
+                        duration: { $sum: '$totalMinutes' }
+                    }
+                }
+            ]),
+            AstrologerAvailabilityLog.aggregate([
+                { $match: availabilityMatch },
+                {
+                    $group: {
+                        _id: '$astrologerId',
+                        onlineDuration: { $sum: '$duration' }
+                    }
+                }
+            ])
+        ]);
+
+        // Post-process aggregated statistics into maps
+        const chatMap = new Map<string, { chatCount: number; chatDuration: number }>();
+        chatStats.forEach((stat: any) => {
+            if (stat._id) {
+                chatMap.set(stat._id.toString(), {
+                    chatCount: stat.chatCount || 0,
+                    chatDuration: stat.chatDuration || 0
+                });
+            }
+        });
+
+        const callMap = new Map<string, { voiceDuration: number; videoDuration: number }>();
+        callStats.forEach((stat: any) => {
+            const astroId = stat._id?.astrologerId?.toString();
+            const sessionType = stat._id?.sessionType;
+            if (astroId) {
+                const existing = callMap.get(astroId) || { voiceDuration: 0, videoDuration: 0 };
+                if (sessionType === 'voice_call' || sessionType === 'voice') {
+                    existing.voiceDuration += stat.duration || 0;
+                } else if (sessionType === 'video_call' || sessionType === 'video') {
+                    existing.videoDuration += stat.duration || 0;
+                }
+                callMap.set(astroId, existing);
+            }
+        });
+
+        const onlineMap = new Map<string, number>();
+        availabilityStats.forEach((stat: any) => {
+            if (stat._id) {
+                onlineMap.set(stat._id.toString(), stat.onlineDuration || 0);
+            }
+        });
+
+        // Enrich final list of astrologers with stats
+        const enrichedAstrologers = astrologers.map(astro => {
+            const astroObj = astro.toObject ? astro.toObject() : astro;
+            const astroIdStr = astroObj._id.toString();
+
+            const chat = chatMap.get(astroIdStr) || { chatCount: 0, chatDuration: 0 };
+            const call = callMap.get(astroIdStr) || { voiceDuration: 0, videoDuration: 0 };
+            const onlineDuration = onlineMap.get(astroIdStr) || 0;
+
+            return {
+                ...astroObj,
+                chatCount: chat.chatCount,
+                chatDuration: chat.chatDuration,
+                voiceDuration: call.voiceDuration,
+                videoDuration: call.videoDuration,
+                totalDuration: chat.chatDuration + call.voiceDuration + call.videoDuration,
+                onlineDuration: onlineDuration
+            };
+        });
+
         // Prevent caching
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
 
-        res.status(200).json({ success: true, data: astrologers });
+        res.status(200).json({ success: true, data: enrichedAstrologers });
     } catch (error) {
         console.error('Error in getAstrologers:', error);
         res.status(500).json({ success: false, message: 'Server Error', error });
