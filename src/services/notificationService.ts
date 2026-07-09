@@ -763,7 +763,7 @@ class NotificationService {
                     // Check if database notification already exists to avoid duplicate entries
                     const existingNotif = await Notification.findOne({
                         userId: user._id,
-                        title: '🌟 Welcome to Vedic Astro! 🔮✨'
+                        title: '✨🔮 Welcome to Vedic Astro! 🔮✨'
                     });
 
                     if (existingNotif) {
@@ -771,8 +771,8 @@ class NotificationService {
                         await this.sendToUser(
                             user._id.toString(),
                             {
-                                title: '🌟 Welcome to Vedic Astro! 🔮✨',
-                                body: '🙏 Welcome aboard! Begin your spiritual journey with personalized Vedic astrology insights. 🌙✨ Recharge your wallet today and enjoy **up to 50% OFF** on your first recharge! 🎉💰 Your path to guidance and clarity starts here. 🌟'
+                                title: '✨🔮 Welcome to Vedic Astro! 🔮✨',
+                                body: '🎁 Get up to 50% OFF on your first wallet recharge! 💰 Start your spiritual journey today! 🕉️✨'
                             },
                             { navigateType: 'screen', navigateTarget: 'Wallet' }
                         );
@@ -782,8 +782,8 @@ class NotificationService {
                             user._id.toString(),
                             'user',
                             {
-                                title: '🌟 Welcome to Vedic Astro! 🔮✨',
-                                body: '🙏 Welcome aboard! Begin your spiritual journey with personalized Vedic astrology insights. 🌙✨ Recharge your wallet today and enjoy **up to 50% OFF** on your first recharge! 🎉💰 Your path to guidance and clarity starts here. 🌟'
+                                title: '✨🔮 Welcome to Vedic Astro! 🔮✨',
+                                body: '🎁 Get up to 50% OFF on your first wallet recharge! 💰 Start your spiritual journey today! 🕉️✨'
                             },
                             { navigateType: 'screen', navigateTarget: 'Wallet' },
                             'promo'
