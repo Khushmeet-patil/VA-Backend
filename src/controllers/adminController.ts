@@ -1306,6 +1306,9 @@ export const updateAstrologer = async (req: Request, res: Response) => {
         if (typeof voiceCallPricePerMin === 'number') updateData.voiceCallPricePerMin = voiceCallPricePerMin;
         if (typeof videoCallPricePerMin === 'number') updateData.videoCallPricePerMin = videoCallPricePerMin;
         if (tag) updateData.tag = tag;
+        if (req.body.baseConsultationMinutes !== undefined) {
+            updateData.baseConsultationMinutes = parseInt(req.body.baseConsultationMinutes) || 0;
+        }
 
         // Basic Info
         if (firstName) updateData.firstName = firstName;

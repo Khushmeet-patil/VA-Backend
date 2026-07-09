@@ -89,6 +89,7 @@ export interface IAstrologer extends Document {
     isCurrentlyLive?: boolean;             // True when actively broadcasting
     currentLiveSessionId?: string | null;  // Active live session ID in live microservice
     isNetworkOffline?: boolean;
+    baseConsultationMinutes?: number;
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -189,6 +190,7 @@ const AstrologerSchema: Schema = new Schema({
     isCurrentlyLive: { type: Boolean, default: false, index: true }, // Quick lookup
     currentLiveSessionId: { type: String, default: null },           // Active live session
     isNetworkOffline: { type: Boolean, default: false },
+    baseConsultationMinutes: { type: Number, default: 0 },
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

@@ -409,7 +409,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
         const userId = (req as any).userId; // Optional - may be undefined for unauthenticated requests
 
         const astrologer = await Astrologer.findById(id)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy isCurrentlyLive currentLiveSessionId pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties totalChats tag')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy isCurrentlyLive currentLiveSessionId pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties totalChats tag baseConsultationMinutes')
             .lean();
 
         if (!astrologer) {
@@ -509,7 +509,7 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
             { $group: { _id: null, total: { $sum: '$totalMinutes' } } }
         ]);
 
-        const totalConsultationMinutes = (chatMinutesResult[0]?.total || 0) + (callMinutesResult[0]?.total || 0);
+        const totalConsultationMinutes = (chatMinutesResult[0]?.total || 0) + (callMinutesResult[0]?.total || 0) + (astrologer.baseConsultationMinutes || 0);
 
         res.json({
             success: true,
