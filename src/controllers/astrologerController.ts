@@ -4,6 +4,7 @@ import User from '../models/User';
 import AstrologerFollower from '../models/AstrologerFollower';
 import ChatReview from '../models/ChatReview';
 import ChatSession from '../models/ChatSession';
+import CallSession from '../models/CallSession';
 import Skill from '../models/Skill';
 import UserToAstrologerNotificationLog from '../models/UserToAstrologerNotificationLog';
 import SystemSetting from '../models/SystemSetting';
@@ -497,6 +498,19 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
             }
         }
 
+        // Calculate total consultation minutes (chat + call/video)
+        const chatMinutesResult = await ChatSession.aggregate([
+            { $match: { astrologerId: new mongoose.Types.ObjectId(id), status: 'ENDED' } },
+            { $group: { _id: null, total: { $sum: '$totalMinutes' } } }
+        ]);
+
+        const callMinutesResult = await CallSession.aggregate([
+            { $match: { astrologerId: new mongoose.Types.ObjectId(id), status: 'ENDED' } },
+            { $group: { _id: null, total: { $sum: '$totalMinutes' } } }
+        ]);
+
+        const totalConsultationMinutes = (chatMinutesResult[0]?.total || 0) + (callMinutesResult[0]?.total || 0);
+
         res.json({
             success: true,
             data: {
@@ -506,7 +520,8 @@ export const getAstrologerProfile = async (req: Request, res: Response) => {
                 isFollowing,
                 hasChatted,
                 userRating,
-                ratingDistribution: ratingCounts
+                ratingDistribution: ratingCounts,
+                totalConsultationMinutes
             }
         });
     } catch (error: any) {
