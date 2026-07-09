@@ -216,7 +216,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
                     'user',
                     {
                         title: '✨🔮 Welcome to Vedic Astro! 🔮✨',
-                        body: '🎁 Get up to 50% OFF on your first wallet recharge! 💰 Start your spiritual journey today! 🕉️✨'
+                        body: 'Get up to 50% Extra Bonus on your wallet recharge! 💰 Start your spiritual journey Now! 🕉️✨'
                     },
                     { navigateType: 'screen', navigateTarget: 'Wallet' },
                     'promo'
@@ -1043,7 +1043,7 @@ export const facebookLogin = async (req: Request, res: Response) => {
                     'user',
                     {
                         title: '✨🔮 Welcome to Vedic Astro! 🔮✨',
-                        body: '🎁 Get up to 50% OFF on your first wallet recharge! 💰 Start your spiritual journey today! 🕉️✨'
+                        body: 'Get up to 50% Extra Bonus on your wallet recharge! 💰 Start your spiritual journey Now! 🕉️✨'
                     },
                     { navigateType: 'screen', navigateTarget: 'Wallet' },
                     'promo'
