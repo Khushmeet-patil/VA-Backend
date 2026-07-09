@@ -38,6 +38,8 @@ import {
     deleteSkill,
     verifyAstrologer,
     uploadVerificationDocument,
+    editVerificationDocument,
+    deleteVerificationDocument,
     getAstrologerDetails,
     getAstrologerEarnings,
     getAstrologerWithdrawals,
@@ -129,6 +131,8 @@ router.put('/astrologers/:astrologerId', updateAstrologer);
     router.put('/astrologers/:astrologerId/reset-warnings', resetAstrologerWarnings);
 router.put('/astrologers/:astrologerId/verification', verifyAstrologer);
 router.post('/astrologers/:astrologerId/verification/upload', uploadVerificationDocument);
+router.put('/astrologers/:astrologerId/documents/:docId', editVerificationDocument);
+router.delete('/astrologers/:astrologerId/documents/:docId', deleteVerificationDocument);
 router.post('/astrologers/:astrologerId/warn', warnAstrologer); // Add warning route
 router.get('/astrologers/:astrologerId', getAstrologerDetails);
 router.get('/astrologers/:astrologerId/earnings', getAstrologerEarnings);

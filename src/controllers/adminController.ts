@@ -1671,6 +1671,77 @@ export const uploadVerificationDocument = async (req: Request, res: Response) =>
     }
 };
 
+// Edit Verification Document
+export const editVerificationDocument = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId, docId } = req.params;
+        const { docName, docBase64 } = req.body;
+
+        const updateFields: any = {};
+        if (docName) {
+            updateFields['verificationDocuments.$.name'] = docName;
+        }
+
+        if (docBase64) {
+            // Upload to R2
+            const r2Url = await uploadBase64ToR2(docBase64, 'verification_docs', `${astrologerId}-${Date.now()}`);
+            if (!r2Url) {
+                return res.status(500).json({ success: false, message: 'Failed to upload document' });
+            }
+            updateFields['verificationDocuments.$.url'] = r2Url;
+        }
+
+        if (Object.keys(updateFields).length === 0) {
+            return res.status(400).json({ success: false, message: 'No fields to update' });
+        }
+
+        const astrologer = await Astrologer.findOneAndUpdate(
+            { _id: astrologerId, 'verificationDocuments._id': docId },
+            { $set: updateFields },
+            { new: true }
+        );
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer or Document not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Document updated successfully',
+            data: astrologer
+        });
+    } catch (error: any) {
+        console.error('Edit verification doc error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+// Delete Verification Document
+export const deleteVerificationDocument = async (req: Request, res: Response) => {
+    try {
+        const { astrologerId, docId } = req.params;
+        const astrologer = await Astrologer.findByIdAndUpdate(
+            astrologerId,
+            { $pull: { verificationDocuments: { _id: docId } } },
+            { new: true }
+        );
+
+        if (!astrologer) {
+            return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Document deleted successfully',
+            data: astrologer
+        });
+    } catch (error: any) {
+        console.error('Delete verification doc error:', error);
+        res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    }
+};
+
+
 // 4. Notifications
 export const createNotification = async (req: Request, res: Response) => {
     try {
