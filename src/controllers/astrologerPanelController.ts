@@ -447,11 +447,11 @@ export const toggleStatus = async (req: Request, res: Response) => {
         astrologer.isManualOverride = true;
         await astrologer.save();
 
-        // Send notification to all users when they come online
+        // Send notification to followers when they come online
         if (isOnline) {
             await availabilityService.recordOnline(astrologerId);
             await heartbeatService.registerHeartbeat(astrologerId);
-            notificationService.broadcastAstrologerOnlineToAll(astrologer._id.toString(), {
+            notificationService.sendAstrologerOnlineToFollowers(astrologer._id.toString(), {
                 title: 'Astrologer Online!',
                 body: `${astrologer.firstName} ${astrologer.lastName} is now available for consultation.`
             }, {

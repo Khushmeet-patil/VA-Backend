@@ -970,22 +970,31 @@ class NotificationService {
     }
 
     /**
-     * Send a notification to all users when an astrologer goes online.
-     * Originally targeted only followers, but now broadcasts to everyone as requested.
+     * Send a notification to followers of the astrologer when they go online.
      */
-    async broadcastAstrologerOnlineToAll(
+    async sendAstrologerOnlineToFollowers(
         astrologerId: string,
         notification: { title: string; body: string },
         data?: Record<string, string>
     ): Promise<{ success: number; failure: number }> {
         if (!this.initialized) {
-            console.warn('[NotificationService] Not initialized, cannot broadcastAstrologerOnlineToAll');
+            console.warn('[NotificationService] Not initialized, cannot sendAstrologerOnlineToFollowers');
             return { success: 0, failure: 0 };
         }
 
         try {
-            // 1. Fetch FCM tokens for all users (role 'user')
+            // 1. Fetch followers for this specific astrologer
+            const follows = await AstrologerFollower.find({ astrologerId }).select('userId').lean();
+            const followerIds = follows.map((f: any) => f.userId);
+
+            if (followerIds.length === 0) {
+                console.log(`[NotificationService] No followers found for astrologer ${astrologerId}`);
+                return { success: 0, failure: 0 };
+            }
+
+            // 2. Fetch FCM tokens for those followers who are users
             const users = await User.find({
+                _id: { $in: followerIds },
                 fcmToken: { $exists: true, $ne: '' },
                 role: 'user'
             }).select('fcmToken').lean();
@@ -993,14 +1002,14 @@ class NotificationService {
             const tokens = users.map((u: any) => u.fcmToken).filter((t: any) => !!t) as string[];
 
             if (tokens.length === 0) {
-                console.log(`[NotificationService] No FCM tokens found for any user`);
+                console.log(`[NotificationService] No FCM tokens found for followers of astrologer ${astrologerId}`);
                 return { success: 0, failure: 0 };
             }
 
             const uniqueTokens = Array.from(new Set(tokens));
-            console.log(`[NotificationService] Broadcasting online notification to ${uniqueTokens.length} unique devices for astrologer ${astrologerId}`);
+            console.log(`[NotificationService] Sending online notification to ${uniqueTokens.length} unique follower devices for astrologer ${astrologerId}`);
 
-            // 2. Send in batches of 500 (FCM limit)
+            // 3. Send in batches of 500 (FCM limit)
             const batchSize = 500;
             let successCount = 0;
             let failureCount = 0;
@@ -1052,7 +1061,7 @@ class NotificationService {
 
             return { success: successCount, failure: failureCount };
         } catch (error) {
-            console.error('[NotificationService] broadcastAstrologerOnlineToAll error:', error);
+            console.error('[NotificationService] sendAstrologerOnlineToFollowers error:', error);
             return { success: 0, failure: 0 };
         }
     }
