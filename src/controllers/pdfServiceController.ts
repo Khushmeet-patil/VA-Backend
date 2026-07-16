@@ -281,7 +281,111 @@ export const getPdfOrders = async (req: Request, res: Response) => {
     }
 };
 
+// 3.5. Manually Resolve Pending/Failed PDF Order (Admin Route)
+export const manualResolvePdfOrder = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ success: false, message: 'Missing PDF request ID.' });
+        }
+
+        const pdfRequest = await KundliPdfRequest.findById(id);
+        if (!pdfRequest) {
+            return res.status(404).json({ success: false, message: 'PDF Request details not found.' });
+        }
+
+        if (pdfRequest.status === 'success' && pdfRequest.pdfUrl) {
+            return res.status(200).json({ success: true, message: 'PDF Order is already completed.', pdfUrl: pdfRequest.pdfUrl });
+        }
+
+        const paymentId = `admin_manual_${Date.now()}`;
+
+        try {
+            const gstRate = await getSettingValue('gstRate', 18);
+            const baseAmount = pdfRequest.amount / (1 + gstRate / 100);
+            const gstAmount = pdfRequest.amount - baseAmount;
+
+            const reportLabel = pdfRequest.reportType === 'numerology'
+                ? 'Numerology Report PDF'
+                : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`;
+
+            await Transaction.create({
+                paymentId,
+                fromUser: pdfRequest.user,
+                amount: baseAmount,
+                gstAmount,
+                totalPaid: pdfRequest.amount,
+                type: 'debit',
+                status: 'success',
+                description: `${reportLabel} Service Purchase (Txn: ${paymentId} - Manual Resolve)`
+            });
+        } catch (err: any) {
+            console.error('[PDF Service Controller] Manual Resolve Transaction Error:', err.message);
+        }
+
+        let pdfUrl = '';
+        try {
+            if (pdfRequest.reportType === 'numerology') {
+                pdfUrl = await generateNumerologyPdf({
+                    name: pdfRequest.name,
+                    day: pdfRequest.day,
+                    month: pdfRequest.month,
+                    year: pdfRequest.year,
+                    language: (pdfRequest.language as 'en' | 'hi') || 'en'
+                });
+            } else {
+                pdfUrl = await generateKundliPdf({
+                    name: pdfRequest.name,
+                    gender: pdfRequest.gender as 'male' | 'female',
+                    day: pdfRequest.day,
+                    month: pdfRequest.month,
+                    year: pdfRequest.year,
+                    hour: pdfRequest.hour!,
+                    min: pdfRequest.min!,
+                    lat: pdfRequest.lat!,
+                    lon: pdfRequest.lon!,
+                    tzone: pdfRequest.tzone!,
+                    place: pdfRequest.place!,
+                    pdfType: pdfRequest.pdfType as 'basic' | 'pro',
+                    language: pdfRequest.language
+                });
+            }
+        } catch (pdfError: any) {
+            console.error('[PDF Service Controller] PDF Generation Failed:', pdfError.message);
+            pdfRequest.status = 'failed';
+            await pdfRequest.save();
+            return res.status(500).json({ success: false, message: 'Failed to generate PDF for order.', error: pdfError.message });
+        }
+
+        pdfRequest.pdfUrl = pdfUrl;
+        pdfRequest.paymentId = paymentId;
+        pdfRequest.status = 'success';
+        await pdfRequest.save();
+
+        // Send email asynchronously
+        if (pdfRequest.reportType === 'numerology') {
+            sendNumerologyPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name)
+                .catch(err => console.error('[PDF Service Controller] Async Numerology Email Failed:', err.message));
+        } else {
+            sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name, pdfRequest.pdfType as 'basic' | 'pro')
+                .catch(err => console.error('[PDF Service Controller] Async Kundli Email Failed:', err.message));
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'PDF order manually resolved and generated successfully.',
+            pdfUrl
+        });
+
+    } catch (error: any) {
+        console.error('[PDF Service Controller] manualResolvePdfOrder Error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to resolve PDF order', error: error.message });
+    }
+};
+
 // 4. Public route to download PDF with attachment headers
+
 export const downloadPdfFile = async (req: Request, res: Response) => {
     try {
         const { url, name } = req.query;

@@ -12,6 +12,8 @@ import geoService from '../services/geoService';
 import astrologyService from '../services/astrologyService';
 import { getSettingValue } from './systemSettingController';
 import notificationService from '../services/notificationService';
+import KundliPdfRequest from '../models/KundliPdfRequest';
+import { generateKundliPdf, sendPdfEmail, generateNumerologyPdf, sendNumerologyPdfEmail } from '../services/pdfService';
 
 // Admin Login (Email + Password)
 export const adminLogin = async (req: Request, res: Response) => {
@@ -916,6 +918,95 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
                 } catch (fetchErr: any) {
                     console.warn('[Webhook] Failed to fetch order for notes:', fetchErr?.message);
                 }
+            }
+
+            // PDF Service Webhook Handler
+            if (notes.pdfRequestId) {
+                try {
+                    const pdfRequest = await KundliPdfRequest.findById(notes.pdfRequestId);
+                    if (!pdfRequest) {
+                        console.warn('[Webhook] PDF Request not found for ID:', notes.pdfRequestId);
+                        return res.status(200).json({ received: true });
+                    }
+
+                    if (pdfRequest.status === 'success') {
+                        console.log('[Webhook] PDF Request already completed:', notes.pdfRequestId);
+                        return res.status(200).json({ received: true });
+                    }
+
+                    // Process transaction
+                    const gstRate = await getSettingValue('gstRate', 18);
+                    const baseAmountValue = pdfRequest.amount / (1 + gstRate / 100);
+                    const gstAmountValue = pdfRequest.amount - baseAmountValue;
+
+                    const reportLabel = pdfRequest.reportType === 'numerology'
+                        ? 'Numerology Report PDF'
+                        : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`;
+
+                    await Transaction.create({
+                        paymentId,
+                        fromUser: pdfRequest.user,
+                        amount: baseAmountValue,
+                        gstAmount: gstAmountValue,
+                        totalPaid: pdfRequest.amount,
+                        type: 'debit',
+                        status: 'success',
+                        description: `${reportLabel} Service Purchase via Webhook (Txn: ${paymentId})`
+                    });
+
+                    // Generate PDF and send email
+                    let pdfUrl = '';
+                    if (pdfRequest.reportType === 'numerology') {
+                        pdfUrl = await generateNumerologyPdf({
+                            name: pdfRequest.name,
+                            day: pdfRequest.day,
+                            month: pdfRequest.month,
+                            year: pdfRequest.year,
+                            language: (pdfRequest.language as 'en' | 'hi') || 'en'
+                        });
+                    } else {
+                        pdfUrl = await generateKundliPdf({
+                            name: pdfRequest.name,
+                            gender: pdfRequest.gender as 'male' | 'female',
+                            day: pdfRequest.day,
+                            month: pdfRequest.month,
+                            year: pdfRequest.year,
+                            hour: pdfRequest.hour!,
+                            min: pdfRequest.min!,
+                            lat: pdfRequest.lat!,
+                            lon: pdfRequest.lon!,
+                            tzone: pdfRequest.tzone!,
+                            place: pdfRequest.place!,
+                            pdfType: pdfRequest.pdfType as 'basic' | 'pro',
+                            language: pdfRequest.language
+                        });
+                    }
+
+                    pdfRequest.pdfUrl = pdfUrl;
+                    pdfRequest.paymentId = paymentId;
+                    pdfRequest.status = 'success';
+                    await pdfRequest.save();
+
+                    // Send email
+                    if (pdfRequest.reportType === 'numerology') {
+                        sendNumerologyPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name)
+                            .catch(err => console.error('[Webhook] Async Numerology Email Failed:', err.message));
+                    } else {
+                        sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name, pdfRequest.pdfType as 'basic' | 'pro')
+                            .catch(err => console.error('[Webhook] Async Kundli Email Failed:', err.message));
+                    }
+
+                    console.log(`[Webhook] PDF Order resolved and generated successfully: ${pdfRequest._id}`);
+
+                } catch (err: any) {
+                    if (err.code === 11000) {
+                        console.log(`[Webhook] PDF Payment ${paymentId} already processed — skipping`);
+                    } else {
+                        console.error('[Webhook] PDF processing error:', err.message);
+                    }
+                }
+
+                return res.status(200).json({ received: true });
             }
 
             const userId: string = notes.userId;

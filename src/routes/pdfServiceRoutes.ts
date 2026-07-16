@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
-import { createPdfOrder, verifyPdfPayment, getPdfOrders, downloadPdfFile } from '../controllers/pdfServiceController';
+import { createPdfOrder, verifyPdfPayment, getPdfOrders, downloadPdfFile, manualResolvePdfOrder } from '../controllers/pdfServiceController';
 
 const router = express.Router();
 
@@ -13,5 +13,6 @@ router.get('/download-file', downloadPdfFile);
 
 // Admin routes (Admin Authenticated)
 router.get('/orders', authMiddleware, adminMiddleware, getPdfOrders);
+router.post('/resolve-pending/:id', authMiddleware, adminMiddleware, manualResolvePdfOrder);
 
 export default router;
