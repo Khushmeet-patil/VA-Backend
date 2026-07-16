@@ -106,6 +106,24 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'kundliPdfProPrice') {
                 return res.json({ success: true, data: { key, value: 199 } });
             }
+            if (key === 'numerologyPdfPrice') {
+                return res.json({ success: true, data: { key, value: 149 } });
+            }
+            if (key === 'matchmakingPdfPrice') {
+                return res.json({ success: true, data: { key, value: 299 } });
+            }
+            if (key === 'kundliPdfBasicDiscount') {
+                return res.json({ success: true, data: { key, value: 50 } });
+            }
+            if (key === 'kundliPdfProDiscount') {
+                return res.json({ success: true, data: { key, value: 50 } });
+            }
+            if (key === 'numerologyPdfDiscount') {
+                return res.json({ success: true, data: { key, value: 50 } });
+            }
+            if (key === 'matchmakingPdfDiscount') {
+                return res.json({ success: true, data: { key, value: 50 } });
+            }
             if (key === 'kundliPdfCompanyName') {
                 return res.json({ success: true, data: { key, value: '' } });
             }

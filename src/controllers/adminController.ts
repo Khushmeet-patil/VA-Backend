@@ -2994,8 +2994,16 @@ export const getGstStats = async (req: Request, res: Response) => {
 
         const filter = {
             status: 'success',
-            type: 'credit',
-            description: { $regex: /^(Wallet Recharge|Manual Recharge)/ },
+            $or: [
+                {
+                    type: 'credit',
+                    description: { $regex: /^(Wallet Recharge|Manual Recharge)/ }
+                },
+                {
+                    type: 'debit',
+                    description: { $regex: /Service Purchase/ }
+                }
+            ],
             createdAt: { $gte: startDate, $lte: endDate }
         };
 
@@ -3061,8 +3069,16 @@ export const getEarningsStats = async (req: Request, res: Response) => {
             {
                 $match: {
                     status: 'success',
-                    type: 'credit',
-                    description: { $regex: /^(Wallet Recharge|Manual Recharge)/ },
+                    $or: [
+                        {
+                            type: 'credit',
+                            description: { $regex: /^(Wallet Recharge|Manual Recharge)/ }
+                        },
+                        {
+                            type: 'debit',
+                            description: { $regex: /Service Purchase/ }
+                        }
+                    ],
                     createdAt: { $gte: startDate, $lte: endDate }
                 }
             },

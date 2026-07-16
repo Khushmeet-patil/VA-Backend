@@ -13,7 +13,7 @@ import astrologyService from '../services/astrologyService';
 import { getSettingValue } from './systemSettingController';
 import notificationService from '../services/notificationService';
 import KundliPdfRequest from '../models/KundliPdfRequest';
-import { generateKundliPdf, sendPdfEmail, generateNumerologyPdf, sendNumerologyPdfEmail } from '../services/pdfService';
+import { generateKundliPdf, sendPdfEmail, generateNumerologyPdf, sendNumerologyPdfEmail, generateMatchMakingPdf, sendMatchMakingPdfEmail } from '../services/pdfService';
 
 // Admin Login (Email + Password)
 export const adminLogin = async (req: Request, res: Response) => {
@@ -941,7 +941,7 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
                     const reportLabel = pdfRequest.reportType === 'numerology'
                         ? 'Numerology Report PDF'
-                        : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`;
+                        : (pdfRequest.reportType === 'matchmaking' ? 'Match Making PDF' : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`);
 
                     await Transaction.create({
                         paymentId,
@@ -958,19 +958,45 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
                     let pdfUrl = '';
                     if (pdfRequest.reportType === 'numerology') {
                         pdfUrl = await generateNumerologyPdf({
-                            name: pdfRequest.name,
-                            day: pdfRequest.day,
-                            month: pdfRequest.month,
-                            year: pdfRequest.year,
+                            name: pdfRequest.name!,
+                            day: pdfRequest.day!,
+                            month: pdfRequest.month!,
+                            year: pdfRequest.year!,
+                            language: (pdfRequest.language as 'en' | 'hi') || 'en'
+                        });
+                    } else if (pdfRequest.reportType === 'matchmaking') {
+                        pdfUrl = await generateMatchMakingPdf({
+                            mFirstName: pdfRequest.mFirstName!,
+                            mLastName: pdfRequest.mLastName!,
+                            mDay: pdfRequest.mDay!,
+                            mMonth: pdfRequest.mMonth!,
+                            mYear: pdfRequest.mYear!,
+                            mHour: pdfRequest.mHour!,
+                            mMinute: pdfRequest.mMinute!,
+                            mLatitude: pdfRequest.mLatitude!,
+                            mLongitude: pdfRequest.mLongitude!,
+                            mTimezone: pdfRequest.mTimezone!,
+                            mPlace: pdfRequest.mPlace!,
+                            fFirstName: pdfRequest.fFirstName!,
+                            fLastName: pdfRequest.fLastName!,
+                            fDay: pdfRequest.fDay!,
+                            fMonth: pdfRequest.fMonth!,
+                            fYear: pdfRequest.fYear!,
+                            fHour: pdfRequest.fHour!,
+                            fMinute: pdfRequest.fMinute!,
+                            fLatitude: pdfRequest.fLatitude!,
+                            fLongitude: pdfRequest.fLongitude!,
+                            fTimezone: pdfRequest.fTimezone!,
+                            fPlace: pdfRequest.fPlace!,
                             language: (pdfRequest.language as 'en' | 'hi') || 'en'
                         });
                     } else {
                         pdfUrl = await generateKundliPdf({
-                            name: pdfRequest.name,
+                            name: pdfRequest.name!,
                             gender: pdfRequest.gender as 'male' | 'female',
-                            day: pdfRequest.day,
-                            month: pdfRequest.month,
-                            year: pdfRequest.year,
+                            day: pdfRequest.day!,
+                            month: pdfRequest.month!,
+                            year: pdfRequest.year!,
                             hour: pdfRequest.hour!,
                             min: pdfRequest.min!,
                             lat: pdfRequest.lat!,
@@ -989,10 +1015,13 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
 
                     // Send email
                     if (pdfRequest.reportType === 'numerology') {
-                        sendNumerologyPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name)
+                        sendNumerologyPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!)
                             .catch(err => console.error('[Webhook] Async Numerology Email Failed:', err.message));
+                    } else if (pdfRequest.reportType === 'matchmaking') {
+                        sendMatchMakingPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.mFirstName!, pdfRequest.fFirstName!)
+                            .catch(err => console.error('[Webhook] Async Match Making Email Failed:', err.message));
                     } else {
-                        sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name, pdfRequest.pdfType as 'basic' | 'pro')
+                        sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!, pdfRequest.pdfType as 'basic' | 'pro')
                             .catch(err => console.error('[Webhook] Async Kundli Email Failed:', err.message));
                     }
 

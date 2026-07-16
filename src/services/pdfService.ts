@@ -297,9 +297,168 @@ export const sendNumerologyPdfEmail = async (toEmail: string, pdfUrl: string, us
     }
 };
 
+interface GenerateMatchMakingPdfInput {
+    mFirstName: string;
+    mLastName: string;
+    mDay: number;
+    mMonth: number;
+    mYear: number;
+    mHour: number;
+    mMinute: number;
+    mLatitude: number;
+    mLongitude: number;
+    mTimezone: number;
+    mPlace: string;
+    fFirstName: string;
+    fLastName: string;
+    fDay: number;
+    fMonth: number;
+    fYear: number;
+    fHour: number;
+    fMinute: number;
+    fLatitude: number;
+    fLongitude: number;
+    fTimezone: number;
+    fPlace: string;
+    language: 'en' | 'hi';
+}
+
+export const generateMatchMakingPdf = async (input: GenerateMatchMakingPdfInput): Promise<string> => {
+    try {
+        const apiKey = process.env.ASTRO_PDF_ACCESS_TOKEN || process.env.ASTRO_API_KEY || '';
+        const endpoint = 'https://pdf.astrologyapi.com/v1/match_making_pdf';
+
+        const companyName = await getSettingValue('kundliPdfCompanyName', '');
+        const companyInfo = await getSettingValue('kundliPdfCompanyInfo', 'VedicAstro provides personalized horoscope predictions and guidance.');
+        const domainUrl = await getSettingValue('kundliPdfDomainUrl', 'https://vedicastro.co.in');
+        const footerLink = await getSettingValue('kundliPdfFooterLink', 'vedicastro.co.in');
+        const logoUrl = await getSettingValue('kundliPdfLogoUrl', 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18)%20(1).png');
+        const companyEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+        const companyLandline = await getSettingValue('kundliPdfCompanyLandline', '+91-1234567890');
+        const companyMobile = await getSettingValue('kundliPdfCompanyMobile', '+91 75749 70100');
+
+        const requestBody = {
+            m_first_name: input.mFirstName,
+            m_last_name: input.mLastName,
+            m_day: input.mDay,
+            m_month: input.mMonth,
+            m_year: input.mYear,
+            m_hour: input.mHour,
+            m_minute: input.mMinute,
+            m_latitude: input.mLatitude,
+            m_longitude: input.mLongitude,
+            m_timezone: input.mTimezone,
+            m_place: input.mPlace,
+            f_first_name: input.fFirstName,
+            f_last_name: input.fLastName,
+            f_day: input.fDay,
+            f_month: input.fMonth,
+            f_year: input.fYear,
+            f_hour: input.fHour,
+            f_minute: input.fMinute,
+            f_latitude: input.fLatitude,
+            f_longitude: input.fLongitude,
+            f_timezone: input.fTimezone,
+            f_place: input.fPlace,
+            language: input.language || 'en',
+            ashtakoot: true,
+            dashakoot: false,
+            papasamyam: true,
+            chart_style: 'NORTH_INDIAN',
+            footer_link: footerLink,
+            logo_url: logoUrl,
+            company_name: companyName,
+            company_info: companyInfo.substring(0, 490),
+            domain_url: domainUrl,
+            company_email: companyEmail,
+            company_landline: companyLandline,
+            company_mobile: companyMobile
+        };
+
+        console.log('[PDF Service] Requesting Match Making PDF from Astrology API:', JSON.stringify(requestBody));
+
+        const response = await axios.post(endpoint, requestBody, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-astrologyapi-key': apiKey
+            }
+        });
+
+        console.log('[PDF Service] Match Making PDF API Response:', response.data);
+
+        let pdfUrl = response.data?.pdf_url || response.data?.pdfUrl;
+        if (!pdfUrl) {
+            throw new Error(response.data?.message || 'Astrology Match Making PDF API did not return a PDF URL');
+        }
+
+        if (pdfUrl.startsWith('http://')) {
+            pdfUrl = pdfUrl.replace('http://', 'https://');
+        }
+
+        return pdfUrl;
+    } catch (error: any) {
+        console.error('[PDF Service] generateMatchMakingPdf Error:', error.response?.data || error.message);
+        throw new Error(error.response?.data?.message || error.message || 'Failed to generate Match Making PDF from Astrology API');
+    }
+};
+
+export const sendMatchMakingPdfEmail = async (toEmail: string, pdfUrl: string, mName: string, fName: string) => {
+    try {
+        console.log(`[PDF Service] Downloading Match Making PDF for email: ${pdfUrl}`);
+        const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+        const pdfBuffer = Buffer.from(pdfResponse.data);
+
+        const transporter = getEmailTransporter();
+        const companyName = await getSettingValue('kundliPdfCompanyName', 'VedicAstro Solutions');
+        const supportEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+
+        const mailOptions = {
+            from: `"${companyName}" <${process.env.STORE_EMAIL_USER || 'support@vedicastro.co.in'}>`,
+            to: toEmail,
+            subject: `Your Match Making Report PDF from ${companyName}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="background-color: #E91E63; padding: 20px; text-align: center; color: white;">
+                        <h1 style="margin: 0; font-size: 24px;">Your Match Making Report is Ready!</h1>
+                    </div>
+                    <div style="padding: 20px; background-color: #fff;">
+                        <p>Dear Customer,</p>
+                        <p>Thank you for using our <strong>Match Making PDF Service</strong> on VedicAstro. Your detailed compatibility and match making PDF report for <strong>${mName}</strong> and <strong>${fName}</strong> has been successfully generated.</p>
+                        <p style="text-align: center; margin: 25px 0;">
+                            <a href="${pdfUrl}" target="_blank" style="background-color: #E91E63; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">
+                                View &amp; Download PDF
+                            </a>
+                        </p>
+                        <p>If you have any questions, please contact us at <a href="mailto:${supportEmail}" style="color: #E91E63;">${supportEmail}</a>.</p>
+                        <p style="margin-top: 30px; font-size: 14px; color: #888;">Warm regards,<br>Team ${companyName}</p>
+                    </div>
+                    <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee;">
+                        <p style="margin: 0;">&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+                    </div>
+                </div>
+            `,
+            attachments: [
+                {
+                    filename: `${mName.replace(/[^a-zA-Z0-9]/g, '_')}_and_${fName.replace(/[^a-zA-Z0-9]/g, '_')}_MatchMaking.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ]
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[PDF Service] Match making email sent to ${toEmail}. Message ID: ${info.messageId}`);
+        return info;
+    } catch (error: any) {
+        console.error('[PDF Service] sendMatchMakingPdfEmail Error:', error.message);
+    }
+};
+
 export default {
     generateKundliPdf,
     sendPdfEmail,
     generateNumerologyPdf,
-    sendNumerologyPdfEmail
+    sendNumerologyPdfEmail,
+    generateMatchMakingPdf,
+    sendMatchMakingPdfEmail
 };
