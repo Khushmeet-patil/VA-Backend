@@ -111,6 +111,36 @@ class CallService {
         } else if (sessionType === 'video_call') {
             ratePerMinute = astrologer.videoCallPricePerMin || (astrologer.pricePerMin * 1.5);
         }
+
+        if (initiatedFromLive) {
+            try {
+                const LiveSession = mongoose.models.LiveSession || mongoose.model('LiveSession', new mongoose.Schema({
+                    astrologerId: mongoose.Schema.Types.ObjectId,
+                    status: String,
+                    liveVoiceRate: Number,
+                    liveVoiceRateStatus: String,
+                    liveVideoRate: Number,
+                    liveVideoRateStatus: String,
+                }, { strict: false }));
+                const liveSession = await LiveSession.findOne({
+                    astrologerId: new mongoose.Types.ObjectId(astrologerId),
+                    status: 'LIVE'
+                }).lean() as any;
+                if (liveSession) {
+                    if (sessionType === 'voice_call') {
+                        if (liveSession.liveVoiceRateStatus === 'approved' && liveSession.liveVoiceRate !== null) {
+                            ratePerMinute = liveSession.liveVoiceRate;
+                        }
+                    } else if (sessionType === 'video_call') {
+                        if (liveSession.liveVideoRateStatus === 'approved' && liveSession.liveVideoRate !== null) {
+                            ratePerMinute = liveSession.liveVideoRate;
+                        }
+                    }
+                }
+            } catch (err: any) {
+                console.error('[CallService] Error resolving live rate override:', err.message);
+            }
+        }
         const minTotalBalanceRequired = ratePerMinute * 5;
 
         // Intro rate eligibility check

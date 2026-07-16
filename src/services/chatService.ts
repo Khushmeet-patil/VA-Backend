@@ -152,6 +152,25 @@ class ChatService {
         }
 
         let ratePerMinute = astrologer.pricePerMin;
+        if (initiatedFromLive) {
+            try {
+                const LiveSession = mongoose.models.LiveSession || mongoose.model('LiveSession', new mongoose.Schema({
+                    astrologerId: mongoose.Schema.Types.ObjectId,
+                    status: String,
+                    liveChatRate: Number,
+                    liveChatRateStatus: String,
+                }, { strict: false }));
+                const liveSession = await LiveSession.findOne({
+                    astrologerId: new mongoose.Types.ObjectId(astrologerId),
+                    status: 'LIVE'
+                }).lean() as any;
+                if (liveSession && liveSession.liveChatRateStatus === 'approved' && liveSession.liveChatRate !== null) {
+                    ratePerMinute = liveSession.liveChatRate;
+                }
+            } catch (err: any) {
+                console.error('[ChatService] Error resolving live rate override:', err.message);
+            }
+        }
         const minTotalBalanceRequired = ratePerMinute * 5;
 
         // Check if user is eligible for introductory offer (first-time user)

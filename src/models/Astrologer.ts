@@ -86,6 +86,9 @@ export interface IAstrologer extends Document {
     // Live Streaming fields
     liveStreamEnabled?: boolean;            // Admin grants/revokes live streaming access
     liveStreamMaxMinutes?: number | null;   // Per-astrologer limit (null = use global SystemSetting)
+    liveChatRate?: number | null;
+    liveVoiceRate?: number | null;
+    liveVideoRate?: number | null;
     isCurrentlyLive?: boolean;             // True when actively broadcasting
     currentLiveSessionId?: string | null;  // Active live session ID in live microservice
     isNetworkOffline?: boolean;
@@ -187,6 +190,9 @@ const AstrologerSchema: Schema = new Schema({
     // Live Streaming
     liveStreamEnabled: { type: Boolean, default: false },            // Admin grants access
     liveStreamMaxMinutes: { type: Number, default: null },           // null = use global setting
+    liveChatRate: { type: Number, default: null },
+    liveVoiceRate: { type: Number, default: null },
+    liveVideoRate: { type: Number, default: null },
     isCurrentlyLive: { type: Boolean, default: false, index: true }, // Quick lookup
     currentLiveSessionId: { type: String, default: null },           // Active live session
     isNetworkOffline: { type: Boolean, default: false },
