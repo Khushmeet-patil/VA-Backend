@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IKundliPdfRequest extends Document {
     user: mongoose.Types.ObjectId;
-    reportType: 'kundli' | 'numerology' | 'matchmaking';
+    reportType: 'kundli' | 'numerology' | 'matchmaking' | 'gemstone' | 'lifeforecast';
     name?: string;
     gender?: 'male' | 'female';
     day?: number;
@@ -14,7 +14,7 @@ export interface IKundliPdfRequest extends Document {
     lon?: number;
     tzone?: number;
     place?: string;
-    pdfType: 'basic' | 'pro' | 'numerology' | 'matchmaking';
+    pdfType: 'basic' | 'pro' | 'numerology' | 'matchmaking' | 'gemstone' | 'lifeforecast';
     language: string;
     email: string;
     amount: number;
@@ -52,7 +52,7 @@ export interface IKundliPdfRequest extends Document {
 
 const KundliPdfRequestSchema: Schema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    reportType: { type: String, enum: ['kundli', 'numerology', 'matchmaking'], default: 'kundli' },
+    reportType: { type: String, enum: ['kundli', 'numerology', 'matchmaking', 'gemstone', 'lifeforecast'], default: 'kundli' },
     name: { type: String },
     gender: { type: String, enum: ['male', 'female'] },
     day: { type: Number },
@@ -64,7 +64,7 @@ const KundliPdfRequestSchema: Schema = new Schema({
     lon: { type: Number },
     tzone: { type: Number },
     place: { type: String },
-    pdfType: { type: String, enum: ['basic', 'pro', 'numerology', 'matchmaking'] },
+    pdfType: { type: String, enum: ['basic', 'pro', 'numerology', 'matchmaking', 'gemstone', 'lifeforecast'] },
     language: { type: String, default: 'en', required: true },
     email: { type: String, required: true },
     amount: { type: Number, required: true },

@@ -112,6 +112,18 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'matchmakingPdfPrice') {
                 return res.json({ success: true, data: { key, value: 299 } });
             }
+            if (key === 'gemstonePdfPrice') {
+                return res.json({ success: true, data: { key, value: 199 } });
+            }
+            if (key === 'gemstonePdfDiscount') {
+                return res.json({ success: true, data: { key, value: 50 } });
+            }
+            if (key === 'lifeforecastPdfPrice') {
+                return res.json({ success: true, data: { key, value: 399 } });
+            }
+            if (key === 'lifeforecastPdfDiscount') {
+                return res.json({ success: true, data: { key, value: 50 } });
+            }
             if (key === 'kundliPdfBasicDiscount') {
                 return res.json({ success: true, data: { key, value: 50 } });
             }

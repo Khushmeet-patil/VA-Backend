@@ -1,12 +1,13 @@
 import express from 'express';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
-import { createPdfOrder, verifyPdfPayment, getPdfOrders, downloadPdfFile, manualResolvePdfOrder } from '../controllers/pdfServiceController';
+import { createPdfOrder, verifyPdfPayment, getPdfOrders, downloadPdfFile, manualResolvePdfOrder, trackReportsFormOpen } from '../controllers/pdfServiceController';
 
 const router = express.Router();
 
 // User routes (Authenticated)
 router.post('/create-order', authMiddleware, createPdfOrder);
 router.post('/verify-payment', authMiddleware, verifyPdfPayment);
+router.post('/track-open', authMiddleware, trackReportsFormOpen);
 
 // Public route to trigger browser file download via attachment headers
 router.get('/download-file', downloadPdfFile);

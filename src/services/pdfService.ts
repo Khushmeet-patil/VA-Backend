@@ -454,11 +454,278 @@ export const sendMatchMakingPdfEmail = async (toEmail: string, pdfUrl: string, m
     }
 };
 
+export interface GenerateGemstonePdfInput {
+    name: string;
+    gender: 'male' | 'female';
+    day: number;
+    month: number;
+    year: number;
+    hour: number;
+    min: number;
+    lat: number;
+    lon: number;
+    tzone: number;
+    place: string;
+    language: string;
+}
+
+export interface GenerateLifeForecastPdfInput {
+    name: string;
+    gender: 'male' | 'female';
+    day: number;
+    month: number;
+    year: number;
+    hour: number;
+    min: number;
+    lat: number;
+    lon: number;
+    tzone: number;
+    place: string;
+    language: string;
+}
+
+export const generateGemstonePdf = async (input: GenerateGemstonePdfInput): Promise<string> => {
+    try {
+        const apiKey = process.env.ASTRO_PDF_ACCESS_TOKEN || process.env.ASTRO_API_KEY || '';
+        const endpoint = 'https://pdf.astrologyapi.com/v1/basic_gemstone_report_pdf';
+
+        const companyName = await getSettingValue('kundliPdfCompanyName', '');
+        const companyInfo = await getSettingValue('kundliPdfCompanyInfo', 'VedicAstro provides personalized horoscope predictions and guidance.');
+        const domainUrl = await getSettingValue('kundliPdfDomainUrl', 'https://vedicastro.co.in');
+        const footerLink = await getSettingValue('kundliPdfFooterLink', 'vedicastro.co.in');
+        const logoUrl = await getSettingValue('kundliPdfLogoUrl', 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18)%20(1).png');
+        const companyEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+        const companyLandline = await getSettingValue('kundliPdfCompanyLandline', '+91-1234567890');
+        const companyMobile = await getSettingValue('kundliPdfCompanyMobile', '+91 75749 70100');
+
+        const requestBody = {
+            name: input.name,
+            gender: input.gender,
+            day: input.day,
+            month: input.month,
+            year: input.year,
+            hour: input.hour,
+            min: input.min,
+            lat: input.lat,
+            lon: input.lon,
+            tzone: input.tzone,
+            place: input.place,
+            language: input.language || 'en',
+            chart_style: 'NORTH_INDIAN',
+            footer_link: footerLink,
+            logo_url: logoUrl,
+            company_name: companyName,
+            company_info: companyInfo.substring(0, 490),
+            domain_url: domainUrl,
+            company_email: companyEmail,
+            company_landline: companyLandline,
+            company_mobile: companyMobile
+        };
+
+        console.log('[PDF Service] Requesting Gemstone PDF from Astrology API:', JSON.stringify(requestBody));
+
+        const response = await axios.post(endpoint, requestBody, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-astrologyapi-key': apiKey
+            }
+        });
+
+        console.log('[PDF Service] Gemstone PDF API Response:', response.data);
+
+        let pdfUrl = response.data?.pdf_url || response.data?.pdfUrl;
+        if (!pdfUrl) {
+            throw new Error(response.data?.message || 'Astrology Gemstone PDF API did not return a PDF URL');
+        }
+
+        if (pdfUrl.startsWith('http://')) {
+            pdfUrl = pdfUrl.replace('http://', 'https://');
+        }
+
+        return pdfUrl;
+    } catch (error: any) {
+        console.error('[PDF Service] generateGemstonePdf Error:', error.response?.data || error.message);
+        throw new Error(error.response?.data?.message || error.message || 'Failed to generate Gemstone PDF from Astrology API');
+    }
+};
+
+export const sendGemstonePdfEmail = async (toEmail: string, pdfUrl: string, userName: string) => {
+    try {
+        console.log(`[PDF Service] Downloading Gemstone PDF for email: ${pdfUrl}`);
+        const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+        const pdfBuffer = Buffer.from(pdfResponse.data);
+
+        const transporter = getEmailTransporter();
+        const companyName = await getSettingValue('kundliPdfCompanyName', 'VedicAstro Solutions');
+        const supportEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+
+        const mailOptions = {
+            from: `"${companyName}" <${process.env.STORE_EMAIL_USER || 'support@vedicastro.co.in'}>`,
+            to: toEmail,
+            subject: `Your Gemstone Recommendation PDF from ${companyName}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="background-color: #F57F17; padding: 20px; text-align: center; color: white;">
+                        <h1 style="margin: 0; font-size: 24px;">Your Gemstone Report is Ready!</h1>
+                    </div>
+                    <div style="padding: 20px; background-color: #fff;">
+                        <p>Dear <strong>${userName}</strong>,</p>
+                        <p>Thank you for using our <strong>Gemstone PDF Service</strong> on VedicAstro. Your detailed Gemstone Recommendation PDF has been successfully generated based on your birth details.</p>
+                        <p style="text-align: center; margin: 25px 0;">
+                            <a href="${pdfUrl}" target="_blank" style="background-color: #F57F17; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">
+                                View &amp; Download PDF
+                            </a>
+                        </p>
+                        <p>If you have any questions, please contact us at <a href="mailto:${supportEmail}" style="color: #F57F17;">${supportEmail}</a>.</p>
+                        <p style="margin-top: 30px; font-size: 14px; color: #888;">Warm regards,<br>Team ${companyName}</p>
+                    </div>
+                    <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee;">
+                        <p style="margin: 0;">&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+                    </div>
+                </div>
+            `,
+            attachments: [
+                {
+                    filename: `${userName.replace(/[^a-zA-Z0-9]/g, '_')}_Gemstone_Report.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ]
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[PDF Service] Gemstone email sent to ${toEmail}. Message ID: ${info.messageId}`);
+        return info;
+    } catch (error: any) {
+        console.error('[PDF Service] sendGemstonePdfEmail Error:', error.message);
+    }
+};
+
+export const generateLifeForecastPdf = async (input: GenerateLifeForecastPdfInput): Promise<string> => {
+    try {
+        const apiKey = process.env.ASTRO_PDF_ACCESS_TOKEN || process.env.ASTRO_API_KEY || '';
+        const endpoint = 'https://pdf.astrologyapi.com/v1/life_forecast_report/tropical';
+
+        const companyName = await getSettingValue('kundliPdfCompanyName', '');
+        const companyInfo = await getSettingValue('kundliPdfCompanyInfo', 'VedicAstro provides personalized horoscope predictions and guidance.');
+        const domainUrl = await getSettingValue('kundliPdfDomainUrl', 'https://vedicastro.co.in');
+        const footerLink = await getSettingValue('kundliPdfFooterLink', 'vedicastro.co.in');
+        const logoUrl = await getSettingValue('kundliPdfLogoUrl', 'https://pub-b2ae4a07bcf84513b37ee77414a45541.r2.dev/logo/Untitled%20design%20(18)%20(1).png');
+        const companyEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+        const companyLandline = await getSettingValue('kundliPdfCompanyLandline', '+91-1234567890');
+        const companyMobile = await getSettingValue('kundliPdfCompanyMobile', '+91 75749 70100');
+
+        const requestBody = {
+            name: input.name,
+            gender: input.gender,
+            day: input.day,
+            month: input.month,
+            year: input.year,
+            hour: input.hour,
+            minute: input.min,          // mapped to minute
+            latitude: input.lat,        // mapped to latitude
+            longitude: input.lon,       // mapped to longitude
+            timezone: input.tzone,      // mapped to timezone
+            place: input.place,
+            language: input.language || 'en',
+            footer_link: footerLink,
+            logo_url: logoUrl,
+            company_name: companyName,
+            company_info: companyInfo.substring(0, 490),
+            domain_url: domainUrl,
+            company_email: companyEmail,
+            company_landline: companyLandline,
+            company_mobile: companyMobile
+        };
+
+        console.log('[PDF Service] Requesting Life Forecast PDF from Astrology API:', JSON.stringify(requestBody));
+
+        const response = await axios.post(endpoint, requestBody, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-astrologyapi-key': apiKey
+            }
+        });
+
+        console.log('[PDF Service] Life Forecast PDF API Response:', response.data);
+
+        let pdfUrl = response.data?.pdf_url || response.data?.pdfUrl;
+        if (!pdfUrl) {
+            throw new Error(response.data?.message || 'Astrology Life Forecast PDF API did not return a PDF URL');
+        }
+
+        if (pdfUrl.startsWith('http://')) {
+            pdfUrl = pdfUrl.replace('http://', 'https://');
+        }
+
+        return pdfUrl;
+    } catch (error: any) {
+        console.error('[PDF Service] generateLifeForecastPdf Error:', error.response?.data || error.message);
+        throw new Error(error.response?.data?.message || error.message || 'Failed to generate Life Forecast PDF from Astrology API');
+    }
+};
+
+export const sendLifeForecastPdfEmail = async (toEmail: string, pdfUrl: string, userName: string) => {
+    try {
+        console.log(`[PDF Service] Downloading Life Forecast PDF for email: ${pdfUrl}`);
+        const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+        const pdfBuffer = Buffer.from(pdfResponse.data);
+
+        const transporter = getEmailTransporter();
+        const companyName = await getSettingValue('kundliPdfCompanyName', 'VedicAstro Solutions');
+        const supportEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+
+        const mailOptions = {
+            from: `"${companyName}" <${process.env.STORE_EMAIL_USER || 'support@vedicastro.co.in'}>`,
+            to: toEmail,
+            subject: `Your Life Forecast Report PDF from ${companyName}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="background-color: #2E7D32; padding: 20px; text-align: center; color: white;">
+                        <h1 style="margin: 0; font-size: 24px;">Your Life Forecast Report is Ready!</h1>
+                    </div>
+                    <div style="padding: 20px; background-color: #fff;">
+                        <p>Dear <strong>${userName}</strong>,</p>
+                        <p>Thank you for using our <strong>Life Forecast PDF Service</strong> on VedicAstro. Your detailed Life Forecast PDF report has been successfully generated based on your birth details.</p>
+                        <p style="text-align: center; margin: 25px 0;">
+                            <a href="${pdfUrl}" target="_blank" style="background-color: #2E7D32; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">
+                                View &amp; Download PDF
+                            </a>
+                        </p>
+                        <p>If you have any questions, please contact us at <a href="mailto:${supportEmail}" style="color: #2E7D32;">${supportEmail}</a>.</p>
+                        <p style="margin-top: 30px; font-size: 14px; color: #888;">Warm regards,<br>Team ${companyName}</p>
+                    </div>
+                    <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee;">
+                        <p style="margin: 0;">&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+                    </div>
+                </div>
+            `,
+            attachments: [
+                {
+                    filename: `${userName.replace(/[^a-zA-Z0-9]/g, '_')}_LifeForecast_Report.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ]
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[PDF Service] Life Forecast email sent to ${toEmail}. Message ID: ${info.messageId}`);
+        return info;
+    } catch (error: any) {
+        console.error('[PDF Service] sendLifeForecastPdfEmail Error:', error.message);
+    }
+};
+
 export default {
     generateKundliPdf,
     sendPdfEmail,
     generateNumerologyPdf,
     sendNumerologyPdfEmail,
     generateMatchMakingPdf,
-    sendMatchMakingPdfEmail
+    sendMatchMakingPdfEmail,
+    generateGemstonePdf,
+    sendGemstonePdfEmail,
+    generateLifeForecastPdf,
+    sendLifeForecastPdfEmail
 };

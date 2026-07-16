@@ -4,10 +4,22 @@ import crypto from 'crypto';
 import KundliPdfRequest from '../models/KundliPdfRequest';
 import Transaction from '../models/Transaction';
 import User from '../models/User';
-import { generateKundliPdf, sendPdfEmail, generateNumerologyPdf, sendNumerologyPdfEmail, generateMatchMakingPdf, sendMatchMakingPdfEmail } from '../services/pdfService';
+import { 
+    generateKundliPdf, 
+    sendPdfEmail, 
+    generateNumerologyPdf, 
+    sendNumerologyPdfEmail, 
+    generateMatchMakingPdf, 
+    sendMatchMakingPdfEmail,
+    generateGemstonePdf,
+    sendGemstonePdfEmail,
+    generateLifeForecastPdf,
+    sendLifeForecastPdfEmail
+} from '../services/pdfService';
 import { getSettingValue } from './systemSettingController';
 import mongoose from 'mongoose';
 import axios from 'axios';
+import FeatureUsage from '../models/FeatureUsage';
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -16,6 +28,7 @@ const razorpay = new Razorpay({
 
 interface AuthRequest extends Request {
     userId?: string;
+    userRole?: string;
 }
 
 // 1. Create Order — supports both Kundli and Numerology PDFs
@@ -88,6 +101,74 @@ export const createPdfOrder = async (req: AuthRequest, res: Response) => {
                 
                 mFirstName, mLastName, mDay: Number(mDay), mMonth: Number(mMonth), mYear: Number(mYear), mHour: Number(mHour), mMinute: Number(mMinute), mLatitude: Number(mLatitude), mLongitude: Number(mLongitude), mTimezone: Number(mTimezone), mPlace,
                 fFirstName, fLastName, fDay: Number(fDay), fMonth: Number(fMonth), fYear: Number(fYear), fHour: Number(fHour), fMinute: Number(fMinute), fLatitude: Number(fLatitude), fLongitude: Number(fLongitude), fTimezone: Number(fTimezone), fPlace
+            });
+        } else if (reportType === 'gemstone') {
+            // Gemstone Report PDF
+            const { name, gender, day, month, year, hour, min, lat, lon, tzone, place, language, email } = body;
+
+            if (!name || !gender || !day || !month || !year || hour === undefined || min === undefined ||
+                lat === undefined || lon === undefined || tzone === undefined || !place || !email) {
+                return res.status(400).json({ success: false, message: 'All birth details and email are required for Gemstone PDF.' });
+            }
+
+            const basePrice = await getSettingValue('gemstonePdfPrice', 199);
+            const gstRate = await getSettingValue('gstRate', 18);
+            const gstAmount = (basePrice * gstRate) / 100;
+            amount = basePrice + gstAmount;
+
+            pdfRequest = await KundliPdfRequest.create({
+                user: userId,
+                reportType: 'gemstone',
+                name,
+                gender,
+                day: Number(day),
+                month: Number(month),
+                year: Number(year),
+                hour: Number(hour),
+                min: Number(min),
+                lat: Number(lat),
+                lon: Number(lon),
+                tzone: Number(tzone),
+                place,
+                pdfType: 'gemstone',
+                language: language || 'en',
+                email,
+                amount,
+                status: 'pending'
+            });
+        } else if (reportType === 'lifeforecast') {
+            // Life Forecast PDF
+            const { name, gender, day, month, year, hour, min, lat, lon, tzone, place, language, email } = body;
+
+            if (!name || !gender || !day || !month || !year || hour === undefined || min === undefined ||
+                lat === undefined || lon === undefined || tzone === undefined || !place || !email) {
+                return res.status(400).json({ success: false, message: 'All birth details and email are required for Life Forecast PDF.' });
+            }
+
+            const basePrice = await getSettingValue('lifeforecastPdfPrice', 399);
+            const gstRate = await getSettingValue('gstRate', 18);
+            const gstAmount = (basePrice * gstRate) / 100;
+            amount = basePrice + gstAmount;
+
+            pdfRequest = await KundliPdfRequest.create({
+                user: userId,
+                reportType: 'lifeforecast',
+                name,
+                gender,
+                day: Number(day),
+                month: Number(month),
+                year: Number(year),
+                hour: Number(hour),
+                min: Number(min),
+                lat: Number(lat),
+                lon: Number(lon),
+                tzone: Number(tzone),
+                place,
+                pdfType: 'lifeforecast',
+                language: language || 'en',
+                email,
+                amount,
+                status: 'pending'
             });
         } else {
             // Kundli PDF
@@ -217,7 +298,10 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
 
             const reportLabel = pdfRequest.reportType === 'numerology'
                 ? 'Numerology Report PDF'
-                : (pdfRequest.reportType === 'matchmaking' ? 'Match Making PDF' : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`);
+                : (pdfRequest.reportType === 'matchmaking' ? 'Match Making PDF' : 
+                   pdfRequest.reportType === 'gemstone' ? 'Gemstone Report PDF' :
+                   pdfRequest.reportType === 'lifeforecast' ? 'Life Forecast Report PDF' :
+                   `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`);
 
             await Transaction.create({
                 paymentId,
@@ -275,6 +359,36 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
                     fPlace: pdfRequest.fPlace!,
                     language: (pdfRequest.language as 'en' | 'hi') || 'en'
                 });
+            } else if (pdfRequest.reportType === 'gemstone') {
+                pdfUrl = await generateGemstonePdf({
+                    name: pdfRequest.name!,
+                    gender: pdfRequest.gender as 'male' | 'female',
+                    day: pdfRequest.day!,
+                    month: pdfRequest.month!,
+                    year: pdfRequest.year!,
+                    hour: pdfRequest.hour!,
+                    min: pdfRequest.min!,
+                    lat: pdfRequest.lat!,
+                    lon: pdfRequest.lon!,
+                    tzone: pdfRequest.tzone!,
+                    place: pdfRequest.place!,
+                    language: pdfRequest.language
+                });
+            } else if (pdfRequest.reportType === 'lifeforecast') {
+                pdfUrl = await generateLifeForecastPdf({
+                    name: pdfRequest.name!,
+                    gender: pdfRequest.gender as 'male' | 'female',
+                    day: pdfRequest.day!,
+                    month: pdfRequest.month!,
+                    year: pdfRequest.year!,
+                    hour: pdfRequest.hour!,
+                    min: pdfRequest.min!,
+                    lat: pdfRequest.lat!,
+                    lon: pdfRequest.lon!,
+                    tzone: pdfRequest.tzone!,
+                    place: pdfRequest.place!,
+                    language: pdfRequest.language
+                });
             } else {
                 pdfUrl = await generateKundliPdf({
                     name: pdfRequest.name!,
@@ -311,6 +425,12 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
         } else if (pdfRequest.reportType === 'matchmaking') {
             sendMatchMakingPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.mFirstName!, pdfRequest.fFirstName!)
                 .catch(err => console.error('[PDF Service Controller] Async Match Making Email Failed:', err.message));
+        } else if (pdfRequest.reportType === 'gemstone') {
+            sendGemstonePdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!)
+                .catch(err => console.error('[PDF Service Controller] Async Gemstone Email Failed:', err.message));
+        } else if (pdfRequest.reportType === 'lifeforecast') {
+            sendLifeForecastPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!)
+                .catch(err => console.error('[PDF Service Controller] Async Life Forecast Email Failed:', err.message));
         } else {
             sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!, pdfRequest.pdfType as 'basic' | 'pro')
                 .catch(err => console.error('[PDF Service Controller] Async Kundli Email Failed:', err.message));
@@ -369,7 +489,10 @@ export const manualResolvePdfOrder = async (req: Request, res: Response) => {
 
             const reportLabel = pdfRequest.reportType === 'numerology'
                 ? 'Numerology Report PDF'
-                : (pdfRequest.reportType === 'matchmaking' ? 'Match Making PDF' : `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`);
+                : (pdfRequest.reportType === 'matchmaking' ? 'Match Making PDF' : 
+                   pdfRequest.reportType === 'gemstone' ? 'Gemstone Report PDF' :
+                   pdfRequest.reportType === 'lifeforecast' ? 'Life Forecast Report PDF' :
+                   `${pdfRequest.pdfType === 'pro' ? 'Advanced' : 'Basic'} Kundli PDF`);
 
             await Transaction.create({
                 paymentId,
@@ -421,6 +544,36 @@ export const manualResolvePdfOrder = async (req: Request, res: Response) => {
                     fPlace: pdfRequest.fPlace!,
                     language: (pdfRequest.language as 'en' | 'hi') || 'en'
                 });
+            } else if (pdfRequest.reportType === 'gemstone') {
+                pdfUrl = await generateGemstonePdf({
+                    name: pdfRequest.name!,
+                    gender: pdfRequest.gender as 'male' | 'female',
+                    day: pdfRequest.day!,
+                    month: pdfRequest.month!,
+                    year: pdfRequest.year!,
+                    hour: pdfRequest.hour!,
+                    min: pdfRequest.min!,
+                    lat: pdfRequest.lat!,
+                    lon: pdfRequest.lon!,
+                    tzone: pdfRequest.tzone!,
+                    place: pdfRequest.place!,
+                    language: pdfRequest.language
+                });
+            } else if (pdfRequest.reportType === 'lifeforecast') {
+                pdfUrl = await generateLifeForecastPdf({
+                    name: pdfRequest.name!,
+                    gender: pdfRequest.gender as 'male' | 'female',
+                    day: pdfRequest.day!,
+                    month: pdfRequest.month!,
+                    year: pdfRequest.year!,
+                    hour: pdfRequest.hour!,
+                    min: pdfRequest.min!,
+                    lat: pdfRequest.lat!,
+                    lon: pdfRequest.lon!,
+                    tzone: pdfRequest.tzone!,
+                    place: pdfRequest.place!,
+                    language: pdfRequest.language
+                });
             } else {
                 pdfUrl = await generateKundliPdf({
                     name: pdfRequest.name!,
@@ -457,6 +610,12 @@ export const manualResolvePdfOrder = async (req: Request, res: Response) => {
         } else if (pdfRequest.reportType === 'matchmaking') {
             sendMatchMakingPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.mFirstName!, pdfRequest.fFirstName!)
                 .catch(err => console.error('[PDF Service Controller] Async Match Making Email Failed:', err.message));
+        } else if (pdfRequest.reportType === 'gemstone') {
+            sendGemstonePdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!)
+                .catch(err => console.error('[PDF Service Controller] Async Gemstone Email Failed:', err.message));
+        } else if (pdfRequest.reportType === 'lifeforecast') {
+            sendLifeForecastPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!)
+                .catch(err => console.error('[PDF Service Controller] Async Life Forecast Email Failed:', err.message));
         } else {
             sendPdfEmail(pdfRequest.email, pdfUrl, pdfRequest.name!, pdfRequest.pdfType as 'basic' | 'pro')
                 .catch(err => console.error('[PDF Service Controller] Async Kundli Email Failed:', err.message));
@@ -498,5 +657,19 @@ export const downloadPdfFile = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('[PDF Service Controller] downloadPdfFile Error:', error.message);
         return res.status(500).json({ success: false, message: 'Failed to download PDF file.', error: error.message });
+    }
+};
+
+// 6. Track when PDF Reports form page is opened
+export const trackReportsFormOpen = async (req: AuthRequest, res: Response) => {
+    try {
+        if (req.userRole === 'user') {
+            FeatureUsage.create({ feature: 'reports_form', userId: req.userId })
+                .catch(err => console.error('Failed to log feature usage reports_form:', err));
+        }
+        return res.json({ success: true, message: 'Usage tracked successfully' });
+    } catch (error: any) {
+        console.error('Track Reports Form Open Error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Server Error' });
     }
 };
