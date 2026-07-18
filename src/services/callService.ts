@@ -828,7 +828,16 @@ class CallService {
         const systemSettingModelB = mongoose.model('SystemSetting');
         const commissionKeyB = session.sessionType === 'video_call' ? 'videoCallCommission' : 'voiceCallCommission';
         const commissionSettingB = await systemSettingModelB.findOne({ key: commissionKeyB });
-        const globalCommissionB = Number(commissionSettingB?.value ?? 40);
+        let globalCommissionB = Number(commissionSettingB?.value ?? 40);
+
+        if (session.initiatedFromLive) {
+            const liveCommKey = session.sessionType === 'video_call' ? 'globalLiveVideoCommission' : 'globalLiveVoiceCommission';
+            const liveCommSetting = await systemSettingModelB.findOne({ key: liveCommKey });
+            if (liveCommSetting && liveCommSetting.value !== null && liveCommSetting.value !== undefined && liveCommSetting.value !== '') {
+                globalCommissionB = Number(liveCommSetting.value);
+            }
+        }
+
         const activeCommissionB = (perAstrologerComm !== undefined && perAstrologerComm !== null) ? perAstrologerComm : globalCommissionB;
         const realDeductedThisCycle = paymentResult.realDeducted || 0;
         const astrologerEarningsThisCycle = Math.round((realDeductedThisCycle * activeCommissionB / 100) * 100) / 100;
@@ -1045,7 +1054,15 @@ class CallService {
 
             const bonusUsagePercent = Number(bonusUsageSetting?.value ?? 20);
             // Global fallback commission for this session type
-            const globalCommission = Number(commissionSetting?.value ?? 40);
+            let globalCommission = Number(commissionSetting?.value ?? 40);
+
+            if (session.initiatedFromLive) {
+                const liveCommKey = session.sessionType === 'video_call' ? 'globalLiveVideoCommission' : 'globalLiveVoiceCommission';
+                const liveCommSetting = await systemSettingModel.findOne({ key: liveCommKey });
+                if (liveCommSetting && liveCommSetting.value !== null && liveCommSetting.value !== undefined && liveCommSetting.value !== '') {
+                    globalCommission = Number(liveCommSetting.value);
+                }
+            }
 
             const totalToDeduct = Math.round(amount * 100) / 100;
             const realBalance = user.walletBalance || 0;

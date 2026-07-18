@@ -1475,6 +1475,13 @@ class ChatService {
                 ? freshAstrologer.commissionPercentage
                 : astrologerCommission;
 
+            if (session.initiatedFromLive) {
+                const liveCommSetting = await systemSettingModel.findOne({ key: 'globalLiveChatCommission' });
+                if (liveCommSetting && liveCommSetting.value !== null && liveCommSetting.value !== undefined && liveCommSetting.value !== '') {
+                    activeCommission = Number(liveCommSetting.value);
+                }
+            }
+
             // For intro chat (first chat), astrologer always gets 50%
             if (session.isIntroSession) {
                 activeCommission = 50;
