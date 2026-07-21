@@ -313,7 +313,8 @@ export const updateProfile = async (req: Request, res: Response) => {
             hour: reqHour,
             min: reqMin,
             profilePhoto,
-            zodiacSign
+            zodiacSign,
+            language
         } = req.body;
 
         const finalDob = dob || dateOfBirth;
@@ -329,6 +330,7 @@ export const updateProfile = async (req: Request, res: Response) => {
             isVerified: true
         };
         if (zodiacSign) updateData.zodiacSign = zodiacSign;
+        if (language) updateData.language = language;
 
         // 1. Geocode Place of Birth if provided AND lat/lon not provided by frontend
         let lat = reqLat;

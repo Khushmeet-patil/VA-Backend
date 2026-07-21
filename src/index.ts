@@ -38,6 +38,7 @@ import policyRoutes from './routes/policyRoutes';
 import systemRoutes from './routes/systemRoutes';
 import giftRoutes from './routes/giftRoutes';
 import pdfServiceRoutes from './routes/pdfServiceRoutes';
+import { contextStorage } from './utils/context';
 
 // Store module (CommonJS – required with require() since it uses JS, not TS)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -98,6 +99,17 @@ const socketCorsOptions = {
 };
 
 // Middleware
+app.use((req, res, next) => {
+    const store = new Map<string, any>();
+    const lang = req.headers['accept-language'] || req.headers['language'] || 'en';
+    const normalizedLang = lang.toString().toLowerCase().startsWith('hi') ? 'hi' : 'en';
+    store.set('language', normalizedLang);
+
+    contextStorage.run(store, () => {
+        next();
+    });
+});
+
 app.use(cors(corsOptions));
 // Webhook route needs the raw body for HMAC signature verification.
 // express.raw() must be registered BEFORE express.json() — once the stream

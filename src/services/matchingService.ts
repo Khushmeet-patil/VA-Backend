@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { astrologyConfig } from '../config/astrology';
+import { getLanguage } from '../utils/context';
 
 const getAuthHeader = () => {
     const { userId, apiKey } = astrologyConfig;
@@ -16,6 +17,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
     config.headers.Authorization = getAuthHeader();
+    config.headers['Accept-Language'] = getLanguage();
     return config;
 });
 

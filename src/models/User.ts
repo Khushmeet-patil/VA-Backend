@@ -58,6 +58,7 @@ export interface IUser extends Document {
     activeDeviceId?: string;  // Device ID of the currently logged-in device
     facebookId?: string; // Facebook unique ID
     welcomeNotificationSent?: boolean; // True after user has been sent/scheduled welcome notification
+    language?: 'en' | 'hi'; // User's selected language
     createdAt: Date;
 }
 
@@ -115,6 +116,7 @@ const UserSchema: Schema = new Schema({
     activeDeviceId: { type: String },  // Device ID of the currently logged-in device
     facebookId: { type: String, unique: true, sparse: true }, // Facebook unique ID
     welcomeNotificationSent: { type: Boolean, default: false }, // Tracks if greeting was sent
+    language: { type: String, enum: ['en', 'hi'], default: 'en' },
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);
