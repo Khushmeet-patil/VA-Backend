@@ -93,6 +93,15 @@ export interface IAstrologer extends Document {
     currentLiveSessionId?: string | null;  // Active live session ID in live microservice
     isNetworkOffline?: boolean;
     baseConsultationMinutes?: number;
+    // Personalized Service fields
+    personalizedServiceEnabled?: boolean;            // Admin grants/revokes personalized service access
+    personalizedChatEnabled?: boolean;               // Astrologer toggle for personalized chat
+    personalizedVoiceCallEnabled?: boolean;          // Astrologer toggle for personalized call
+    personalizedVideoCallEnabled?: boolean;          // Astrologer toggle for personalized video
+    personalizedChatCommission?: number | null;       // Custom commission override
+    personalizedCallCommission?: number | null;       // Custom commission override
+    personalizedVideoCommission?: number | null;      // Custom commission override
+    personalizedEarnings?: number;                   // Earnings from personalized service
 }
 
 const AstrologerSchema: Schema = new Schema({
@@ -197,6 +206,16 @@ const AstrologerSchema: Schema = new Schema({
     currentLiveSessionId: { type: String, default: null },           // Active live session
     isNetworkOffline: { type: Boolean, default: false },
     baseConsultationMinutes: { type: Number, default: 0 },
+
+    // Personalized Service
+    personalizedServiceEnabled: { type: Boolean, default: false },
+    personalizedChatEnabled: { type: Boolean, default: true },
+    personalizedVoiceCallEnabled: { type: Boolean, default: true },
+    personalizedVideoCallEnabled: { type: Boolean, default: true },
+    personalizedChatCommission: { type: Number, default: null },
+    personalizedCallCommission: { type: Number, default: null },
+    personalizedVideoCommission: { type: Number, default: null },
+    personalizedEarnings: { type: Number, default: 0 }
 }, { timestamps: true });
 
 export default mongoose.model<IAstrologer>('Astrologer', AstrologerSchema);

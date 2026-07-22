@@ -38,6 +38,7 @@ import policyRoutes from './routes/policyRoutes';
 import systemRoutes from './routes/systemRoutes';
 import giftRoutes from './routes/giftRoutes';
 import pdfServiceRoutes from './routes/pdfServiceRoutes';
+import personalizedRoutes from './routes/personalizedRoutes';
 import { contextStorage } from './utils/context';
 
 // Store module (CommonJS – required with require() since it uses JS, not TS)
@@ -182,6 +183,7 @@ app.use('/api/system', systemRoutes);
 app.use('/api/policies', policyRoutes);
 app.use('/api/gifts', giftRoutes);
 app.use('/api/pdf-service', pdfServiceRoutes);
+app.use('/api/personalized', personalizedRoutes);
 
 // Store module — mounted at /store (all store APIs become /store/api/...)
 app.use('/store', storeApp);
