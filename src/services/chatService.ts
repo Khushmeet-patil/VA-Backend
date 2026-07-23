@@ -1714,8 +1714,8 @@ class ChatService {
         // MASK MOBILE NUMBERS in chat text to prevent direct contact
         let filteredText = text;
         if (type === 'text' && text) {
-            // Matches 10 or more digits that might be separated by spaces or dashes
-            const phoneRegex = /(\d[\s-]*){10,}/g;
+            // Matches 10 to 12 digits (with optional country code and separators) without catastrophic backtracking
+            const phoneRegex = /(?:\+?\d{1,3}[\s-]*)?(?:\d[\s-]*){10,12}/g;
             filteredText = text.replace(phoneRegex, '[NUMBER REDACTED]');
         }
 

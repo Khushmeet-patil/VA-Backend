@@ -65,5 +65,6 @@ const ChatMessageSchema: Schema = new Schema({
 
 // Index for fetching chat history efficiently
 ChatMessageSchema.index({ sessionId: 1, timestamp: 1 });
+ChatMessageSchema.index({ sessionId: 1, timestamp: -1 });
 
 export default mongoose.model<IChatMessage>('ChatMessage', ChatMessageSchema);
