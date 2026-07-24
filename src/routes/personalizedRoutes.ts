@@ -14,6 +14,9 @@ import {
     createBookingOrder,
     verifyBookingPayment,
     reRequestSession,
+    getSessionStatusUser,
+    getActiveTokenUser,
+    reassignSessionUser,
     acceptSession,
     missSession,
     completeSession
@@ -42,6 +45,9 @@ router.get('/user/astrologers', getPersonalizedAstrologersUser);
 router.post('/user/create-order', authMiddleware, createBookingOrder);
 router.post('/user/verify-payment', authMiddleware, verifyBookingPayment);
 router.post('/user/re-request', authMiddleware, reRequestSession);
+router.get('/user/session-status/:sessionId', authMiddleware, getSessionStatusUser);
+router.get('/user/active-token', authMiddleware, getActiveTokenUser);
+router.post('/user/reassign-session', authMiddleware, reassignSessionUser);
 
 // Session Action Routes
 router.post('/session/accept', authMiddleware, acceptSession);

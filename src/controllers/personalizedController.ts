@@ -120,7 +120,23 @@ export const getSessionHistoryAdmin = async (req: Request, res: Response) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        return res.json({ success: true, sessions });
+        // Calculate Analytics Stats for Completed vs Uncompleted User Sessions
+        const allSessions = await PersonalizedSession.find({}).lean();
+        const completedSessions = allSessions.filter(s => s.status === 'COMPLETED');
+        const uncompletedSessions = allSessions.filter(s => s.status === 'PAID_PENDING_ACCEPT' || s.status === 'MISSED');
+
+        const stats = {
+            totalCompleted: completedSessions.length,
+            totalUncompleted: uncompletedSessions.length,
+            completedChat: completedSessions.filter(s => s.serviceType === 'chat').length,
+            completedCall: completedSessions.filter(s => s.serviceType === 'call').length,
+            completedVideo: completedSessions.filter(s => s.serviceType === 'video').length,
+            uncompletedChat: uncompletedSessions.filter(s => s.serviceType === 'chat').length,
+            uncompletedCall: uncompletedSessions.filter(s => s.serviceType === 'call').length,
+            uncompletedVideo: uncompletedSessions.filter(s => s.serviceType === 'video').length,
+        };
+
+        return res.json({ success: true, sessions, stats });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -456,6 +472,19 @@ export const reRequestSession = async (req: Request, res: Response) => {
     }
 };
 
+export const getSessionStatusUser = async (req: Request, res: Response) => {
+    try {
+        const { sessionId } = req.params;
+        const session = await PersonalizedSession.findOne({ sessionId });
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+        return res.json({ success: true, session });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 export const acceptSession = async (req: Request, res: Response) => {
     try {
         const { sessionId } = req.body;
@@ -531,6 +560,70 @@ export const completeSession = async (req: Request, res: Response) => {
         });
 
         return res.json({ success: true, message: 'Session completed successfully', session });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const getActiveTokenUser = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId || (req as any).user?.id;
+        if (!userId) {
+            return res.json({ success: true, token: null });
+        }
+        // Find any unredeemed paid session for this user (status: PAID_PENDING_ACCEPT or MISSED)
+        const tokenSession = await PersonalizedSession.findOne({
+            userId,
+            status: { $in: ['PAID_PENDING_ACCEPT', 'MISSED'] }
+        }).sort({ createdAt: -1 });
+
+        return res.json({
+            success: true,
+            token: tokenSession || null
+        });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const reassignSessionUser = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId || (req as any).user?.id;
+        const { sessionId, newAstrologerId, serviceType, durationMinutes, profileData } = req.body;
+
+        let session = await PersonalizedSession.findOne({ sessionId, userId });
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Saved token session not found' });
+        }
+
+        const astro = await Astrologer.findById(newAstrologerId);
+        if (!astro) {
+            return res.status(404).json({ success: false, message: 'New astrologer not found' });
+        }
+
+        session.astrologerId = newAstrologerId;
+        if (serviceType) session.serviceType = serviceType;
+        if (durationMinutes) session.durationMinutes = durationMinutes;
+        if (profileData) session.profileData = profileData;
+        session.status = 'PAID_PENDING_ACCEPT';
+        session.missedAt = undefined;
+        await session.save();
+
+        // Send Push Notification to New Astrologer
+        await Notification.create({
+            recipient: astro.userId,
+            recipientType: 'astrologer',
+            title: `New Personalized ${session.serviceType.toUpperCase()} Request!`,
+            message: `You have received a paid ${session.durationMinutes} min personalized ${session.serviceType} request. Open dashboard to accept!`,
+            type: 'PERSONALIZED_REQUEST',
+            metadata: { sessionId: session.sessionId, serviceType: session.serviceType, durationMinutes: session.durationMinutes }
+        });
+
+        return res.json({
+            success: true,
+            message: 'Session reassigned and request sent to astrologer!',
+            session
+        });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
     }
