@@ -330,7 +330,11 @@ export const getProfile = async (req: Request, res: Response) => {
                 freeChatLimit: astrologer.freeChatLimit || 0,
                 isVerified: astrologer.isVerified || false,
                 isDeletionRequested: astrologer.isDeletionRequested || false,
-                lastRateChangeAt: astrologer.lastRateChangeAt || null
+                lastRateChangeAt: astrologer.lastRateChangeAt || null,
+                personalizedServiceEnabled: astrologer.personalizedServiceEnabled || false,
+                personalizedChatEnabled: astrologer.personalizedChatEnabled !== false,
+                personalizedVoiceCallEnabled: astrologer.personalizedVoiceCallEnabled !== false,
+                personalizedVideoCallEnabled: astrologer.personalizedVideoCallEnabled !== false
             }
         });
 
