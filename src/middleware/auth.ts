@@ -19,16 +19,20 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { id: string; role?: string };
 
-        // Check if this is an astrologer token (from Astrologer App)
+        // Check if this is an astrologer token (from Astrologer App or User App)
         if (decoded.role === 'astrologer') {
-            const astrologer = await Astrologer.findById(decoded.id);
+            let astrologer = await Astrologer.findById(decoded.id);
+            if (!astrologer) {
+                // Try finding by userId since user login flow signs token with User ID and role: 'astrologer'
+                astrologer = await Astrologer.findOne({ userId: decoded.id });
+            }
             if (!astrologer) {
                 return res.status(401).json({ message: 'Astrologer not found' });
             }
             if (astrologer.status !== 'approved') {
                 return res.status(403).json({ message: 'Astrologer not approved' });
             }
-            req.userId = decoded.id;
+            req.userId = astrologer._id.toString();
             req.userRole = 'astrologer';
             req.appType = 'astrologer';
             return next();

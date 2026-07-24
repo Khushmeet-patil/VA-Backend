@@ -19,6 +19,8 @@ import {
     completeSession
 } from '../controllers/personalizedController';
 
+import { authMiddleware } from '../middleware/auth';
+
 const router = Router();
 
 // Admin Routes
@@ -30,20 +32,20 @@ router.get('/admin/history', getSessionHistoryAdmin);
 router.get('/admin/live', getLiveSessionsAdmin);
 router.get('/admin/missed', getMissedRequestsAdmin);
 
-// Astrologer Routes
-router.get('/astrologer/settings', getAstrologerSettings);
-router.post('/astrologer/settings', updateAstrologerSettings);
-router.get('/astrologer/earnings', getAstrologerEarnings);
+// Astrologer Routes (require auth)
+router.get('/astrologer/settings', authMiddleware, getAstrologerSettings);
+router.post('/astrologer/settings', authMiddleware, updateAstrologerSettings);
+router.get('/astrologer/earnings', authMiddleware, getAstrologerEarnings);
 
 // User & Session Routes
 router.get('/user/astrologers', getPersonalizedAstrologersUser);
-router.post('/user/create-order', createBookingOrder);
-router.post('/user/verify-payment', verifyBookingPayment);
-router.post('/user/re-request', reRequestSession);
+router.post('/user/create-order', authMiddleware, createBookingOrder);
+router.post('/user/verify-payment', authMiddleware, verifyBookingPayment);
+router.post('/user/re-request', authMiddleware, reRequestSession);
 
 // Session Action Routes
-router.post('/session/accept', acceptSession);
-router.post('/session/miss', missSession);
-router.post('/session/complete', completeSession);
+router.post('/session/accept', authMiddleware, acceptSession);
+router.post('/session/miss', authMiddleware, missSession);
+router.post('/session/complete', authMiddleware, completeSession);
 
 export default router;
