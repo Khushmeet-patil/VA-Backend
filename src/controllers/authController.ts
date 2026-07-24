@@ -808,21 +808,15 @@ export const verifyPayment = async (req: Request, res: Response) => {
             bonusAmount
         } = req.body;
 
-        // 1. Verify Signature (bypassed for override user 7990358824)
-        const userObj = await User.findById(userId);
-        const userPhone = String((userObj as any)?.mobile || (userObj as any)?.phone || '');
-        const isOverride = userPhone.includes('7990358824') || razorpay_payment_id?.startsWith('pay_override_');
+        // 1. Verify Signature
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
+            .update(body.toString())
+            .digest('hex');
 
-        if (!isOverride) {
-            const body = razorpay_order_id + "|" + razorpay_payment_id;
-            const expectedSignature = crypto
-                .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
-                .update(body.toString())
-                .digest('hex');
-
-            if (expectedSignature !== razorpay_signature) {
-                return res.status(400).json({ success: false, message: 'Invalid payment signature' });
-            }
+        if (expectedSignature !== razorpay_signature) {
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
         }
 
         // 2. Payment Verified — create Transaction first using paymentId as atomic idempotency guard.

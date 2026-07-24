@@ -258,11 +258,7 @@ export const verifyPdfPayment = async (req: AuthRequest, res: Response) => {
 
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature, pdfRequestId } = req.body;
 
-        const userObj = await User.findById(userId);
-        const userPhone = String((userObj as any)?.mobile || (userObj as any)?.phone || '');
-        const isOverride = userPhone.includes('7990358824') || razorpay_payment_id?.startsWith('pay_override_');
-
-        const isBypass = !process.env.RAZORPAY_KEY_SECRET || isOverride;
+        const isBypass = !process.env.RAZORPAY_KEY_SECRET;
 
         if (!pdfRequestId) {
             return res.status(400).json({ success: false, message: 'Missing PDF request ID.' });
