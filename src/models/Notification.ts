@@ -3,9 +3,12 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface INotification extends Document {
     title: string;
     message: string;
-    type: 'info' | 'promo' | 'alert' | 'live';
-    audience: 'all' | 'user' | 'users' | 'astrologers';
+    type: 'info' | 'promo' | 'alert' | 'live' | 'PERSONALIZED_REQUEST' | 'MISSED_PERSONALIZED_REQUEST' | string;
+    audience: 'all' | 'user' | 'users' | 'astrologers' | 'admin' | string;
     userId?: mongoose.Types.ObjectId; // If audience is user
+    recipient?: mongoose.Types.ObjectId;
+    recipientType?: string;
+    metadata?: any;
     imageUrl?: string; // Optional image URL uploaded to R2
     isRead: boolean;
     readBy: mongoose.Types.ObjectId[];
@@ -22,9 +25,20 @@ export interface INotification extends Document {
 const NotificationSchema: Schema = new Schema({
     title: { type: String, required: true },
     message: { type: String, required: true },
-    type: { type: String, enum: ['info', 'promo', 'alert', 'live'], default: 'info' },
-    audience: { type: String, enum: ['all', 'user', 'users', 'astrologers'], default: 'all' },
+    type: { 
+        type: String, 
+        enum: ['info', 'promo', 'alert', 'live', 'PERSONALIZED_REQUEST', 'MISSED_PERSONALIZED_REQUEST'], 
+        default: 'info' 
+    },
+    audience: { 
+        type: String, 
+        enum: ['all', 'user', 'users', 'astrologers', 'admin'], 
+        default: 'all' 
+    },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
+    recipient: { type: Schema.Types.ObjectId },
+    recipientType: { type: String },
+    metadata: { type: Schema.Types.Mixed },
     imageUrl: { type: String },
     isRead: { type: Boolean, default: false },
     readBy: [{ type: Schema.Types.ObjectId, ref: 'User' }],
