@@ -6,6 +6,8 @@ import Notification from '../models/Notification';
 import User from '../models/User';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import notificationService from '../services/notificationService';
+import chatService from '../services/chatService';
 
 const DEFAULT_CONFIG = {
     timers: [
@@ -418,13 +420,47 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
 
         await session.save();
 
-        // Send Push Notification to Astrologer
+        const userObj = await User.findById(userId);
+        const userName = userObj?.name || 'User';
+
+        // 1. Send High-Priority Ringing FCM Notification to Astrologer's Device
+        notificationService.sendHighPriorityChatRequest(astrologerId.toString(), {
+            sessionId: session.sessionId,
+            userId: userId.toString(),
+            userName,
+            ratePerMinute: session.basePrice,
+            intakeDetails: profileData,
+            sessionType: 'personalized_' + serviceType,
+        }).catch(e => console.error('[Personalized] FCM request failed:', e));
+
+        // 2. Emit Socket.IO CHAT_REQUEST event to Astrologer's rooms for instant ringing & modal popup
+        if (chatService.io) {
+            const requestPayload = {
+                sessionId: session.sessionId,
+                userId: userId.toString(),
+                userName,
+                intakeDetails: profileData,
+                ratePerMinute: session.basePrice,
+                createdAt: session.createdAt.toISOString(),
+                sessionType: 'personalized_' + serviceType,
+                serviceType,
+                durationMinutes,
+                isPersonalized: true
+            };
+            chatService.io.to(`astrologer:${astro.userId}`).emit('CHAT_REQUEST', requestPayload);
+            chatService.io.to(`astrologer:${astrologerId}`).emit('CHAT_REQUEST', requestPayload);
+            chatService.io.to(`astrologer_${astrologerId}`).emit('CHAT_REQUEST', requestPayload);
+        }
+
+        // 3. Store Database Notification ONLY for that targeted Astrologer (Audience: 'user', userId: astro.userId)
         await Notification.create({
             recipient: astro.userId,
             recipientType: 'astrologer',
             title: `New Personalized ${serviceType.toUpperCase()} Request!`,
             message: `You have received a paid ${durationMinutes} min personalized ${serviceType} request. Open dashboard to accept!`,
             type: 'PERSONALIZED_REQUEST',
+            audience: 'user',
+            userId: astro.userId,
             metadata: { sessionId: session.sessionId, serviceType, durationMinutes }
         });
 
@@ -456,12 +492,47 @@ export const reRequestSession = async (req: Request, res: Response) => {
 
         const astro = await Astrologer.findById(session.astrologerId);
         if (astro) {
+            const userObj = await User.findById(session.userId);
+            const userName = userObj?.name || 'User';
+
+            // 1. FCM High-Priority Ringing Notification
+            notificationService.sendHighPriorityChatRequest(session.astrologerId.toString(), {
+                sessionId: session.sessionId,
+                userId: session.userId.toString(),
+                userName,
+                ratePerMinute: session.basePrice,
+                intakeDetails: session.profileData,
+                sessionType: 'personalized_' + session.serviceType,
+            }).catch(e => console.error('[Personalized] FCM re-request failed:', e));
+
+            // 2. Socket.IO Emit
+            if (chatService.io) {
+                const requestPayload = {
+                    sessionId: session.sessionId,
+                    userId: session.userId.toString(),
+                    userName,
+                    intakeDetails: session.profileData,
+                    ratePerMinute: session.basePrice,
+                    createdAt: new Date().toISOString(),
+                    sessionType: 'personalized_' + session.serviceType,
+                    serviceType: session.serviceType,
+                    durationMinutes: session.durationMinutes,
+                    isPersonalized: true
+                };
+                chatService.io.to(`astrologer:${astro.userId}`).emit('CHAT_REQUEST', requestPayload);
+                chatService.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_REQUEST', requestPayload);
+                chatService.io.to(`astrologer_${session.astrologerId}`).emit('CHAT_REQUEST', requestPayload);
+            }
+
+            // 3. Database Notification ONLY for targeted Astrologer (Audience: 'user', userId: astro.userId)
             await Notification.create({
                 recipient: astro.userId,
                 recipientType: 'astrologer',
                 title: `Re-requested Personalized ${session.serviceType.toUpperCase()}!`,
                 message: `User re-sent their paid ${session.durationMinutes} min request. Please accept!`,
                 type: 'PERSONALIZED_REQUEST',
+                audience: 'user',
+                userId: astro.userId,
                 metadata: { sessionId: session.sessionId }
             });
         }
@@ -522,19 +593,32 @@ export const missSession = async (req: Request, res: Response) => {
         session.missedAt = new Date();
         await session.save();
 
-        const astroName = (session.astrologerId as any)?.firstName || 'Astrologer';
+        const astro = await Astrologer.findById(session.astrologerId);
+        const astroUserId = astro?.userId || (session.astrologerId as any)?.userId;
 
-        // Notify Admin of Missed Request
-        await Notification.create({
-            recipient: null, // Global / Admin
-            recipientType: 'admin',
-            title: 'Missed Personalized Request',
-            message: `Missed personalized ${session.serviceType} (${session.durationMinutes}m) by ${astroName}`,
-            type: 'MISSED_PERSONALIZED_REQUEST',
-            metadata: { sessionId: session.sessionId, astrologerId: session.astrologerId }
-        });
+        // Send Push & DB Notification ONLY to THAT specific astrologer who missed the request
+        if (astroUserId) {
+            await Notification.create({
+                recipient: astroUserId,
+                recipientType: 'astrologer',
+                userId: astroUserId,
+                audience: 'user',
+                title: 'Missed Personalized Request',
+                message: `You missed a personalized ${session.serviceType} request (${session.durationMinutes} mins).`,
+                type: 'MISSED_PERSONALIZED_REQUEST',
+                metadata: { sessionId: session.sessionId, astrologerId: session.astrologerId }
+            });
 
-        return res.json({ success: true, message: 'Session marked as missed and admin notified', session });
+            notificationService.sendToAstrologer(astroUserId.toString(), {
+                title: 'Missed Personalized Request',
+                body: `You missed a personalized ${session.serviceType} request (${session.durationMinutes} mins).`
+            }, {
+                type: 'MISSED_PERSONALIZED_REQUEST',
+                sessionId: session.sessionId
+            }).catch(e => console.error('[Personalized] FCM miss notification failed:', e));
+        }
+
+        return res.json({ success: true, message: 'Session marked as missed and astrologer notified', session });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -609,13 +693,47 @@ export const reassignSessionUser = async (req: Request, res: Response) => {
         session.missedAt = undefined;
         await session.save();
 
-        // Send Push Notification to New Astrologer
+        const userObj = await User.findById(userId);
+        const userName = userObj?.name || 'User';
+
+        // 1. High-Priority Ringing FCM Push to New Astrologer
+        notificationService.sendHighPriorityChatRequest(newAstrologerId.toString(), {
+            sessionId: session.sessionId,
+            userId: userId.toString(),
+            userName,
+            ratePerMinute: session.basePrice,
+            intakeDetails: profileData || session.profileData,
+            sessionType: 'personalized_' + session.serviceType,
+        }).catch(e => console.error('[Personalized] FCM reassign request failed:', e));
+
+        // 2. Socket.IO CHAT_REQUEST Emit to New Astrologer
+        if (chatService.io) {
+            const requestPayload = {
+                sessionId: session.sessionId,
+                userId: userId.toString(),
+                userName,
+                intakeDetails: profileData || session.profileData,
+                ratePerMinute: session.basePrice,
+                createdAt: new Date().toISOString(),
+                sessionType: 'personalized_' + session.serviceType,
+                serviceType: session.serviceType,
+                durationMinutes: session.durationMinutes,
+                isPersonalized: true
+            };
+            chatService.io.to(`astrologer:${astro.userId}`).emit('CHAT_REQUEST', requestPayload);
+            chatService.io.to(`astrologer:${newAstrologerId}`).emit('CHAT_REQUEST', requestPayload);
+            chatService.io.to(`astrologer_${newAstrologerId}`).emit('CHAT_REQUEST', requestPayload);
+        }
+
+        // 3. Database Notification ONLY for targeted Astrologer (Audience: 'user', userId: astro.userId)
         await Notification.create({
             recipient: astro.userId,
             recipientType: 'astrologer',
             title: `New Personalized ${session.serviceType.toUpperCase()} Request!`,
             message: `You have received a paid ${session.durationMinutes} min personalized ${session.serviceType} request. Open dashboard to accept!`,
             type: 'PERSONALIZED_REQUEST',
+            audience: 'user',
+            userId: astro.userId,
             metadata: { sessionId: session.sessionId, serviceType: session.serviceType, durationMinutes: session.durationMinutes }
         });
 
