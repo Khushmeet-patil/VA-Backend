@@ -2,6 +2,8 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
+import PersonalizedSession from '../models/PersonalizedSession';
+import Notification from '../models/Notification';
 import chatService from './chatService';
 import callService from './callService';
 import notificationService from './notificationService';
@@ -628,11 +630,21 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
                 let session: any;
                 try {
-                    const callSession = await callService.getSession(data.sessionId);
-                    if (callSession) {
-                        session = await callService.acceptCallRequest(data.sessionId);
+                    const persSession = await PersonalizedSession.findOne({ sessionId: data.sessionId });
+                    if (persSession) {
+                        persSession.status = 'ACTIVE';
+                        persSession.startTime = new Date();
+                        persSession.endTime = new Date(Date.now() + persSession.durationMinutes * 60 * 1000);
+                        await persSession.save();
+                        session = persSession;
+                        console.log(`[Socket] Personalized session accepted: ${data.sessionId}`);
                     } else {
-                        session = await chatService.acceptChatRequest(data.sessionId);
+                        const callSession = await callService.getSession(data.sessionId);
+                        if (callSession) {
+                            session = await callService.acceptCallRequest(data.sessionId);
+                        } else {
+                            session = await chatService.acceptChatRequest(data.sessionId);
+                        }
                     }
                 } finally {
                     inFlightAccepts.delete(data.sessionId);
@@ -688,11 +700,34 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     return;
                 }
 
-                const callSession = await callService.getSession(data.sessionId);
-                if (callSession) {
-                    await callService.rejectCallRequest(data.sessionId);
+                const persSession = await PersonalizedSession.findOne({ sessionId: data.sessionId });
+                if (persSession) {
+                    persSession.status = 'MISSED';
+                    persSession.missedAt = new Date();
+                    await persSession.save();
+
+                    const astro = await Astrologer.findById(persSession.astrologerId);
+                    const astroUserId = astro?.userId || (persSession.astrologerId as any)?.userId;
+                    if (astroUserId) {
+                        await Notification.create({
+                            recipient: astroUserId,
+                            recipientType: 'astrologer',
+                            userId: astroUserId,
+                            audience: 'user',
+                            title: 'Missed Personalized Request',
+                            message: `You missed a personalized ${persSession.serviceType} request (${persSession.durationMinutes} mins).`,
+                            type: 'MISSED_PERSONALIZED_REQUEST',
+                            metadata: { sessionId: persSession.sessionId, astrologerId: persSession.astrologerId }
+                        });
+                    }
+                    console.log(`[Socket] Personalized session rejected: ${data.sessionId}`);
                 } else {
-                    await chatService.rejectChatRequest(data.sessionId);
+                    const callSession = await callService.getSession(data.sessionId);
+                    if (callSession) {
+                        await callService.rejectCallRequest(data.sessionId);
+                    } else {
+                        await chatService.rejectChatRequest(data.sessionId);
+                    }
                 }
                 if (callback) callback({ success: true });
 
