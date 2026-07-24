@@ -19,10 +19,7 @@ const DEFAULT_CONFIG = {
         call: 20,
         video: 25
     },
-    gstPercentage: 18,
-    chatPricePerMin: 10,
-    callPricePerMin: 15,
-    videoPricePerMin: 25
+    gstPercentage: 18
 };
 
 // Helper: Get or Init System Config
@@ -35,16 +32,6 @@ const getPersonalizedConfig = async () => {
             description: 'Timer slots, pricing and commission config for Personalized Service'
         });
         await setting.save();
-    } else {
-        // Ensure defaults are populated
-        let updated = false;
-        if (setting.value.chatPricePerMin === undefined) { setting.value.chatPricePerMin = 10; updated = true; }
-        if (setting.value.callPricePerMin === undefined) { setting.value.callPricePerMin = 15; updated = true; }
-        if (setting.value.videoPricePerMin === undefined) { setting.value.videoPricePerMin = 25; updated = true; }
-        if (updated) {
-            setting.markModified('value');
-            await setting.save();
-        }
     }
     return setting.value;
 };
@@ -62,7 +49,7 @@ export const getConfig = async (req: Request, res: Response) => {
 
 export const updateConfig = async (req: Request, res: Response) => {
     try {
-        const { timers, defaultCommissions, gstPercentage, chatPricePerMin, callPricePerMin, videoPricePerMin } = req.body;
+        const { timers, defaultCommissions, gstPercentage } = req.body;
         let setting = await SystemSetting.findOne({ key: 'personalized_service_config' });
         if (!setting) {
             setting = new SystemSetting({ key: 'personalized_service_config', value: DEFAULT_CONFIG });
@@ -70,10 +57,7 @@ export const updateConfig = async (req: Request, res: Response) => {
         setting.value = {
             timers: timers || setting.value.timers,
             defaultCommissions: defaultCommissions || setting.value.defaultCommissions,
-            gstPercentage: gstPercentage !== undefined ? gstPercentage : setting.value.gstPercentage,
-            chatPricePerMin: chatPricePerMin !== undefined ? chatPricePerMin : (setting.value.chatPricePerMin || 10),
-            callPricePerMin: callPricePerMin !== undefined ? callPricePerMin : (setting.value.callPricePerMin || 15),
-            videoPricePerMin: videoPricePerMin !== undefined ? videoPricePerMin : (setting.value.videoPricePerMin || 25)
+            gstPercentage: gstPercentage !== undefined ? gstPercentage : setting.value.gstPercentage
         };
         setting.markModified('value');
         await setting.save();
@@ -322,22 +306,21 @@ export const createBookingOrder = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Invalid timer duration selected' });
         }
 
-        let ratePerMin = 0;
+        let basePrice = 0;
         if (serviceType === 'chat') {
-            ratePerMin = astro.personalizedChatPricePerMin !== null && astro.personalizedChatPricePerMin !== undefined
-                ? astro.personalizedChatPricePerMin
-                : (config.chatPricePerMin || 10);
+            basePrice = astro.personalizedChatPricePerMin !== null && astro.personalizedChatPricePerMin !== undefined
+                ? Number(durationMinutes) * astro.personalizedChatPricePerMin
+                : slot.chatPrice;
         } else if (serviceType === 'call') {
-            ratePerMin = astro.personalizedCallPricePerMin !== null && astro.personalizedCallPricePerMin !== undefined
-                ? astro.personalizedCallPricePerMin
-                : (config.callPricePerMin || 15);
+            basePrice = astro.personalizedCallPricePerMin !== null && astro.personalizedCallPricePerMin !== undefined
+                ? Number(durationMinutes) * astro.personalizedCallPricePerMin
+                : slot.callPrice;
         } else if (serviceType === 'video') {
-            ratePerMin = astro.personalizedVideoPricePerMin !== null && astro.personalizedVideoPricePerMin !== undefined
-                ? astro.personalizedVideoPricePerMin
-                : (config.videoPricePerMin || 25);
+            basePrice = astro.personalizedVideoPricePerMin !== null && astro.personalizedVideoPricePerMin !== undefined
+                ? Number(durationMinutes) * astro.personalizedVideoPricePerMin
+                : slot.videoPrice;
         }
 
-        const basePrice = Number(durationMinutes) * ratePerMin;
         const gstAmount = Math.round((basePrice * (config.gstPercentage || 18)) / 100);
         const totalAmountPaid = basePrice + gstAmount;
 
