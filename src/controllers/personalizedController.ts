@@ -161,7 +161,7 @@ export const getMissedRequestsAdmin = async (req: Request, res: Response) => {
 
 export const getAstrologerSettings = async (req: Request, res: Response) => {
     try {
-        const astrologerId = (req as any).user?.astrologerId || req.query.astrologerId;
+        const astrologerId = (req as any).userId || req.query.astrologerId;
         const astro = await Astrologer.findById(astrologerId);
         if (!astro) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
@@ -180,7 +180,7 @@ export const getAstrologerSettings = async (req: Request, res: Response) => {
 
 export const updateAstrologerSettings = async (req: Request, res: Response) => {
     try {
-        const astrologerId = (req as any).user?.astrologerId || req.body.astrologerId;
+        const astrologerId = (req as any).userId || req.body.astrologerId;
         const { chatEnabled, voiceCallEnabled, videoCallEnabled } = req.body;
 
         const astro = await Astrologer.findById(astrologerId);
@@ -223,7 +223,7 @@ export const updateAstrologerSettings = async (req: Request, res: Response) => {
 
 export const getAstrologerEarnings = async (req: Request, res: Response) => {
     try {
-        const astrologerId = (req as any).user?.astrologerId || req.query.astrologerId;
+        const astrologerId = (req as any).userId || req.query.astrologerId;
         const sessions = await PersonalizedSession.find({
             astrologerId,
             status: 'COMPLETED'
