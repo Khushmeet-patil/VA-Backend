@@ -19,7 +19,10 @@ const DEFAULT_CONFIG = {
         call: 20,
         video: 25
     },
-    gstPercentage: 18
+    gstPercentage: 18,
+    chatPricePerMin: 10,
+    callPricePerMin: 15,
+    videoPricePerMin: 25
 };
 
 // Helper: Get or Init System Config
@@ -32,6 +35,16 @@ const getPersonalizedConfig = async () => {
             description: 'Timer slots, pricing and commission config for Personalized Service'
         });
         await setting.save();
+    } else {
+        // Ensure defaults are populated
+        let updated = false;
+        if (setting.value.chatPricePerMin === undefined) { setting.value.chatPricePerMin = 10; updated = true; }
+        if (setting.value.callPricePerMin === undefined) { setting.value.callPricePerMin = 15; updated = true; }
+        if (setting.value.videoPricePerMin === undefined) { setting.value.videoPricePerMin = 25; updated = true; }
+        if (updated) {
+            setting.markModified('value');
+            await setting.save();
+        }
     }
     return setting.value;
 };
@@ -49,7 +62,7 @@ export const getConfig = async (req: Request, res: Response) => {
 
 export const updateConfig = async (req: Request, res: Response) => {
     try {
-        const { timers, defaultCommissions, gstPercentage } = req.body;
+        const { timers, defaultCommissions, gstPercentage, chatPricePerMin, callPricePerMin, videoPricePerMin } = req.body;
         let setting = await SystemSetting.findOne({ key: 'personalized_service_config' });
         if (!setting) {
             setting = new SystemSetting({ key: 'personalized_service_config', value: DEFAULT_CONFIG });
@@ -57,8 +70,12 @@ export const updateConfig = async (req: Request, res: Response) => {
         setting.value = {
             timers: timers || setting.value.timers,
             defaultCommissions: defaultCommissions || setting.value.defaultCommissions,
-            gstPercentage: gstPercentage !== undefined ? gstPercentage : setting.value.gstPercentage
+            gstPercentage: gstPercentage !== undefined ? gstPercentage : setting.value.gstPercentage,
+            chatPricePerMin: chatPricePerMin !== undefined ? chatPricePerMin : (setting.value.chatPricePerMin || 10),
+            callPricePerMin: callPricePerMin !== undefined ? callPricePerMin : (setting.value.callPricePerMin || 15),
+            videoPricePerMin: videoPricePerMin !== undefined ? videoPricePerMin : (setting.value.videoPricePerMin || 25)
         };
+        setting.markModified('value');
         await setting.save();
         return res.json({ success: true, message: 'Configuration updated successfully', config: setting.value });
     } catch (error: any) {
@@ -69,7 +86,7 @@ export const updateConfig = async (req: Request, res: Response) => {
 export const getAstrologersAdmin = async (req: Request, res: Response) => {
     try {
         const astrologers = await Astrologer.find({ status: 'approved' })
-            .select('firstName lastName email mobileNumber profilePhoto personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled personalizedChatCommission personalizedCallCommission personalizedVideoCommission rating reviewsCount')
+            .select('firstName lastName email mobileNumber profilePhoto personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled personalizedChatPricePerMin personalizedCallPricePerMin personalizedVideoPricePerMin rating reviewsCount')
             .lean();
         return res.json({ success: true, astrologers });
     } catch (error: any) {
@@ -79,7 +96,7 @@ export const getAstrologersAdmin = async (req: Request, res: Response) => {
 
 export const updateAstrologerStatusAdmin = async (req: Request, res: Response) => {
     try {
-        const { astrologerId, enabled, chatCommission, callCommission, videoCommission } = req.body;
+        const { astrologerId, enabled, chatPricePerMin, callPricePerMin, videoPricePerMin } = req.body;
         const astro = await Astrologer.findById(astrologerId);
         if (!astro) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
@@ -88,14 +105,14 @@ export const updateAstrologerStatusAdmin = async (req: Request, res: Response) =
         if (enabled !== undefined) {
             astro.personalizedServiceEnabled = enabled;
         }
-        if (chatCommission !== undefined) {
-            astro.personalizedChatCommission = chatCommission;
+        if (chatPricePerMin !== undefined) {
+            astro.personalizedChatPricePerMin = chatPricePerMin;
         }
-        if (callCommission !== undefined) {
-            astro.personalizedCallCommission = callCommission;
+        if (callPricePerMin !== undefined) {
+            astro.personalizedCallPricePerMin = callPricePerMin;
         }
-        if (videoCommission !== undefined) {
-            astro.personalizedVideoCommission = videoCommission;
+        if (videoPricePerMin !== undefined) {
+            astro.personalizedVideoPricePerMin = videoPricePerMin;
         }
 
         await astro.save();
@@ -305,11 +322,22 @@ export const createBookingOrder = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Invalid timer duration selected' });
         }
 
-        let basePrice = 0;
-        if (serviceType === 'chat') basePrice = slot.chatPrice;
-        else if (serviceType === 'call') basePrice = slot.callPrice;
-        else if (serviceType === 'video') basePrice = slot.videoPrice;
+        let ratePerMin = 0;
+        if (serviceType === 'chat') {
+            ratePerMin = astro.personalizedChatPricePerMin !== null && astro.personalizedChatPricePerMin !== undefined
+                ? astro.personalizedChatPricePerMin
+                : (config.chatPricePerMin || 10);
+        } else if (serviceType === 'call') {
+            ratePerMin = astro.personalizedCallPricePerMin !== null && astro.personalizedCallPricePerMin !== undefined
+                ? astro.personalizedCallPricePerMin
+                : (config.callPricePerMin || 15);
+        } else if (serviceType === 'video') {
+            ratePerMin = astro.personalizedVideoPricePerMin !== null && astro.personalizedVideoPricePerMin !== undefined
+                ? astro.personalizedVideoPricePerMin
+                : (config.videoPricePerMin || 25);
+        }
 
+        const basePrice = Number(durationMinutes) * ratePerMin;
         const gstAmount = Math.round((basePrice * (config.gstPercentage || 18)) / 100);
         const totalAmountPaid = basePrice + gstAmount;
 
@@ -365,15 +393,8 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
 
         const config = await getPersonalizedConfig();
 
-        // Calculate Commission & Astrologer Earning
-        let commPercentage = config.defaultCommissions[serviceType] || 20;
-        if (serviceType === 'chat' && astro.personalizedChatCommission !== null && astro.personalizedChatCommission !== undefined) {
-            commPercentage = astro.personalizedChatCommission;
-        } else if (serviceType === 'call' && astro.personalizedCallCommission !== null && astro.personalizedCallCommission !== undefined) {
-            commPercentage = astro.personalizedCallCommission;
-        } else if (serviceType === 'video' && astro.personalizedVideoCommission !== null && astro.personalizedVideoCommission !== undefined) {
-            commPercentage = astro.personalizedVideoCommission;
-        }
+        // Calculate Commission & Astrologer Earning using Global Commission Only
+        const commPercentage = config.defaultCommissions[serviceType] || 20;
 
         const platformCommission = Math.round((basePrice * commPercentage) / 100);
         const astrologerEarning = basePrice - platformCommission;

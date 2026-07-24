@@ -101,6 +101,9 @@ export interface IAstrologer extends Document {
     personalizedChatCommission?: number | null;       // Custom commission override
     personalizedCallCommission?: number | null;       // Custom commission override
     personalizedVideoCommission?: number | null;      // Custom commission override
+    personalizedChatPricePerMin?: number | null;      // Custom chat rate per minute
+    personalizedCallPricePerMin?: number | null;      // Custom call rate per minute
+    personalizedVideoPricePerMin?: number | null;     // Custom video rate per minute
     personalizedEarnings?: number;                   // Earnings from personalized service
 }
 
@@ -215,6 +218,9 @@ const AstrologerSchema: Schema = new Schema({
     personalizedChatCommission: { type: Number, default: null },
     personalizedCallCommission: { type: Number, default: null },
     personalizedVideoCommission: { type: Number, default: null },
+    personalizedChatPricePerMin: { type: Number, default: null },
+    personalizedCallPricePerMin: { type: Number, default: null },
+    personalizedVideoPricePerMin: { type: Number, default: null },
     personalizedEarnings: { type: Number, default: 0 }
 }, { timestamps: true });
 
