@@ -356,7 +356,7 @@ export const createBookingOrder = async (req: Request, res: Response) => {
 
 export const verifyBookingPayment = async (req: Request, res: Response) => {
     try {
-        const userId = (req as any).user?.id || req.body.userId;
+        const userId = (req as any).userId || (req as any).user?.id || req.body.userId;
         const {
             astrologerId,
             serviceType,
