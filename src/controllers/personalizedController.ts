@@ -268,7 +268,7 @@ export const getPersonalizedAstrologersUser = async (req: Request, res: Response
             personalizedServiceEnabled: true,
             isBlocked: false
         })
-            .select('firstName lastName profilePhoto rating reviewsCount specialties experience isOnline personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled bio aboutMe')
+            .select('firstName lastName profilePhoto rating reviewsCount specialties experience isOnline personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled bio aboutMe')
             .lean();
 
         return res.json({
