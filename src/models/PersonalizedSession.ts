@@ -14,9 +14,12 @@ export interface IPersonalizedSession extends Document {
         placeOfBirth?: string;
         relationshipStatus?: string;
         topic?: string;
+        email?: string;
     };
     serviceType: 'chat' | 'call' | 'video';
     durationMinutes: number;
+    remainingDurationSeconds?: number;
+    usedDurationSeconds?: number;
     basePrice: number;
     gstAmount: number;
     totalAmountPaid: number;
@@ -68,7 +71,8 @@ const PersonalizedSessionSchema: Schema = new Schema({
         timeOfBirth: { type: String },
         placeOfBirth: { type: String },
         relationshipStatus: { type: String },
-        topic: { type: String }
+        topic: { type: String },
+        email: { type: String }
     },
     serviceType: {
         type: String,
@@ -78,6 +82,14 @@ const PersonalizedSessionSchema: Schema = new Schema({
     durationMinutes: {
         type: Number,
         required: true
+    },
+    remainingDurationSeconds: {
+        type: Number,
+        default: null
+    },
+    usedDurationSeconds: {
+        type: Number,
+        default: 0
     },
     basePrice: {
         type: Number,

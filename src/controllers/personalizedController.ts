@@ -8,6 +8,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import notificationService from '../services/notificationService';
 import chatService from '../services/chatService';
+import { sendPersonalizedHoroscopeEmail } from '../services/pdfService';
 
 const DEFAULT_CONFIG = {
     timers: [
@@ -400,12 +401,16 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         const platformCommission = Math.round((basePrice * commPercentage) / 100);
         const astrologerEarning = basePrice - platformCommission;
 
+        const totalAllocatedSec = durationMinutes * 60;
+
         const session = new PersonalizedSession({
             userId,
             astrologerId,
             profileData,
             serviceType,
             durationMinutes,
+            remainingDurationSeconds: totalAllocatedSec,
+            usedDurationSeconds: 0,
             basePrice,
             gstAmount,
             totalAmountPaid,
@@ -421,7 +426,14 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         await session.save();
 
         const userObj = await User.findById(userId);
-        const userName = userObj?.name || 'User';
+        const userName = userObj?.name || profileData?.name || 'User';
+        const userEmail = profileData?.email || userObj?.email;
+
+        // Async: Send basic horoscope email to user if email available
+        if (userEmail) {
+            sendPersonalizedHoroscopeEmail(userEmail, userName, profileData)
+                .catch(err => console.error('[Personalized] Failed to send horoscope email:', err));
+        }
 
         // 1. Send High-Priority Ringing FCM Notification to Astrologer's Device
         notificationService.sendHighPriorityChatRequest(astrologerId.toString(), {
@@ -564,9 +576,13 @@ export const acceptSession = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Session not found' });
         }
 
+        const remainingSec = (session.remainingDurationSeconds !== undefined && session.remainingDurationSeconds !== null)
+            ? session.remainingDurationSeconds
+            : (session.durationMinutes * 60);
+
         session.status = 'ACTIVE';
         session.startTime = new Date();
-        session.endTime = new Date(Date.now() + session.durationMinutes * 60 * 1000);
+        session.endTime = new Date(Date.now() + remainingSec * 1000);
         await session.save();
 
         return res.json({
@@ -632,18 +648,51 @@ export const completeSession = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Session not found' });
         }
 
-        session.status = 'COMPLETED';
-        session.endTime = new Date();
+        // Calculate elapsed time from session start
+        const now = new Date();
+        let sessionElapsedSec = 0;
+        if (session.startTime) {
+            sessionElapsedSec = Math.max(0, Math.round((now.getTime() - new Date(session.startTime).getTime()) / 1000));
+        }
+
+        const totalAllocatedSec = session.durationMinutes * 60;
+        const previousUsedSec = session.usedDurationSeconds || 0;
+        const totalUsedSec = previousUsedSec + sessionElapsedSec;
+        const remainingSec = Math.max(0, totalAllocatedSec - totalUsedSec);
+
+        session.usedDurationSeconds = totalUsedSec;
+        session.remainingDurationSeconds = remainingSec;
+        session.endTime = now;
         if (notes) session.notes = notes;
         if (chatMessages) session.chatMessages = chatMessages;
+
+        // Threshold Rule: If remaining time is less than 60 seconds (1 minute), mark COMPLETED
+        if (remainingSec < 60) {
+            session.status = 'COMPLETED';
+        } else {
+            // User still has remaining time (e.g., 5 mins) to chat/call with any astrologer
+            session.status = 'PAID_PENDING_ACCEPT';
+        }
+
         await session.save();
 
-        // Update Astrologer Total Personalized Earnings
-        await Astrologer.findByIdAndUpdate(session.astrologerId, {
-            $inc: { personalizedEarnings: session.astrologerEarning, earnings: session.astrologerEarning }
-        });
+        // Update Astrologer Total Personalized Earnings proportional to used time (or full if completed)
+        const earnedRatio = Math.min(1, totalUsedSec / totalAllocatedSec);
+        const netEarningToCredit = Math.round(session.astrologerEarning * earnedRatio);
 
-        return res.json({ success: true, message: 'Session completed successfully', session });
+        if (netEarningToCredit > 0) {
+            await Astrologer.findByIdAndUpdate(session.astrologerId, {
+                $inc: { personalizedEarnings: netEarningToCredit, earnings: netEarningToCredit }
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: session.status === 'COMPLETED'
+                ? 'Personalized service completed successfully'
+                : `Session ended. ${Math.ceil(remainingSec / 60)} minutes remaining in your paid slot!`,
+            session
+        });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -658,7 +707,12 @@ export const getActiveTokenUser = async (req: Request, res: Response) => {
         // Find any unredeemed paid session for this user (status: PAID_PENDING_ACCEPT or MISSED)
         const tokenSession = await PersonalizedSession.findOne({
             userId,
-            status: { $in: ['PAID_PENDING_ACCEPT', 'MISSED'] }
+            status: { $in: ['PAID_PENDING_ACCEPT', 'MISSED'] },
+            $or: [
+                { remainingDurationSeconds: { $gte: 60 } },
+                { remainingDurationSeconds: null },
+                { remainingDurationSeconds: { $exists: false } }
+            ]
         }).sort({ createdAt: -1 });
 
         return res.json({

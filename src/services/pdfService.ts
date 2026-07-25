@@ -717,6 +717,59 @@ export const sendLifeForecastPdfEmail = async (toEmail: string, pdfUrl: string, 
     }
 };
 
+export const sendPersonalizedHoroscopeEmail = async (toEmail: string, userName: string, profileData: any) => {
+    try {
+        if (!toEmail) return;
+        const transporter = getEmailTransporter();
+        const companyName = await getSettingValue('kundliPdfCompanyName', 'VedicAstro Solutions');
+        const supportEmail = await getSettingValue('kundliPdfCompanyEmail', 'support@vedicastro.co.in');
+
+        console.log(`[PDF Service] Sending personalized horoscope welcome email to: ${toEmail}`);
+
+        const mailOptions = {
+            from: `"${companyName}" <${process.env.STORE_EMAIL_USER || 'support@vedicastro.co.in'}>`,
+            to: toEmail,
+            subject: `Your Personalized Service Booking & Horoscope Summary - ${companyName}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                    <div style="background: linear-gradient(135deg, #7C3AED 0%, #C084FC 100%); padding: 25px; text-align: center; color: white;">
+                        <h1 style="margin: 0; font-size: 24px;">Personalized Service Confirmed! ✨</h1>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9;">Your basic horoscope details & booking summary</p>
+                    </div>
+                    <div style="padding: 24px; background-color: #fff;">
+                        <p>Dear <strong>${userName}</strong>,</p>
+                        <p>Thank you for booking a personalized consultation on <strong>VedicAstro</strong>! Your payment has been successfully processed.</p>
+                        
+                        <div style="background-color: #F3E8FF; border-left: 4px solid #7C3AED; padding: 16px; margin: 20px 0; border-radius: 6px;">
+                            <h3 style="margin: 0 0 10px 0; color: #6D28D9; font-size: 16px;">📋 Horoscope & Profile Summary:</h3>
+                            <p style="margin: 4px 0;"><strong>Name:</strong> ${profileData?.name || userName}</p>
+                            <p style="margin: 4px 0;"><strong>Date of Birth:</strong> ${profileData?.dateOfBirth || 'N/A'}</p>
+                            <p style="margin: 4px 0;"><strong>Time of Birth:</strong> ${profileData?.timeOfBirth || 'N/A'}</p>
+                            <p style="margin: 4px 0;"><strong>Place of Birth:</strong> ${profileData?.placeOfBirth || 'N/A'}</p>
+                            <p style="margin: 4px 0;"><strong>Gender:</strong> ${profileData?.gender || 'N/A'}</p>
+                            ${profileData?.topic ? `<p style="margin: 4px 0;"><strong>Focus Topic:</strong> ${profileData.topic}</p>` : ''}
+                        </div>
+
+                        <p>Your slot is now active in your VedicAstro app. You can start your personalized Chat, Voice Call, or Video Call at your convenience with any available astrologer.</p>
+
+                        <p style="margin-top: 25px;">If you have any questions or need assistance, feel free to reach out to us at <a href="mailto:${supportEmail}" style="color: #7C3AED;">${supportEmail}</a>.</p>
+                        <p style="margin-top: 30px; font-size: 14px; color: #888;">Warm regards,<br>Team ${companyName}</p>
+                    </div>
+                    <div style="background-color: #f8fafc; padding: 15px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee;">
+                        <p style="margin: 0;">&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+                    </div>
+                </div>
+            `
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[PDF Service] Personalized horoscope email sent to ${toEmail}. Message ID: ${info.messageId}`);
+        return info;
+    } catch (error: any) {
+        console.error('[PDF Service] sendPersonalizedHoroscopeEmail Error:', error.message);
+    }
+};
+
 export default {
     generateKundliPdf,
     sendPdfEmail,
@@ -727,5 +780,6 @@ export default {
     generateGemstonePdf,
     sendGemstonePdfEmail,
     generateLifeForecastPdf,
-    sendLifeForecastPdfEmail
+    sendLifeForecastPdfEmail,
+    sendPersonalizedHoroscopeEmail
 };

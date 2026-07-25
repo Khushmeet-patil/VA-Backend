@@ -551,6 +551,38 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
             try {
                 const { sessionId } = data;
 
+                // Check PersonalizedSession first
+                const persSession = await PersonalizedSession.findOne({ sessionId });
+                if (persSession) {
+                    persSession.status = 'COMPLETED';
+                    persSession.endTime = new Date();
+                    await persSession.save();
+
+                    // Update Astrologer Total Personalized Earnings
+                    await Astrologer.findByIdAndUpdate(persSession.astrologerId, {
+                        $inc: { personalizedEarnings: persSession.astrologerEarning, earnings: persSession.astrologerEarning }
+                    });
+
+                    const endReason = userType === 'user' ? 'USER_END' : 'ASTROLOGER_END';
+                    const endPayload = {
+                        sessionId,
+                        endReason,
+                        status: 'COMPLETED',
+                        totalMinutes: persSession.durationMinutes,
+                        totalAmount: persSession.totalAmountPaid,
+                        walletBalance: 0
+                    };
+
+                    // Broadcast CHAT_ENDED to session room and both user & astrologer rooms
+                    io.to(`session:${sessionId}`).emit('CHAT_ENDED', endPayload);
+                    io.to(`user:${persSession.userId}`).emit('CHAT_ENDED', endPayload);
+                    io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_ENDED', endPayload);
+
+                    console.log(`[Socket] Personalized session ended successfully: ${sessionId}`);
+                    if (callback) callback({ success: true, ...endPayload });
+                    return;
+                }
+
                 // Check CallSession first, then ChatSession
                 const callSession = await callService.getSession(sessionId);
                 if (callSession) {
@@ -637,7 +669,38 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                         persSession.endTime = new Date(Date.now() + persSession.durationMinutes * 60 * 1000);
                         await persSession.save();
                         session = persSession;
-                        console.log(`[Socket] Personalized session accepted: ${data.sessionId}`);
+
+                        const astro = await Astrologer.findById(persSession.astrologerId);
+                        const astroName = astro ? `${astro.firstName || ''} ${astro.lastName || ''}`.trim() : 'Astrologer';
+
+                        const startPayload = {
+                            sessionId: persSession.sessionId,
+                            astrologerId: persSession.astrologerId.toString(),
+                            userId: persSession.userId.toString(),
+                            astrologerName: astroName,
+                            serviceType: persSession.serviceType,
+                            sessionType: persSession.serviceType === 'call' ? 'voice_call' : persSession.serviceType === 'video' ? 'video_call' : 'chat',
+                            durationMinutes: persSession.durationMinutes,
+                            startTime: persSession.startTime.toISOString(),
+                            profileData: persSession.profileData,
+                            isPersonalized: true
+                        };
+
+                        // Broadcast CHAT_STARTED over socket to session room and user room so user navigates immediately
+                        io.to(`session:${persSession.sessionId}`).emit('CHAT_STARTED', startPayload);
+                        io.to(`user:${persSession.userId}`).emit('CHAT_STARTED', startPayload);
+                        io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_STARTED', startPayload);
+
+                        // Send FCM push to user as backup
+                        notificationService.sendChatStartedNotification(persSession.userId.toString(), {
+                            sessionId: persSession.sessionId,
+                            astrologerId: persSession.astrologerId.toString(),
+                            astrologerName: astroName,
+                            ratePerMinute: persSession.basePrice,
+                            startTime: persSession.startTime.toISOString()
+                        }).catch(err => console.error('[Socket] FCM chat_started push failed:', err));
+
+                        console.log(`[Socket] Personalized session accepted & CHAT_STARTED emitted: ${data.sessionId}`);
                     } else {
                         const callSession = await callService.getSession(data.sessionId);
                         if (callSession) {
