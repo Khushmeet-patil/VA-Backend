@@ -2401,8 +2401,11 @@ class ChatService {
      * Get active session for an astrologer
      */
     async getActiveSessionForAstrologer(astrologerId: string): Promise<any> {
+        const astro = await Astrologer.findOne({ $or: [{ _id: astrologerId }, { userId: astrologerId }] });
+        const astroDbId = astro ? astro._id : astrologerId;
+
         const persSession = await PersonalizedSession.findOne({
-            astrologerId,
+            $or: [{ astrologerId: astroDbId }, { astrologerId }],
             status: 'ACTIVE'
         }).populate('userId', 'name');
 
