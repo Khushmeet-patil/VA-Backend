@@ -953,26 +953,17 @@ class ChatService {
                 await persSession.save();
 
                 if (this.io) {
-                    this.io.to(`session:${persSession.sessionId}`).emit('CHAT_ENDED', {
+                    const endPayload = {
                         sessionId: persSession.sessionId,
                         reason: endReason,
                         isPersonalized: true,
                         remainingDurationSeconds: remainingSec,
                         totalMinutes: Math.ceil(totalUsedSec / 60),
                         totalAmount: persSession.totalAmountPaid || persSession.basePrice || 0
-                    });
-                    this.io.to(`user:${persSession.userId}`).emit('CHAT_ENDED', {
-                        sessionId: persSession.sessionId,
-                        reason: endReason,
-                        isPersonalized: true,
-                        remainingDurationSeconds: remainingSec
-                    });
-                    this.io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_ENDED', {
-                        sessionId: persSession.sessionId,
-                        reason: endReason,
-                        isPersonalized: true,
-                        remainingDurationSeconds: remainingSec
-                    });
+                    };
+                    this.io.to(`session:${persSession.sessionId}`).emit('CHAT_ENDED', endPayload);
+                    this.io.to(`user:${persSession.userId}`).emit('CHAT_ENDED', endPayload);
+                    this.io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_ENDED', endPayload);
                 }
                 return persSession;
             }

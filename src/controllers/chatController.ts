@@ -332,6 +332,7 @@ export const endChat = async (req: AuthRequest, res: Response) => {
                 endReason,
                 status: persSession.status,
                 totalMinutes: Math.ceil(totalUsedSec / 60),
+                totalAmount: persSession.totalAmountPaid || persSession.basePrice || 0,
                 remainingDurationSeconds: persSession.remainingDurationSeconds,
                 isPersonalized: true
             };
