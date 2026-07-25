@@ -636,6 +636,19 @@ export const missSession = async (req: Request, res: Response) => {
             }).catch(e => console.error('[Personalized] FCM miss notification failed:', e));
         }
 
+        // Emit CHAT_REJECTED to user socket room
+        if (chatService.io) {
+            const astroName = (session.astrologerId as any)?.firstName
+                ? `${(session.astrologerId as any).firstName} ${(session.astrologerId as any).lastName || ''}`.trim()
+                : 'Astrologer';
+            chatService.io.to(`user:${session.userId}`).emit('CHAT_REJECTED', {
+                sessionId: session.sessionId,
+                reason: `${astroName} declined your request. Your paid token is saved!`,
+                astrologerName: astroName,
+                isPersonalized: true
+            });
+        }
+
         return res.json({ success: true, message: 'Session marked as missed and astrologer notified', session });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });

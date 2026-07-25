@@ -771,6 +771,8 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
 
                     const astro = await Astrologer.findById(persSession.astrologerId);
                     const astroUserId = astro?.userId || (persSession.astrologerId as any)?.userId;
+                    const astroName = astro ? `${astro.firstName || ''} ${astro.lastName || ''}`.trim() : 'Astrologer';
+
                     if (astroUserId) {
                         await Notification.create({
                             recipient: astroUserId,
@@ -783,6 +785,22 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                             metadata: { sessionId: persSession.sessionId, astrologerId: persSession.astrologerId }
                         });
                     }
+
+                    // Emit CHAT_REJECTED to user socket room
+                    io.to(`user:${persSession.userId}`).emit('CHAT_REJECTED', {
+                        sessionId: persSession.sessionId,
+                        reason: `${astroName} declined your request. Your paid token is saved!`,
+                        astrologerName: astroName,
+                        isPersonalized: true
+                    });
+
+                    // Send FCM push notification to user
+                    notificationService.sendChatRejectedNotification(
+                        persSession.userId.toString(),
+                        astroName,
+                        'ASTROLOGER_REJECTED'
+                    ).catch(err => console.error('[Socket] FCM chat_rejected push failed:', err));
+
                     console.log(`[Socket] Personalized session rejected: ${data.sessionId}`);
                 } else {
                     const callSession = await callService.getSession(data.sessionId);
