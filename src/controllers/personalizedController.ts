@@ -331,6 +331,10 @@ export const createBookingOrder = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'Astrologer is not available for personalized service' });
         }
 
+        if (!astro.isOnline) {
+            return res.status(400).json({ success: false, message: `${astro.firstName || 'Astrologer'} is currently offline. You cannot book or send requests until they come online.` });
+        }
+
         // Check if service is enabled by astrologer
         if (serviceType === 'chat' && astro.personalizedChatEnabled === false) {
             return res.status(400).json({ success: false, message: 'Astrologer has disabled personalized chat' });
@@ -414,6 +418,10 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         const astro = await Astrologer.findById(astrologerId);
         if (!astro) {
             return res.status(404).json({ success: false, message: 'Astrologer not found' });
+        }
+
+        if (!astro.isOnline) {
+            return res.status(400).json({ success: false, message: `${astro.firstName || 'Astrologer'} is currently offline. Cannot send booking request.` });
         }
 
         const config = await getPersonalizedConfig();
@@ -531,6 +539,9 @@ export const reRequestSession = async (req: Request, res: Response) => {
         await session.save();
 
         const astro = await Astrologer.findById(session.astrologerId);
+        if (!astro || !astro.isOnline) {
+            return res.status(400).json({ success: false, message: 'Astrologer is currently offline. Please wait until they come online to re-send request.' });
+        }
         if (astro) {
             const userObj = await User.findById(session.userId);
             const userName = userObj?.name || 'User';
