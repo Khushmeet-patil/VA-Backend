@@ -569,12 +569,29 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     persSession.remainingDurationSeconds = remainingSec;
                     persSession.endTime = now;
 
+                    const commPercentage = persSession.commissionPercentage || 20;
+                    const earnedRatio = totalAllocatedSec > 0 ? Math.min(1, totalUsedSec / totalAllocatedSec) : 1;
+                    const proRatedBasePrice = Math.round((persSession.basePrice || 0) * earnedRatio * 100) / 100;
+                    const platformCommission = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
+                    const netEarningToCredit = Math.max(0, Math.round((proRatedBasePrice - platformCommission) * 100) / 100);
+
+                    persSession.astrologerEarning = netEarningToCredit;
+                    persSession.platformCommission = platformCommission;
+
+                    const wasCompleted = persSession.status === 'COMPLETED';
+
                     // Threshold Rule: If remaining time is less than 60 seconds (1 minute), mark COMPLETED
                     if (remainingSec < 60) {
                         persSession.status = 'COMPLETED';
-                        await Astrologer.findByIdAndUpdate(persSession.astrologerId, {
-                            $inc: { personalizedEarnings: persSession.astrologerEarning, earnings: persSession.astrologerEarning }
-                        });
+                        if (netEarningToCredit > 0 && !wasCompleted) {
+                            await Astrologer.findByIdAndUpdate(persSession.astrologerId, {
+                                $inc: { 
+                                    personalizedEarnings: netEarningToCredit, 
+                                    earnings: netEarningToCredit,
+                                    yearlyGrossEarnings: netEarningToCredit
+                                }
+                            });
+                        }
                     } else {
                         // User still has remaining duration (e.g. 5 mins) left for personalized service
                         persSession.status = 'PAID_PENDING_ACCEPT';

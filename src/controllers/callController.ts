@@ -279,8 +279,28 @@ export const endCall = async (req: AuthRequest, res: Response) => {
             persSession.remainingDurationSeconds = remainingSec;
             persSession.endTime = now;
 
+            const commPercentage = persSession.commissionPercentage || 20;
+            const earnedRatio = totalAllocatedSec > 0 ? Math.min(1, totalUsedSec / totalAllocatedSec) : 1;
+            const proRatedBasePrice = Math.round((persSession.basePrice || 0) * earnedRatio * 100) / 100;
+            const platformCommission = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
+            const netEarningToCredit = Math.max(0, Math.round((proRatedBasePrice - platformCommission) * 100) / 100);
+
+            persSession.astrologerEarning = netEarningToCredit;
+            persSession.platformCommission = platformCommission;
+
+            const wasCompleted = persSession.status === 'COMPLETED';
+
             if (remainingSec < 60) {
                 persSession.status = 'COMPLETED';
+                if (netEarningToCredit > 0 && !wasCompleted) {
+                    await Astrologer.findByIdAndUpdate(persSession.astrologerId, {
+                        $inc: { 
+                            personalizedEarnings: netEarningToCredit, 
+                            earnings: netEarningToCredit,
+                            yearlyGrossEarnings: netEarningToCredit
+                        }
+                    });
+                }
             } else {
                 persSession.status = 'PAID_PENDING_ACCEPT';
             }

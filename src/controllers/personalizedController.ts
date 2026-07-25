@@ -247,8 +247,11 @@ export const getAstrologerEarnings = async (req: Request, res: Response) => {
         const astrologerId = (req as any).userId || req.query.astrologerId;
         const sessions = await PersonalizedSession.find({
             astrologerId,
-            status: 'COMPLETED'
-        }).sort({ createdAt: -1 }).lean();
+            $or: [{ status: 'COMPLETED' }, { usedDurationSeconds: { $gt: 0 } }]
+        })
+            .populate('userId', 'name mobile email')
+            .sort({ createdAt: -1 })
+            .lean();
 
         let totalGross = 0;
         let totalNetEarning = 0;
@@ -256,12 +259,19 @@ export const getAstrologerEarnings = async (req: Request, res: Response) => {
         let callCount = 0;
         let videoCount = 0;
 
-        sessions.forEach(s => {
-            totalGross += s.basePrice;
-            totalNetEarning += s.astrologerEarning;
+        const history = sessions.map((s: any) => {
+            const userObj = typeof s.userId === 'object' ? s.userId : null;
+            const userName = s.profileData?.name || userObj?.name || 'User';
+            totalGross += (s.basePrice || 0);
+            totalNetEarning += (s.astrologerEarning || 0);
             if (s.serviceType === 'chat') chatCount++;
             else if (s.serviceType === 'call') callCount++;
             else if (s.serviceType === 'video') videoCount++;
+
+            return {
+                ...s,
+                userName
+            };
         });
 
         return res.json({
@@ -271,8 +281,8 @@ export const getAstrologerEarnings = async (req: Request, res: Response) => {
             chatCount,
             callCount,
             videoCount,
-            totalSessions: sessions.length,
-            history: sessions
+            totalSessions: history.length,
+            history
         });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });
@@ -400,8 +410,8 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         // Calculate Commission & Astrologer Earning using Global Commission Only
         const commPercentage = config.defaultCommissions[serviceType] || 20;
 
-        const platformCommission = Math.round((basePrice * commPercentage) / 100);
-        const astrologerEarning = basePrice - platformCommission;
+        const platformCommission = Math.round(((basePrice * commPercentage) / 100) * 100) / 100;
+        const astrologerEarning = Math.round((basePrice - platformCommission) * 100) / 100;
 
         const totalAllocatedSec = durationMinutes * 60;
 
@@ -686,6 +696,18 @@ export const completeSession = async (req: Request, res: Response) => {
         if (notes) session.notes = notes;
         if (chatMessages) session.chatMessages = chatMessages;
 
+        // Calculate earnings pro-rated as per actual duration talked vs total allocated duration
+        const commPercentage = session.commissionPercentage || 20;
+        const earnedRatio = totalAllocatedSec > 0 ? Math.min(1, totalUsedSec / totalAllocatedSec) : 1;
+        const proRatedBasePrice = Math.round((session.basePrice || 0) * earnedRatio * 100) / 100;
+        const platformCommission = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
+        const netEarningToCredit = Math.max(0, Math.round((proRatedBasePrice - platformCommission) * 100) / 100);
+
+        session.astrologerEarning = netEarningToCredit;
+        session.platformCommission = platformCommission;
+
+        const wasCompleted = session.status === 'COMPLETED';
+
         // Threshold Rule: If remaining time is less than 60 seconds (1 minute), mark COMPLETED
         if (remainingSec < 60) {
             session.status = 'COMPLETED';
@@ -696,13 +718,14 @@ export const completeSession = async (req: Request, res: Response) => {
 
         await session.save();
 
-        // Update Astrologer Total Personalized Earnings proportional to used time (or full if completed)
-        const earnedRatio = Math.min(1, totalUsedSec / totalAllocatedSec);
-        const netEarningToCredit = Math.round(session.astrologerEarning * earnedRatio);
-
-        if (netEarningToCredit > 0) {
+        // Credit earnings to Astrologer if session completed and not credited before
+        if (netEarningToCredit > 0 && session.status === 'COMPLETED' && !wasCompleted) {
             await Astrologer.findByIdAndUpdate(session.astrologerId, {
-                $inc: { personalizedEarnings: netEarningToCredit, earnings: netEarningToCredit }
+                $inc: { 
+                    personalizedEarnings: netEarningToCredit, 
+                    earnings: netEarningToCredit,
+                    yearlyGrossEarnings: netEarningToCredit
+                }
             });
         }
 
