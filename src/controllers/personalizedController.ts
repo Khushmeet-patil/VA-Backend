@@ -297,15 +297,26 @@ export const getPersonalizedAstrologersUser = async (req: Request, res: Response
         const astrologers = await Astrologer.find({
             status: 'approved',
             personalizedServiceEnabled: true,
-            isBlocked: false
+            isBlocked: false,
+            $or: [
+                { personalizedChatEnabled: { $ne: false } },
+                { personalizedVoiceCallEnabled: { $ne: false } },
+                { personalizedVideoCallEnabled: { $ne: false } }
+            ]
         })
             .select('firstName lastName profilePhoto rating reviewsCount specialties experience isOnline personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled bio aboutMe')
             .lean();
 
+        const activeAstrologers = astrologers.filter((a: any) =>
+            a.personalizedChatEnabled !== false ||
+            a.personalizedVoiceCallEnabled !== false ||
+            a.personalizedVideoCallEnabled !== false
+        );
+
         return res.json({
             success: true,
             config,
-            astrologers
+            astrologers: activeAstrologers
         });
     } catch (error: any) {
         return res.status(500).json({ success: false, message: error.message });

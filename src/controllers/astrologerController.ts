@@ -342,7 +342,7 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
             }
 
             astrologers = await Astrologer.find(query)
-                .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
+                .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled')
                 .sort(sort)
                 .skip(skip)
                 .limit(limit)
@@ -383,7 +383,7 @@ export const getTaggedAstrologers = async (req: Request, res: Response) => {
         };
 
         const astrologers = await Astrologer.find(query)
-            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday')
+            .select('firstName lastName systemKnown language bio aboutMe experience rating reviewsCount followersCount isOnline isBusy pricePerMin voiceCallPricePerMin videoCallPricePerMin isChatEnabled isVoiceCallEnabled isVideoCallEnabled priceRangeMin priceRangeMax profilePhoto specialties tag isFreeChatAvailable freeChatLimit freeChatsToday personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled')
             .sort({ isOnline: -1, rating: -1 })
             .lean();
 
