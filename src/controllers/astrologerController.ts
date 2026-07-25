@@ -316,7 +316,8 @@ export const getApprovedAstrologers = async (req: Request, res: Response) => {
                         isOnline: 1, isBusy: 1, pricePerMin: 1, voiceCallPricePerMin: 1, videoCallPricePerMin: 1,
                         isChatEnabled: 1, isVoiceCallEnabled: 1, isVideoCallEnabled: 1,
                         priceRangeMin: 1, priceRangeMax: 1, profilePhoto: 1, specialties: 1, tag: 1,
-                        isFreeChatAvailable: 1, freeChatLimit: 1, freeChatsToday: 1
+                        isFreeChatAvailable: 1, freeChatLimit: 1, freeChatsToday: 1,
+                        personalizedServiceEnabled: 1, personalizedChatEnabled: 1, personalizedVoiceCallEnabled: 1, personalizedVideoCallEnabled: 1
                     }
                 }
             ];
