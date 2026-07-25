@@ -22,7 +22,8 @@ const DEFAULT_CONFIG = {
         call: 20,
         video: 25
     },
-    gstPercentage: 18
+    gstPercentage: 18,
+    sendEmailHoroscopeEnabled: true
 };
 
 // Helper: Get or Init System Config
@@ -52,7 +53,7 @@ export const getConfig = async (req: Request, res: Response) => {
 
 export const updateConfig = async (req: Request, res: Response) => {
     try {
-        const { timers, defaultCommissions, gstPercentage } = req.body;
+        const { timers, defaultCommissions, gstPercentage, sendEmailHoroscopeEnabled } = req.body;
         let setting = await SystemSetting.findOne({ key: 'personalized_service_config' });
         if (!setting) {
             setting = new SystemSetting({ key: 'personalized_service_config', value: DEFAULT_CONFIG });
@@ -60,7 +61,8 @@ export const updateConfig = async (req: Request, res: Response) => {
         setting.value = {
             timers: timers || setting.value.timers,
             defaultCommissions: defaultCommissions || setting.value.defaultCommissions,
-            gstPercentage: gstPercentage !== undefined ? gstPercentage : setting.value.gstPercentage
+            gstPercentage: gstPercentage !== undefined ? gstPercentage : setting.value.gstPercentage,
+            sendEmailHoroscopeEnabled: sendEmailHoroscopeEnabled !== undefined ? sendEmailHoroscopeEnabled : (setting.value.sendEmailHoroscopeEnabled !== false)
         };
         setting.markModified('value');
         await setting.save();
@@ -429,8 +431,8 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         const userName = userObj?.name || profileData?.name || 'User';
         const userEmail = profileData?.email || userObj?.email;
 
-        // Async: Send basic horoscope email to user if email available
-        if (userEmail) {
+        // Async: Send basic horoscope email to user ONLY if email available AND admin feature is enabled
+        if (userEmail && config.sendEmailHoroscopeEnabled !== false) {
             sendPersonalizedHoroscopeEmail(userEmail, userName, profileData)
                 .catch(err => console.error('[Personalized] Failed to send horoscope email:', err));
         }
