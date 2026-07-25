@@ -747,7 +747,10 @@ export const getActiveTokenUser = async (req: Request, res: Response) => {
 export const reassignSessionUser = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).userId || (req as any).user?.id;
-        const { sessionId, newAstrologerId, serviceType, durationMinutes, profileData } = req.body;
+        // FIX Bug 4: Do NOT accept durationMinutes from the request body.
+        // The user has already paid for a fixed duration — that allocation must be preserved.
+        // Only astrologerId, serviceType, and profileData can change on re-assign.
+        const { sessionId, newAstrologerId, serviceType, profileData } = req.body;
 
         let session = await PersonalizedSession.findOne({ sessionId, userId });
         if (!session) {
@@ -761,7 +764,7 @@ export const reassignSessionUser = async (req: Request, res: Response) => {
 
         session.astrologerId = newAstrologerId;
         if (serviceType) session.serviceType = serviceType;
-        if (durationMinutes) session.durationMinutes = durationMinutes;
+        // NOTE: durationMinutes is intentionally NOT updated — original paid allocation is preserved.
         if (profileData) session.profileData = profileData;
         session.status = 'PAID_PENDING_ACCEPT';
         session.missedAt = undefined;

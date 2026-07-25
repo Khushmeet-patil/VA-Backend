@@ -682,9 +682,15 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 try {
                     const persSession = await PersonalizedSession.findOne({ sessionId: data.sessionId });
                     if (persSession) {
+                        // FIX: Use remainingDurationSeconds (not just durationMinutes*60) so
+                        // the endTime reflects partial remaining time for re-sessions.
+                        const remainingSec = (persSession.remainingDurationSeconds !== undefined && persSession.remainingDurationSeconds !== null)
+                            ? persSession.remainingDurationSeconds
+                            : (persSession.durationMinutes * 60);
+
                         persSession.status = 'ACTIVE';
                         persSession.startTime = new Date();
-                        persSession.endTime = new Date(Date.now() + persSession.durationMinutes * 60 * 1000);
+                        persSession.endTime = new Date(Date.now() + remainingSec * 1000);
                         await persSession.save();
                         session = persSession;
 
@@ -697,9 +703,15 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                             userId: persSession.userId.toString(),
                             astrologerName: astroName,
                             serviceType: persSession.serviceType,
-                            sessionType: persSession.serviceType === 'call' ? 'voice_call' : persSession.serviceType === 'video' ? 'video_call' : 'chat',
+                            // FIX: Map serviceType to the session type the frontend screens expect
+                            sessionType: persSession.serviceType === 'call' ? 'personalized_call'
+                                : persSession.serviceType === 'video' ? 'personalized_video'
+                                : 'personalized_chat',
                             durationMinutes: persSession.durationMinutes,
-                            startTime: persSession.startTime.toISOString(),
+                            // FIX: Include remainingDurationSeconds so timer starts from the
+                            // correct remaining time (not the full original duration).
+                            remainingDurationSeconds: remainingSec,
+                            startTime: persSession.startTime!.toISOString(),
                             profileData: persSession.profileData,
                             isPersonalized: true
                         };

@@ -108,7 +108,9 @@ export const acceptCall = async (req: AuthRequest, res: Response) => {
                 userId: persSession.userId.toString(),
                 astrologerName: astroName,
                 serviceType: persSession.serviceType,
-                sessionType: persSession.serviceType === 'call' ? 'voice_call' : persSession.serviceType === 'video' ? 'video_call' : 'chat',
+                sessionType: persSession.serviceType === 'call' ? 'personalized_call'
+                    : persSession.serviceType === 'video' ? 'personalized_video'
+                    : 'personalized_chat',
                 durationMinutes: Math.ceil(remainingSec / 60),
                 remainingDurationSeconds: remainingSec,
                 startTime: persSession.startTime.toISOString(),
