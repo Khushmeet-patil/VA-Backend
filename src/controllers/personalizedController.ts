@@ -437,6 +437,8 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
                 .catch(err => console.error('[Personalized] Failed to send horoscope email:', err));
         }
 
+        const remainingSec = session.remainingDurationSeconds ?? (durationMinutes * 60);
+
         // 1. Send High-Priority Ringing FCM Notification to Astrologer's Device
         notificationService.sendHighPriorityChatRequest(astrologerId.toString(), {
             sessionId: session.sessionId,
@@ -458,8 +460,11 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
                 createdAt: session.createdAt.toISOString(),
                 sessionType: 'personalized_' + serviceType,
                 serviceType,
-                durationMinutes,
-                isPersonalized: true
+                durationMinutes: Math.ceil(remainingSec / 60),
+                remainingDurationSeconds: remainingSec,
+                isPersonalized: true,
+                isFreeTrialSession: false,
+                freeTrialDurationSeconds: 0
             };
             chatService.io.to(`astrologer:${astro.userId}`).emit('CHAT_REQUEST', requestPayload);
             chatService.io.to(`astrologer:${astrologerId}`).emit('CHAT_REQUEST', requestPayload);
@@ -765,6 +770,8 @@ export const reassignSessionUser = async (req: Request, res: Response) => {
         const userObj = await User.findById(userId);
         const userName = userObj?.name || 'User';
 
+        const remainingSec = session.remainingDurationSeconds ?? (session.durationMinutes * 60);
+
         // 1. High-Priority Ringing FCM Push to New Astrologer
         notificationService.sendHighPriorityChatRequest(newAstrologerId.toString(), {
             sessionId: session.sessionId,
@@ -786,8 +793,11 @@ export const reassignSessionUser = async (req: Request, res: Response) => {
                 createdAt: new Date().toISOString(),
                 sessionType: 'personalized_' + session.serviceType,
                 serviceType: session.serviceType,
-                durationMinutes: session.durationMinutes,
-                isPersonalized: true
+                durationMinutes: Math.ceil(remainingSec / 60),
+                remainingDurationSeconds: remainingSec,
+                isPersonalized: true,
+                isFreeTrialSession: false,
+                freeTrialDurationSeconds: 0
             };
             chatService.io.to(`astrologer:${astro.userId}`).emit('CHAT_REQUEST', requestPayload);
             chatService.io.to(`astrologer:${newAstrologerId}`).emit('CHAT_REQUEST', requestPayload);

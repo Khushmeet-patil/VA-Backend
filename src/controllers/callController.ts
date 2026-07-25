@@ -259,6 +259,57 @@ export const endCall = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'sessionId is required' });
         }
 
+        // Check if this is a PersonalizedSession
+        const persSession = await PersonalizedSession.findOne({ sessionId });
+        if (persSession) {
+            const now = new Date();
+            let sessionElapsedSec = 0;
+            if (persSession.startTime) {
+                sessionElapsedSec = Math.max(0, Math.round((now.getTime() - new Date(persSession.startTime).getTime()) / 1000));
+            }
+
+            const totalAllocatedSec = persSession.durationMinutes * 60;
+            const previousUsedSec = persSession.usedDurationSeconds || 0;
+            const totalUsedSec = previousUsedSec + sessionElapsedSec;
+            const remainingSec = Math.max(0, totalAllocatedSec - totalUsedSec);
+
+            persSession.usedDurationSeconds = totalUsedSec;
+            persSession.remainingDurationSeconds = remainingSec;
+            persSession.endTime = now;
+
+            if (remainingSec < 60) {
+                persSession.status = 'COMPLETED';
+            } else {
+                persSession.status = 'PAID_PENDING_ACCEPT';
+            }
+            await persSession.save();
+
+            const endReason = userRole === 'astrologer' ? 'ASTROLOGER_END' : 'USER_END';
+            const endPayload = {
+                sessionId,
+                endReason,
+                status: persSession.status,
+                totalMinutes: Math.ceil(totalUsedSec / 60),
+                remainingDurationSeconds: persSession.remainingDurationSeconds,
+                isPersonalized: true
+            };
+
+            if (chatService.io) {
+                chatService.io.to(`session:${sessionId}`).emit('CHAT_ENDED', endPayload);
+                chatService.io.to(`user:${persSession.userId}`).emit('CHAT_ENDED', endPayload);
+                chatService.io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_ENDED', endPayload);
+            }
+
+            return res.json({
+                message: 'Call ended successfully',
+                sessionId: persSession.sessionId,
+                status: persSession.status,
+                totalMinutes: Math.ceil(totalUsedSec / 60),
+                remainingDurationSeconds: persSession.remainingDurationSeconds,
+                isPersonalized: true
+            });
+        }
+
         const session = await callService.getSession(sessionId);
         if (!session) {
             return res.status(404).json({ message: 'Session not found' });

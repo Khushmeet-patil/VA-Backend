@@ -554,23 +554,41 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 // Check PersonalizedSession first
                 const persSession = await PersonalizedSession.findOne({ sessionId });
                 if (persSession) {
-                    persSession.status = 'COMPLETED';
-                    persSession.endTime = new Date();
-                    await persSession.save();
+                    const now = new Date();
+                    let sessionElapsedSec = 0;
+                    if (persSession.startTime) {
+                        sessionElapsedSec = Math.max(0, Math.round((now.getTime() - new Date(persSession.startTime).getTime()) / 1000));
+                    }
 
-                    // Update Astrologer Total Personalized Earnings
-                    await Astrologer.findByIdAndUpdate(persSession.astrologerId, {
-                        $inc: { personalizedEarnings: persSession.astrologerEarning, earnings: persSession.astrologerEarning }
-                    });
+                    const totalAllocatedSec = persSession.durationMinutes * 60;
+                    const previousUsedSec = persSession.usedDurationSeconds || 0;
+                    const totalUsedSec = previousUsedSec + sessionElapsedSec;
+                    const remainingSec = Math.max(0, totalAllocatedSec - totalUsedSec);
+
+                    persSession.usedDurationSeconds = totalUsedSec;
+                    persSession.remainingDurationSeconds = remainingSec;
+                    persSession.endTime = now;
+
+                    // Threshold Rule: If remaining time is less than 60 seconds (1 minute), mark COMPLETED
+                    if (remainingSec < 60) {
+                        persSession.status = 'COMPLETED';
+                        await Astrologer.findByIdAndUpdate(persSession.astrologerId, {
+                            $inc: { personalizedEarnings: persSession.astrologerEarning, earnings: persSession.astrologerEarning }
+                        });
+                    } else {
+                        // User still has remaining duration (e.g. 5 mins) left for personalized service
+                        persSession.status = 'PAID_PENDING_ACCEPT';
+                    }
+                    await persSession.save();
 
                     const endReason = userType === 'user' ? 'USER_END' : 'ASTROLOGER_END';
                     const endPayload = {
                         sessionId,
                         endReason,
-                        status: 'COMPLETED',
-                        totalMinutes: persSession.durationMinutes,
-                        totalAmount: persSession.totalAmountPaid,
-                        walletBalance: 0
+                        status: persSession.status,
+                        totalMinutes: Math.ceil(totalUsedSec / 60),
+                        remainingDurationSeconds: persSession.remainingDurationSeconds,
+                        isPersonalized: true
                     };
 
                     // Broadcast CHAT_ENDED to session room and both user & astrologer rooms
@@ -578,7 +596,7 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                     io.to(`user:${persSession.userId}`).emit('CHAT_ENDED', endPayload);
                     io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_ENDED', endPayload);
 
-                    console.log(`[Socket] Personalized session ended successfully: ${sessionId}`);
+                    console.log(`[Socket] Personalized session ended/saved: ${sessionId}, remaining: ${remainingSec}s, status: ${persSession.status}`);
                     if (callback) callback({ success: true, ...endPayload });
                     return;
                 }
