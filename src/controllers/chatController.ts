@@ -6,6 +6,8 @@ import { uploadToR2 } from '../services/r2Service';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import ChatSession from '../models/ChatSession';
+import PersonalizedSession from '../models/PersonalizedSession';
+import notificationService from '../services/notificationService';
 
 /**
  * Chat Controller
@@ -92,6 +94,63 @@ export const acceptChat = async (req: AuthRequest, res: Response) => {
 
         if (!sessionId) {
             return res.status(400).json({ message: 'sessionId is required' });
+        }
+
+        // Check if this is a PersonalizedSession
+        const persSession = await PersonalizedSession.findOne({ sessionId });
+        if (persSession) {
+            persSession.status = 'ACTIVE';
+            persSession.startTime = new Date();
+            const remainingSec = persSession.remainingDurationSeconds ?? (persSession.durationMinutes * 60);
+            persSession.endTime = new Date(Date.now() + remainingSec * 1000);
+            await persSession.save();
+
+            const astro = await Astrologer.findById(persSession.astrologerId);
+            const astroName = astro ? `${astro.firstName || ''} ${astro.lastName || ''}`.trim() : 'Astrologer';
+            const user = await User.findById(persSession.userId);
+            const userName = user?.name || persSession.profileData?.name || 'User';
+
+            const startPayload = {
+                sessionId: persSession.sessionId,
+                astrologerId: persSession.astrologerId.toString(),
+                userId: persSession.userId.toString(),
+                astrologerName: astroName,
+                serviceType: persSession.serviceType,
+                sessionType: persSession.serviceType === 'call' ? 'voice_call' : persSession.serviceType === 'video' ? 'video_call' : 'chat',
+                durationMinutes: Math.ceil(remainingSec / 60),
+                remainingDurationSeconds: remainingSec,
+                startTime: persSession.startTime.toISOString(),
+                profileData: persSession.profileData,
+                isPersonalized: true
+            };
+
+            if (chatService.io) {
+                chatService.io.to(`session:${persSession.sessionId}`).emit('CHAT_STARTED', startPayload);
+                chatService.io.to(`user:${persSession.userId}`).emit('CHAT_STARTED', startPayload);
+                chatService.io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_STARTED', startPayload);
+            }
+
+            notificationService.sendChatStartedNotification(persSession.userId.toString(), {
+                sessionId: persSession.sessionId,
+                astrologerId: persSession.astrologerId.toString(),
+                astrologerName: astroName,
+                ratePerMinute: persSession.basePrice,
+                startTime: persSession.startTime.toISOString()
+            }).catch(err => console.error('[REST] FCM chat_started push failed:', err));
+
+            return res.json({
+                message: 'Chat accepted',
+                success: true,
+                sessionId: persSession.sessionId,
+                status: persSession.status,
+                startTime: persSession.startTime,
+                remainingDurationSeconds: remainingSec,
+                durationMinutes: persSession.durationMinutes,
+                userId: persSession.userId,
+                userName,
+                profileData: persSession.profileData,
+                isPersonalized: true
+            });
         }
 
         // Verify session belongs to this astrologer
