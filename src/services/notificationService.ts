@@ -321,6 +321,7 @@ class NotificationService {
                         ratePerMinute: String(request.ratePerMinute),
                         intakeDetails: request.intakeDetails ? JSON.stringify(request.intakeDetails) : '',
                         sessionType: request.sessionType || 'chat',
+                        isPersonalized: (request.sessionType && request.sessionType.startsWith('personalized_')) ? 'true' : 'false',
                     },
                     android: {
                         priority: 'high',
