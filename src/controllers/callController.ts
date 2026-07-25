@@ -3,6 +3,7 @@ import callService from '../services/callService';
 import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import CallSession from '../models/CallSession';
+import PersonalizedSession from '../models/PersonalizedSession';
 
 interface AuthRequest extends Request {
     userId?: string;
@@ -67,7 +68,6 @@ export const requestCall = async (req: AuthRequest, res: Response) => {
     }
 };
 
-import PersonalizedSession from '../models/PersonalizedSession';
 import notificationService from '../services/notificationService';
 import chatService from '../services/chatService';
 
@@ -411,14 +411,38 @@ export const getPendingRequests = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ message: 'Only astrologers can view pending requests' });
         }
 
+        const astro = await Astrologer.findOne({ $or: [{ _id: astrologerId }, { userId: astrologerId }] });
+        const astroDbId = astro ? astro._id : astrologerId;
+
         const pendingRequests = await CallSession.find({
-            astrologerId,
+            astrologerId: astroDbId,
             status: 'PENDING'
         }).populate('userId', 'name mobile');
 
+        const personalizedPending = await PersonalizedSession.find({
+            astrologerId: astroDbId,
+            status: 'PAID_PENDING_ACCEPT'
+        }).populate('userId', 'name mobile phone');
+
+        const mappedPersonalized = personalizedPending.map(p => ({
+            _id: p._id,
+            sessionId: p.sessionId,
+            userId: p.userId,
+            userName: (p.userId as any)?.name || p.profileData?.name || 'User',
+            intakeDetails: p.profileData,
+            ratePerMinute: p.basePrice,
+            createdAt: p.createdAt,
+            sessionType: 'personalized_' + p.serviceType,
+            serviceType: p.serviceType,
+            durationMinutes: p.durationMinutes,
+            remainingDurationSeconds: p.remainingDurationSeconds || (p.durationMinutes * 60),
+            isPersonalized: true,
+            status: p.status
+        }));
+
         const maskedRequests = pendingRequests.map(r => maskSessionForAstrologer(r));
 
-        res.json({ requests: maskedRequests });
+        res.json({ requests: [...mappedPersonalized, ...maskedRequests] });
 
     } catch (error: any) {
         console.error('Get pending calls error:', error);

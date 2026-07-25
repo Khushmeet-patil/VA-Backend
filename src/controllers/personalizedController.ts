@@ -613,6 +613,38 @@ export const acceptSession = async (req: Request, res: Response) => {
         session.endTime = new Date(Date.now() + remainingSec * 1000);
         await session.save();
 
+        const astro = await Astrologer.findById(session.astrologerId);
+        const astroUserId = astro?.userId || (session.astrologerId as any)?.userId;
+
+        // Emit CHAT_STARTED socket event to User and Astrologer rooms so both apps transition to active screen
+        if (chatService.io) {
+            const startPayload = {
+                sessionId: session.sessionId,
+                status: 'ACTIVE',
+                startTime: session.startTime.toISOString(),
+                endTime: session.endTime.toISOString(),
+                durationMinutes: session.durationMinutes,
+                remainingDurationSeconds: remainingSec,
+                serviceType: session.serviceType,
+                sessionType: session.serviceType === 'call' ? 'voice_call' : session.serviceType === 'video' ? 'video_call' : 'chat',
+                intakeDetails: session.profileData,
+                ratePerMinute: session.basePrice,
+                isPersonalized: true
+            };
+
+            // Emit to User
+            chatService.io.to(`user:${session.userId}`).emit('CHAT_STARTED', startPayload);
+            chatService.io.to(`user_${session.userId}`).emit('CHAT_STARTED', startPayload);
+
+            // Emit to Astrologer
+            if (astroUserId) {
+                chatService.io.to(`astrologer:${astroUserId}`).emit('CHAT_STARTED', startPayload);
+                chatService.io.to(`astrologer_${astroUserId}`).emit('CHAT_STARTED', startPayload);
+            }
+            chatService.io.to(`astrologer:${session.astrologerId}`).emit('CHAT_STARTED', startPayload);
+            chatService.io.to(`astrologer_${session.astrologerId}`).emit('CHAT_STARTED', startPayload);
+        }
+
         return res.json({
             success: true,
             message: 'Session accepted and started!',
