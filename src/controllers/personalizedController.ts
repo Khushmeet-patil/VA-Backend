@@ -757,14 +757,20 @@ export const reassignSessionUser = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Saved token session not found' });
         }
 
+        if (serviceType && serviceType !== session.serviceType) {
+            return res.status(400).json({
+                success: false,
+                message: `This session was paid for ${session.serviceType.toUpperCase()} service. You cannot switch to ${serviceType.toUpperCase()} using remaining minutes.`
+            });
+        }
+
         const astro = await Astrologer.findById(newAstrologerId);
         if (!astro) {
             return res.status(404).json({ success: false, message: 'New astrologer not found' });
         }
 
         session.astrologerId = newAstrologerId;
-        if (serviceType) session.serviceType = serviceType;
-        // NOTE: durationMinutes is intentionally NOT updated — original paid allocation is preserved.
+        // NOTE: serviceType and durationMinutes are intentionally NOT updated — original paid service allocation is locked.
         if (profileData) session.profileData = profileData;
         session.status = 'PAID_PENDING_ACCEPT';
         session.missedAt = undefined;
