@@ -74,8 +74,12 @@ export const updateConfig = async (req: Request, res: Response) => {
 
 export const getAstrologersAdmin = async (req: Request, res: Response) => {
     try {
-        const astrologers = await Astrologer.find({ status: 'approved' })
-            .select('firstName lastName email mobileNumber profilePhoto personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled personalizedChatPricePerMin personalizedCallPricePerMin personalizedVideoPricePerMin rating reviewsCount')
+        const astrologers = await Astrologer.find({
+            status: 'approved',
+            isBlocked: { $ne: true },
+            isDeletionRequested: { $ne: true }
+        })
+            .select('firstName lastName email mobileNumber profilePhoto personalizedServiceEnabled personalizedChatEnabled personalizedVoiceCallEnabled personalizedVideoCallEnabled personalizedChatPricePerMin personalizedCallPricePerMin personalizedVideoPricePerMin rating reviewsCount isBlocked isDeletionRequested')
             .lean();
         return res.json({ success: true, astrologers });
     } catch (error: any) {
@@ -297,7 +301,8 @@ export const getPersonalizedAstrologersUser = async (req: Request, res: Response
         const astrologers = await Astrologer.find({
             status: 'approved',
             personalizedServiceEnabled: true,
-            isBlocked: false,
+            isBlocked: { $ne: true },
+            isDeletionRequested: { $ne: true },
             $or: [
                 { personalizedChatEnabled: { $ne: false } },
                 { personalizedVoiceCallEnabled: { $ne: false } },
@@ -327,7 +332,7 @@ export const createBookingOrder = async (req: Request, res: Response) => {
     try {
         const { astrologerId, serviceType, durationMinutes } = req.body;
         const astro = await Astrologer.findById(astrologerId);
-        if (!astro || !astro.personalizedServiceEnabled) {
+        if (!astro || !astro.personalizedServiceEnabled || astro.isBlocked || astro.status !== 'approved' || astro.isDeletionRequested) {
             return res.status(400).json({ success: false, message: 'Astrologer is not available for personalized service' });
         }
 

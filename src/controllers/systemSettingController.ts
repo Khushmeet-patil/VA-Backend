@@ -109,6 +109,9 @@ export const getSettingByKey = async (req: Request, res: Response) => {
             if (key === 'numerologyPdfPrice') {
                 return res.json({ success: true, data: { key, value: 149 } });
             }
+            if (key === 'preventScreenshot') {
+                return res.json({ success: true, data: { key, value: false } });
+            }
             if (key === 'matchmakingPdfPrice') {
                 return res.json({ success: true, data: { key, value: 299 } });
             }
