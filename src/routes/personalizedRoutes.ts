@@ -17,6 +17,7 @@ import {
     getSessionStatusUser,
     getActiveTokenUser,
     reassignSessionUser,
+    getUserPersonalizedHistory,
     acceptSession,
     missSession,
     completeSession
@@ -42,6 +43,7 @@ router.get('/astrologer/earnings', authMiddleware, getAstrologerEarnings);
 
 // User & Session Routes
 router.get('/user/astrologers', getPersonalizedAstrologersUser);
+router.get('/user/history', authMiddleware, getUserPersonalizedHistory);
 router.post('/user/create-order', authMiddleware, createBookingOrder);
 router.post('/user/verify-payment', authMiddleware, verifyBookingPayment);
 router.post('/user/re-request', authMiddleware, reRequestSession);

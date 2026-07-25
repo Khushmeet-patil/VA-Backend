@@ -868,3 +868,22 @@ export const reassignSessionUser = async (req: Request, res: Response) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
+
+export const getUserPersonalizedHistory = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).userId;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
+        const sessions = await PersonalizedSession.find({ userId })
+            .populate('astrologerId', 'firstName lastName profilePhoto systemKnown specialties rating reviewsCount')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        return res.json({ success: true, sessions });
+    } catch (error: any) {
+        console.error('Error fetching user personalized history:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
