@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import mongoose from 'mongoose';
 import ChatSession, { IChatSession } from '../models/ChatSession';
 import CallSession from '../models/CallSession';
+import PersonalizedSession from '../models/PersonalizedSession';
 import ChatMessage from '../models/ChatMessage';
 import ChatReview from '../models/ChatReview';
 import User from '../models/User';
@@ -2320,7 +2321,37 @@ class ChatService {
     /**
      * Get active session for a user
      */
-    async getActiveSessionForUser(userId: string): Promise<IChatSession | null> {
+    async getActiveSessionForUser(userId: string): Promise<any> {
+        const persSession = await PersonalizedSession.findOne({
+            userId,
+            status: { $in: ['ACTIVE', 'PAID_PENDING_ACCEPT'] }
+        }).populate('astrologerId', 'firstName lastName');
+
+        if (persSession) {
+            const astroName = (persSession.astrologerId as any)?.firstName
+                ? `${(persSession.astrologerId as any).firstName} ${(persSession.astrologerId as any).lastName || ''}`.trim()
+                : 'Astrologer';
+            const remainingSec = persSession.remainingDurationSeconds ?? (persSession.durationMinutes * 60);
+
+            return {
+                sessionId: persSession.sessionId,
+                astrologerId: (persSession.astrologerId as any)?._id || persSession.astrologerId,
+                userId: persSession.userId,
+                astrologerName: astroName,
+                status: persSession.status,
+                startTime: persSession.startTime ? persSession.startTime.toISOString() : undefined,
+                serviceType: persSession.serviceType,
+                sessionType: persSession.serviceType === 'call' ? 'voice_call' : persSession.serviceType === 'video' ? 'video_call' : 'chat',
+                durationMinutes: Math.ceil(remainingSec / 60),
+                remainingDurationSeconds: remainingSec,
+                profileData: persSession.profileData,
+                ratePerMinute: persSession.basePrice || 1,
+                isPersonalized: true,
+                isFreeTrialSession: false,
+                freeTrialDurationSeconds: 0
+            };
+        }
+
         return ChatSession.findOne({
             userId,
             status: { $in: ['ACTIVE', 'PENDING'] }
@@ -2332,7 +2363,35 @@ class ChatService {
     /**
      * Get active session for an astrologer
      */
-    async getActiveSessionForAstrologer(astrologerId: string): Promise<IChatSession | null> {
+    async getActiveSessionForAstrologer(astrologerId: string): Promise<any> {
+        const persSession = await PersonalizedSession.findOne({
+            astrologerId,
+            status: 'ACTIVE'
+        }).populate('userId', 'name');
+
+        if (persSession) {
+            const userName = (persSession.userId as any)?.name || persSession.profileData?.name || 'User';
+            const remainingSec = persSession.remainingDurationSeconds ?? (persSession.durationMinutes * 60);
+
+            return {
+                sessionId: persSession.sessionId,
+                astrologerId: persSession.astrologerId,
+                userId: (persSession.userId as any)?._id || persSession.userId,
+                userName,
+                status: persSession.status,
+                startTime: persSession.startTime ? persSession.startTime.toISOString() : undefined,
+                serviceType: persSession.serviceType,
+                sessionType: persSession.serviceType === 'call' ? 'voice_call' : persSession.serviceType === 'video' ? 'video_call' : 'chat',
+                durationMinutes: Math.ceil(remainingSec / 60),
+                remainingDurationSeconds: remainingSec,
+                profileData: persSession.profileData,
+                ratePerMinute: persSession.basePrice || 1,
+                isPersonalized: true,
+                isFreeTrialSession: false,
+                freeTrialDurationSeconds: 0
+            };
+        }
+
         return ChatSession.findOne({ astrologerId, status: 'ACTIVE' })
             .populate('userId', 'name')
             .select('+sharedProfiles'); // Ensure sharedProfiles is selected if it was excluded by default (though it's not)
