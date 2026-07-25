@@ -2,7 +2,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import mongoose from 'mongoose';
 import ChatSession, { IChatSession } from '../models/ChatSession';
 import CallSession from '../models/CallSession';
-import PersonalizedSession from '../models/PersonalizedSession';
+import PersonalizedSession, { IPersonalizedSession } from '../models/PersonalizedSession';
 import ChatMessage from '../models/ChatMessage';
 import ChatReview from '../models/ChatReview';
 import User from '../models/User';
@@ -920,7 +920,7 @@ class ChatService {
     async endChat(
         sessionId: string,
         endReason: 'USER_END' | 'ASTROLOGER_END' | 'INSUFFICIENT_BALANCE' | 'DISCONNECT' | 'FREE_TRIAL_ENDED' | 'TIMEOUT'
-    ): Promise<IChatSession> {
+    ): Promise<IChatSession | IPersonalizedSession | any> {
         // Invalidate cache first so any concurrent send_message re-reads from DB
         void this.invalidateSessionCache(sessionId);
 
@@ -931,8 +931,51 @@ class ChatService {
             this.activeDisconnectTimers.delete(sessionId);
         }
 
-        const session = await ChatSession.findOne({ sessionId });
+        let session: any = await ChatSession.findOne({ sessionId });
         if (!session) {
+            const persSession = await PersonalizedSession.findOne({ sessionId });
+            if (persSession) {
+                const now = new Date();
+                let sessionElapsedSec = 0;
+                if (persSession.startTime) {
+                    sessionElapsedSec = Math.max(0, Math.round((now.getTime() - new Date(persSession.startTime).getTime()) / 1000));
+                }
+
+                const totalAllocatedSec = persSession.durationMinutes * 60;
+                const previousUsedSec = persSession.usedDurationSeconds || 0;
+                const totalUsedSec = previousUsedSec + sessionElapsedSec;
+                const remainingSec = Math.max(0, totalAllocatedSec - totalUsedSec);
+
+                persSession.usedDurationSeconds = totalUsedSec;
+                persSession.remainingDurationSeconds = remainingSec;
+                persSession.endTime = now;
+                persSession.status = remainingSec < 60 ? 'COMPLETED' : 'PAID_PENDING_ACCEPT';
+                await persSession.save();
+
+                if (this.io) {
+                    this.io.to(`session:${persSession.sessionId}`).emit('CHAT_ENDED', {
+                        sessionId: persSession.sessionId,
+                        reason: endReason,
+                        isPersonalized: true,
+                        remainingDurationSeconds: remainingSec,
+                        totalMinutes: Math.ceil(totalUsedSec / 60),
+                        totalAmount: persSession.totalAmountPaid || persSession.basePrice || 0
+                    });
+                    this.io.to(`user:${persSession.userId}`).emit('CHAT_ENDED', {
+                        sessionId: persSession.sessionId,
+                        reason: endReason,
+                        isPersonalized: true,
+                        remainingDurationSeconds: remainingSec
+                    });
+                    this.io.to(`astrologer:${persSession.astrologerId}`).emit('CHAT_ENDED', {
+                        sessionId: persSession.sessionId,
+                        reason: endReason,
+                        isPersonalized: true,
+                        remainingDurationSeconds: remainingSec
+                    });
+                }
+                return persSession;
+            }
             throw new Error('Session not found');
         }
 
@@ -2257,16 +2300,19 @@ class ChatService {
      * Cache entries are primed on accept and invalidated on any status change.
      * Shared across all PM2 cluster workers via Redis.
      */
-    async getSession(sessionId: string): Promise<IChatSession | null> {
+    async getSession(sessionId: string): Promise<IChatSession | any | null> {
         try {
             const cached = await redisClient.get(`session:${sessionId}`);
             if (cached) {
-                return JSON.parse(cached) as IChatSession;
+                return JSON.parse(cached);
             }
         } catch (e) {
             // Redis unavailable — fall through to DB
         }
-        const session = await ChatSession.findOne({ sessionId });
+        let session: any = await ChatSession.findOne({ sessionId });
+        if (!session) {
+            session = await PersonalizedSession.findOne({ sessionId });
+        }
         if (session) {
             await this.updateSessionCache(session);
         }

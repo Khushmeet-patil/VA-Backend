@@ -350,9 +350,9 @@ export const endChat = async (req: AuthRequest, res: Response) => {
 
         res.json({
             message: 'Chat ended',
-            sessionId: updatedSession.sessionId,
-            totalMinutes: updatedSession.totalMinutes,
-            totalAmount: updatedSession.totalAmount
+            sessionId: (updatedSession as any)?.sessionId,
+            totalMinutes: (updatedSession as any)?.totalMinutes ?? (updatedSession as any)?.durationMinutes ?? 0,
+            totalAmount: (updatedSession as any)?.totalAmount ?? (updatedSession as any)?.totalAmountPaid ?? 0
         });
 
     } catch (error: any) {
