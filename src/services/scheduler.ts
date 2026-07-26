@@ -113,6 +113,7 @@ const scheduleAutoOnline = () => {
                         if (ioInstance) {
                             const room = `astrologer:${astro._id.toString()}`;
                             ioInstance.to(room).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: astro.isOnline });
+                            ioInstance.emit('astrologer_status_changed', { astrologerId: astro._id.toString(), isOnline: !!astro.isOnline });
                             console.log(`[Scheduler] >>> Emitted ASTROLOGER_STATUS_UPDATED to room ${room}`);
                         } else {
                             console.warn(`[Scheduler] >>> IO instance not available, cannot emit socket event!`);

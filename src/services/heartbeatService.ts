@@ -188,6 +188,7 @@ class HeartbeatService {
                     if (this.io) {
                         const roomName = `astrologer:${userId}`;
                         this.io.to(roomName).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: true });
+                        this.io.emit('astrologer_status_changed', { astrologerId: userId.toString(), isOnline: true });
                     }
                 } else {
                     console.log(`[HeartbeatService] Clearing network offline flag for ${astro.firstName} (${userId}) but keeping offline (outside schedule/preference).`);

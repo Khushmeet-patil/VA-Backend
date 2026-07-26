@@ -507,7 +507,7 @@ export const getWalletBalance = async (req: Request, res: Response) => {
 
         const newUserBonusAmount = await getSettingValue('newUserBonusAmount', 15);
         const newUserIntroRate = 1;
-        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
+        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 5);
 
         return res.status(200).json({
             success: true,
@@ -692,9 +692,9 @@ export const processRecharge = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        let minRecharge = 25; // Default for returning users
+        let minRecharge = await getSettingValue('minRecharge', 50); // Default for returning users
         if (!user.hasRecharged || !user.hasUsedFreeTrial) {
-            minRecharge = await getSettingValue('newUserMinRecharge', 5);
+            minRecharge = 5; // First recharge minimum is ₹5
         }
 
         if (!amount || amount < minRecharge) {
@@ -755,10 +755,10 @@ export const createOrder = async (req: Request, res: Response) => {
         // Note: Razorpay expects amount in PAISE (1 INR = 100 Paise)
 
         const user = await User.findById(userId);
-        let minRecharge = 25; // Default for returning users
+        let minRecharge = await getSettingValue('minRecharge', 50); // Default for returning users set by admin
 
         if (user && (!user.hasRecharged || !user.hasUsedFreeTrial)) {
-            minRecharge = await getSettingValue('newUserMinRecharge', 5);
+            minRecharge = 5; // First recharge minimum is ₹5
         }
 
         const rechargeAmount = baseAmount !== undefined ? baseAmount : amount;

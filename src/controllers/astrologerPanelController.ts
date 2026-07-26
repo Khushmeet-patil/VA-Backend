@@ -467,6 +467,14 @@ export const toggleStatus = async (req: Request, res: Response) => {
             await heartbeatService.removeHeartbeat(astrologerId);
         }
 
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('astrologer_status_changed', {
+                astrologerId: astrologer._id.toString(),
+                isOnline: !!isOnline
+            });
+        }
+
         res.json({ success: true, message: `Status updated to ${isOnline ? 'online' : 'offline'}` });
     } catch (error: any) {
         res.status(500).json({ success: false, message: 'Server error', error: error.message });
