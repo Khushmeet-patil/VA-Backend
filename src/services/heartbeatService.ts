@@ -235,7 +235,11 @@ class HeartbeatService {
         for (const astro of onlineAstros) {
             const userId = astro._id.toString();
 
-            // Check 1: Verify there is no active chat session
+            // Safety Guard 0: If astrologer manually toggled online, respect their manual choice and keep them online!
+            if (astro.isManualOverride) {
+                console.log(`[HeartbeatService] Safety Guard Passed: Astrologer ${astro.firstName} (${userId}) manually toggled online. Keeping online.`);
+                continue;
+            }
             const activeChat = await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' });
             if (activeChat) {
                 console.log(`[HeartbeatService] Safety Guard Passed: Astrologer ${astro.firstName} (${userId}) is in an ACTIVE chat. Keeping online.`);

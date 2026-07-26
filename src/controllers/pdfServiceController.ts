@@ -667,9 +667,29 @@ export const trackReportsFormOpen = async (req: AuthRequest, res: Response) => {
             FeatureUsage.create({ feature: 'reports_form', userId: req.userId })
                 .catch(err => console.error('Failed to log feature usage reports_form:', err));
         }
-        return res.json({ success: true, message: 'Usage tracked successfully' });
     } catch (error: any) {
         console.error('Track Reports Form Open Error:', error);
-        return res.status(500).json({ success: false, message: error.message || 'Server Error' });
+        return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
+
+// 7. Delete PDF order (Admin)
+export const deletePdfOrder = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const pdfRequest = await KundliPdfRequest.findById(id);
+        if (!pdfRequest) {
+            return res.status(404).json({ success: false, message: 'PDF order not found.' });
+        }
+
+        await KundliPdfRequest.findByIdAndDelete(id);
+        return res.status(200).json({
+            success: true,
+            message: 'PDF order deleted successfully.'
+        });
+    } catch (error: any) {
+        console.error('[PDF Service Controller] deletePdfOrder Error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to delete PDF order.', error: error.message });
+    }
+};
+

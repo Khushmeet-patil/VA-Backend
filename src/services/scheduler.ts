@@ -68,33 +68,14 @@ const scheduleAutoOnline = () => {
 
                 // CASE 1: Boundary crossing — expectedScheduleState changed
                 if (currentExpected !== newExpected) {
-                    // Only force-set if NOT manually overridden
-                    // If manual override is active, just update expectedScheduleState for tracking
                     if (astro.isManualOverride) {
-                        console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Manual override active, clearing override but respecting current state.`);
-                        astro.isManualOverride = false;
+                        console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Manual override active, preserving manual choice.`);
                         (astro as any).expectedScheduleState = newExpected;
                         await astro.save();
                     } else {
                         console.log(`[Scheduler] >>> BOUNDARY CROSSED for ${astro.firstName}: ${currentExpected} -> ${newExpected}. Setting isOnline=${shouldBeOnline}`);
                         
-                        let isSocketConnected = false;
-                        if (ioInstance) {
-                            const roomName = `astrologer:${astro._id.toString()}`;
-                            const room = ioInstance.sockets.adapter.rooms.get(roomName);
-                            if (room && room.size > 0) {
-                                isSocketConnected = true;
-                            }
-                        }
-
-                        if (shouldBeOnline && !isSocketConnected) {
-                            console.log(`[Scheduler] >>> BOUNDARY CROSSED to ONLINE for ${astro.firstName}, but not connected via socket. Keeping isOnline=false.`);
-                            astro.isOnline = false;
-                        } else {
-                            astro.isOnline = shouldBeOnline;
-                        }
-                        
-                        astro.isManualOverride = false;
+                        astro.isOnline = shouldBeOnline;
                         (astro as any).expectedScheduleState = newExpected;
                         await astro.save();
 
@@ -190,13 +171,13 @@ export default scheduleAutoOnline;
 
 export const scheduleDailyReset = () => {
     cron.schedule('0 0 * * *', async () => {
-        console.log('[Scheduler] Running daily reset for free chat counts & manual overrides...');
+        console.log('[Scheduler] Running daily reset for free chat counts...');
         try {
             const result = await Astrologer.updateMany(
                 {},
-                { $set: { freeChatsToday: 0, isManualOverride: false, expectedScheduleState: 'none' } }
+                { $set: { freeChatsToday: 0 } }
             );
-            console.log(`[Scheduler] Reset freeChatsToday & isManualOverride for ${result.modifiedCount} astrologers.`);
+            console.log(`[Scheduler] Reset freeChatsToday for ${result.modifiedCount} astrologers.`);
         } catch (error) {
             console.error('[Scheduler] Error in daily reset:', error);
         }
@@ -214,10 +195,10 @@ export const scheduleZombieCleanup = () => {
     cron.schedule('*/10 * * * *', async () => {
         console.log('[Scheduler] Running Zombie Cleanup sanity check...');
         try {
-            // 1. Find astrologers who are isOnline=true but have NO fcmToken.
-            // If they have no FCM token, they CANNOT receive push notifications in the background.
+            // Find astrologers who are isOnline=true, NOT manual override, and have NO fcmToken.
             const unreachableAstrologers = await Astrologer.find({ 
                 isOnline: true, 
+                isManualOverride: { $ne: true },
                 fcmToken: { $exists: false } 
             });
 
