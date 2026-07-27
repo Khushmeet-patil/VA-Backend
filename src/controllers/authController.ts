@@ -693,7 +693,7 @@ export const processRecharge = async (req: Request, res: Response) => {
         }
 
         let minRecharge = await getSettingValue('minRecharge', 50); // Default for returning users
-        if (!user.hasRecharged) {
+        if (!user.hasRecharged || !user.hasUsedFreeTrial) {
             minRecharge = 5; // First recharge minimum is ₹5
         }
 
@@ -757,7 +757,7 @@ export const createOrder = async (req: Request, res: Response) => {
         const user = await User.findById(userId);
         let minRecharge = await getSettingValue('minRecharge', 50); // Default for returning users set by admin
 
-        if (user && !user.hasRecharged) {
+        if (user && (!user.hasRecharged || !user.hasUsedFreeTrial)) {
             minRecharge = 5; // First recharge minimum is ₹5
         }
 

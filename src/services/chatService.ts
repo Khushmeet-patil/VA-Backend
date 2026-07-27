@@ -179,7 +179,7 @@ class ChatService {
         //   1. User must never have used an intro rate/free trial before (hasUsedFreeTrial = false)
         //   2. Admin must have set newUserIntroRate in SystemSetting (default 5)
         const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
-        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 5);
+        const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
         
         const isEligibleForIntroRate = !user.hasUsedFreeTrial && sessionType === 'chat';
 
