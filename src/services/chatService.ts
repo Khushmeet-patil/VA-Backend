@@ -181,7 +181,7 @@ class ChatService {
         const newUserIntroRate = await getSettingValue('newUserIntroRate', 5);
         const newUserMinRecharge = await getSettingValue('newUserMinRecharge', 15);
         
-        const isEligibleForIntroRate = !user.hasUsedFreeTrial && sessionType === 'chat';
+        const isEligibleForIntroRate = !user.hasRecharged && !user.hasUsedFreeTrial && sessionType === 'chat';
 
         if (isEligibleForIntroRate) {
             ratePerMinute = 1;
