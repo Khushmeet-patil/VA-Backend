@@ -7,6 +7,7 @@ import User from '../models/User';
 import Astrologer from '../models/Astrologer';
 import Transaction from '../models/Transaction';
 import { AuthRequest } from '../middleware/auth';
+import { getSettingValue } from './systemSettingController';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -598,15 +599,21 @@ export const verifyGiftPayment = async (req: AuthRequest, res: Response) => {
             paymentId: razorpay_payment_id,
         });
 
+        const gstRate = await getSettingValue('gstRate', 18);
+        const baseAmount = giftAmount / (1 + gstRate / 100);
+        const gstAmount = giftAmount - baseAmount;
+
         // Record in Transaction history for user expense history (DEBIT)
         await Transaction.create({
             paymentId: razorpay_payment_id,
             fromUser: userId,
             toAstrologer: astrologerId,
-            amount: giftAmount,
+            amount: baseAmount,
+            gstAmount: gstAmount,
+            totalPaid: giftAmount,
             type: 'debit',
             status: 'success',
-            description: `Gift sent (Direct Paid): ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName}`,
+            description: `Gift Service Purchase (Direct Paid): ${giftItem.emoji} ${giftItem.name} to ${astrologer.firstName} ${astrologer.lastName} (Txn: ${razorpay_payment_id})`,
         });
 
         const user = await User.findById(userId);

@@ -4,6 +4,7 @@ import PersonalizedSession from '../models/PersonalizedSession';
 import SystemSetting from '../models/SystemSetting';
 import Notification from '../models/Notification';
 import User from '../models/User';
+import Transaction from '../models/Transaction';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import notificationService from '../services/notificationService';
@@ -460,6 +461,19 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         });
 
         await session.save();
+
+        // Record in Transaction history (DEBIT) for user expense history & GST calculation
+        await Transaction.create({
+            paymentId: razorpayPaymentId,
+            fromUser: userId,
+            toAstrologer: astrologerId,
+            amount: basePrice,
+            gstAmount: gstAmount,
+            totalPaid: totalAmountPaid,
+            type: 'debit',
+            status: 'success',
+            description: `Personalized ${serviceType} Service Purchase (Txn: ${razorpayPaymentId})`
+        });
 
         const userObj = await User.findById(userId);
         const userName = userObj?.name || profileData?.name || 'User';
