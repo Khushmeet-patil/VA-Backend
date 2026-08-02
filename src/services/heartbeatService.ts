@@ -104,14 +104,14 @@ class HeartbeatService {
     }
 
     /**
-     * Ping the device and wait up to 6 seconds for a response from the background handler
+     * Ping the device and wait up to 10 seconds for a response from the background handler
      */
     async pingDevice(userId: string, fcmToken: string): Promise<boolean> {
         return new Promise<boolean>(async (resolve) => {
             const timeout = setTimeout(() => {
                 this.pingPromises.delete(userId);
                 resolve(false); // No response, likely network is offline
-            }, 45000); // 45 seconds timeout (increased to handle push delivery latency)
+            }, 10000); // 10 seconds timeout
 
             this.pingPromises.set(userId, (received: boolean) => {
                 clearTimeout(timeout);
@@ -235,11 +235,7 @@ class HeartbeatService {
         for (const astro of onlineAstros) {
             const userId = astro._id.toString();
 
-            // Safety Guard 0: If astrologer manually toggled online, respect their manual choice and keep them online!
-            if (astro.isManualOverride) {
-                console.log(`[HeartbeatService] Safety Guard Passed: Astrologer ${astro.firstName} (${userId}) manually toggled online. Keeping online.`);
-                continue;
-            }
+            // Check 1: Verify there is no active chat session
             const activeChat = await ChatSession.findOne({ astrologerId: userId, status: 'ACTIVE' });
             if (activeChat) {
                 console.log(`[HeartbeatService] Safety Guard Passed: Astrologer ${astro.firstName} (${userId}) is in an ACTIVE chat. Keeping online.`);
@@ -307,6 +303,7 @@ class HeartbeatService {
 
             // Broadcast availability change to clients
             this.io.to(roomName).emit('ASTROLOGER_STATUS_UPDATED', { isOnline: false });
+            this.io.emit('astrologer_status_changed', { astrologerId: userId.toString(), isOnline: false });
             
             // Clear the cached heartbeat
             await this.removeHeartbeat(userId);
