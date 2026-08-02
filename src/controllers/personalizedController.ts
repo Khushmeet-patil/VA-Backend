@@ -482,7 +482,30 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
         // Async: Send basic horoscope email to user ONLY if email available AND admin feature is enabled
         if (userEmail && config.sendEmailHoroscopeEnabled !== false) {
             sendPersonalizedHoroscopeEmail(userEmail, userName, profileData)
-                .catch(err => console.error('[Personalized] Failed to send horoscope email:', err));
+                .then(async (info) => {
+                    await PersonalizedSession.updateOne(
+                        { _id: session._id },
+                        {
+                            $set: {
+                                horoscopeEmailSent: true,
+                                horoscopeEmailSentAt: new Date(),
+                                horoscopeEmailError: null
+                            }
+                        }
+                    );
+                })
+                .catch(async (err) => {
+                    console.error('[Personalized] Failed to send horoscope email:', err);
+                    await PersonalizedSession.updateOne(
+                        { _id: session._id },
+                        {
+                            $set: {
+                                horoscopeEmailSent: false,
+                                horoscopeEmailError: err.message || String(err)
+                            }
+                        }
+                    );
+                });
         }
 
         const remainingSec = session.remainingDurationSeconds ?? (durationMinutes * 60);
@@ -946,6 +969,56 @@ export const getUserPersonalizedHistory = async (req: Request, res: Response) =>
         return res.json({ success: true, sessions });
     } catch (error: any) {
         console.error('Error fetching user personalized history:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const sendHoroscopeEmailAdmin = async (req: Request, res: Response) => {
+    try {
+        const { sessionId } = req.params;
+        const session = await PersonalizedSession.findOne({ sessionId })
+            .populate('userId', 'name email phone')
+            .populate('astrologerId', 'firstName lastName profilePhoto mobileNumber');
+
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        const profileData = session.profileData;
+        const userObj = session.userId as any;
+        const userName = userObj?.name || profileData?.name || 'User';
+        const userEmail = profileData?.email || userObj?.email;
+
+        if (!userEmail) {
+            return res.status(400).json({ success: false, message: 'User email not found in session profile or user account' });
+        }
+
+        try {
+            await sendPersonalizedHoroscopeEmail(userEmail, userName, profileData);
+            session.horoscopeEmailSent = true;
+            session.horoscopeEmailSentAt = new Date();
+            session.horoscopeEmailError = undefined;
+            await session.save();
+
+            return res.json({
+                success: true,
+                message: `Horoscope email successfully sent to ${userEmail}!`,
+                session
+            });
+        } catch (emailErr: any) {
+            console.error('[Admin] Explicit horoscope email send failed:', emailErr);
+            session.horoscopeEmailSent = false;
+            session.horoscopeEmailError = emailErr.message || String(emailErr);
+            await session.save();
+
+            return res.status(500).json({
+                success: false,
+                message: `Failed to send email: ${emailErr.message}`,
+                session
+            });
+        }
+    } catch (error: any) {
+        console.error('Error in sendHoroscopeEmailAdmin:', error);
         return res.status(500).json({ success: false, message: error.message });
     }
 };

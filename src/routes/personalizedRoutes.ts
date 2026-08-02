@@ -20,7 +20,8 @@ import {
     getUserPersonalizedHistory,
     acceptSession,
     missSession,
-    completeSession
+    completeSession,
+    sendHoroscopeEmailAdmin
 } from '../controllers/personalizedController';
 
 import { authMiddleware } from '../middleware/auth';
@@ -35,6 +36,7 @@ router.post('/admin/astrologer-status', updateAstrologerStatusAdmin);
 router.get('/admin/history', getSessionHistoryAdmin);
 router.get('/admin/live', getLiveSessionsAdmin);
 router.get('/admin/missed', getMissedRequestsAdmin);
+router.post('/admin/session/:sessionId/send-horoscope', sendHoroscopeEmailAdmin);
 
 // Astrologer Routes (require auth)
 router.get('/astrologer/settings', authMiddleware, getAstrologerSettings);

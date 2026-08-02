@@ -40,6 +40,9 @@ export interface IPersonalizedSession extends Document {
         timestamp: Date;
     }[];
     notes?: string;
+    horoscopeEmailSent?: boolean;
+    horoscopeEmailSentAt?: Date;
+    horoscopeEmailError?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -133,7 +136,10 @@ const PersonalizedSessionSchema: Schema = new Schema({
         message: { type: String },
         timestamp: { type: Date, default: Date.now }
     }],
-    notes: { type: String }
+    notes: { type: String },
+    horoscopeEmailSent: { type: Boolean, default: false },
+    horoscopeEmailSentAt: { type: Date },
+    horoscopeEmailError: { type: String }
 }, { timestamps: true });
 
 export default mongoose.model<IPersonalizedSession>('PersonalizedSession', PersonalizedSessionSchema);
