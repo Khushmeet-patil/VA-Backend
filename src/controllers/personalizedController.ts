@@ -19,9 +19,9 @@ const DEFAULT_CONFIG = {
         { minutes: 120, chatPrice: 1100, callPrice: 1900, videoPrice: 3000 }
     ],
     defaultCommissions: {
-        chat: 20,
-        call: 20,
-        video: 25
+        chat: 80,
+        call: 80,
+        video: 75
     },
     gstPercentage: 18,
     sendEmailHoroscopeEnabled: true
@@ -432,11 +432,11 @@ export const verifyBookingPayment = async (req: Request, res: Response) => {
 
         const config = await getPersonalizedConfig();
 
-        // Calculate Commission & Astrologer Earning using Global Commission Only
-        const commPercentage = config.defaultCommissions[serviceType] || 20;
+        // Calculate Commission & Astrologer Earning (commPercentage = Astrologer Share %)
+        const commPercentage = config.defaultCommissions[serviceType] || 80;
 
-        const platformCommission = Math.round(((basePrice * commPercentage) / 100) * 100) / 100;
-        const astrologerEarning = Math.round((basePrice - platformCommission) * 100) / 100;
+        const astrologerEarning = Math.round(((basePrice * commPercentage) / 100) * 100) / 100;
+        const platformCommission = Math.max(0, Math.round((basePrice - astrologerEarning) * 100) / 100);
 
         const totalAllocatedSec = durationMinutes * 60;
 
@@ -793,11 +793,11 @@ export const completeSession = async (req: Request, res: Response) => {
         if (chatMessages) session.chatMessages = chatMessages;
 
         // Calculate earnings pro-rated as per actual duration talked vs total allocated duration
-        const commPercentage = session.commissionPercentage || 20;
+        const commPercentage = session.commissionPercentage || 80;
         const earnedRatio = totalAllocatedSec > 0 ? Math.min(1, totalUsedSec / totalAllocatedSec) : 1;
         const proRatedBasePrice = Math.round((session.basePrice || 0) * earnedRatio * 100) / 100;
-        const platformCommission = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
-        const netEarningToCredit = Math.max(0, Math.round((proRatedBasePrice - platformCommission) * 100) / 100);
+        const netEarningToCredit = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
+        const platformCommission = Math.max(0, Math.round((proRatedBasePrice - netEarningToCredit) * 100) / 100);
 
         session.astrologerEarning = netEarningToCredit;
         session.platformCommission = platformCommission;

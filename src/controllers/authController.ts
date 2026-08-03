@@ -18,63 +18,49 @@ import { generateKundliPdf, sendPdfEmail, generateNumerologyPdf, sendNumerologyP
 // Admin Login (Email + Password)
 export const adminLogin = async (req: Request, res: Response) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body || {};
 
         if (!email || !password) {
             return res.status(400).json({ success: false, message: 'Email and password are required' });
         }
 
-        // Find admin user (must have role 'admin' and password set)
-        // We search by email (which is not unique index in schema but should be for admins)
-        // OR we can search by mobile if admin uses mobile. 
-        // User requested "email id and password". 
-        // User schema has 'mobile' unique, but 'email' is in 'IAstrologer' not IUser explicitly in schema? 
-        // Wait, UserSchema does NOT have 'email' field! It has 'mobile', 'password', 'name'.
-        // AstrologerSchema has 'email'.
-        // Checking UserSchema again...
-        // Line 79: mobile: ... unique
-        // Line 80: password
-        // It does NOT have email.
+        const cleanInput = String(email).trim();
+        const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        // ISSUE: User requested Email login, but User model has no email field.
-        // I should probably add email to User model or use Mobile for login.
-        // Or, I can check if the user meant "Admin" as a separate entity? 
-        // The codebase uses 'role: admin' on User model.
-
-        // I will add 'email' field to User model first? 
-        // Or just map email to username?
-        // Let's look at the User model again. 
-        // I see 'Astrologer' has email. 'User' does not.
-
-        // SOLUTION: I should add 'email' to User schema to support this properly.
-        // But for now, to avoid DB migration issues if possible, I will check if I can use mobile?
-        // No, user explicitly asked for "email id".
-        // So I MUST add email to User schema.
-
-        // I will first ABORT this edit, add email to User schema, then come back.
-        // But I can't abort inside a tool call.
-        // I will add the code assuming 'email' exists, and then updating the model in the next step.
-
-        const user = await User.findOne({ email });
+        // Find admin user by email (case-insensitive) OR mobile number
+        const user = await User.findOne({
+            $or: [
+                { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+                { mobile: cleanInput }
+            ]
+        });
 
         if (!user) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+            return res.status(401).json({ success: false, message: 'Invalid credentials. User not found.' });
         }
 
         if (user.role !== 'admin') {
-            return res.status(403).json({ success: false, message: 'Access denied. Not an admin.' });
+            return res.status(403).json({ success: false, message: 'Access denied. Not an admin user.' });
         }
 
         if (!user.password) {
-            return res.status(401).json({ success: false, message: 'Password not set for this admin' });
+            return res.status(401).json({ success: false, message: 'Password not set for this admin account' });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        let isMatch = false;
+        try {
+            isMatch = await bcrypt.compare(String(password), user.password);
+        } catch (bErr) {
+            console.error('Bcrypt compare error:', bErr);
+            isMatch = false;
+        }
+
         if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+            return res.status(401).json({ success: false, message: 'Invalid credentials. Incorrect password.' });
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+        const jwtSecret = process.env.JWT_SECRET || 'secret';
+        const token = jwt.sign({ id: user._id, role: user.role }, jwtSecret, { expiresIn: '7d' });
 
         return res.status(200).json({
             success: true,
@@ -82,14 +68,18 @@ export const adminLogin = async (req: Request, res: Response) => {
             user: {
                 _id: user._id,
                 name: user.name,
-                email: user.email,
+                email: user.email || user.mobile,
                 role: user.role
             }
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Admin login error:', error);
-        return res.status(500).json({ success: false, message: 'Server error', error });
+        return res.status(500).json({
+            success: false,
+            message: error?.message || 'Server error during admin login',
+            error: error?.message || String(error)
+        });
     }
 };
 

@@ -299,11 +299,11 @@ export const endChat = async (req: AuthRequest, res: Response) => {
             persSession.remainingDurationSeconds = remainingSec;
             persSession.endTime = now;
 
-            const commPercentage = persSession.commissionPercentage || 20;
+            const commPercentage = persSession.commissionPercentage || 80;
             const earnedRatio = totalAllocatedSec > 0 ? Math.min(1, totalUsedSec / totalAllocatedSec) : 1;
             const proRatedBasePrice = Math.round((persSession.basePrice || 0) * earnedRatio * 100) / 100;
-            const platformCommission = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
-            const netEarningToCredit = Math.max(0, Math.round((proRatedBasePrice - platformCommission) * 100) / 100);
+            const netEarningToCredit = Math.round(((proRatedBasePrice * commPercentage) / 100) * 100) / 100;
+            const platformCommission = Math.max(0, Math.round((proRatedBasePrice - netEarningToCredit) * 100) / 100);
 
             persSession.astrologerEarning = netEarningToCredit;
             persSession.platformCommission = platformCommission;
