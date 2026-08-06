@@ -667,6 +667,7 @@ export const trackReportsFormOpen = async (req: AuthRequest, res: Response) => {
             FeatureUsage.create({ feature: 'reports_form', userId: req.userId })
                 .catch(err => console.error('Failed to log feature usage reports_form:', err));
         }
+        return res.status(200).json({ success: true, message: 'Reports form open tracked successfully.' });
     } catch (error: any) {
         console.error('Track Reports Form Open Error:', error);
         return res.status(500).json({ success: false, message: 'Server error', error: error.message });
