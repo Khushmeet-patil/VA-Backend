@@ -10,7 +10,101 @@ import notificationService from './notificationService';
 import heartbeatService from './heartbeatService';
 
 /**
+ * Utility to detect phone numbers in chat messages, with support for obfuscation
+ * and bypassing valid date/time birth details.
+ */
+function containsPhoneNumber(text: string): boolean {
+    if (!text) return false;
+
+    // Check if it's a structured profile share to avoid false blocking of birth details
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('dob:') && lowerText.includes('tob:') && lowerText.includes('pob:')) {
+        return false;
+    }
+
+    let normalized = lowerText;
+
+    // 1. Map Unicode digits (subscript, superscript, circled, emoji keycaps) to ASCII digits
+    const unicodeMap: { [key: string]: string } = {
+        '⓪': '0', '①': '1', '②': '2', '③': '3', '④': '4', '⑤': '5', '⑥': '6', '⑦': '7', '⑧': '8', '⑨': '9',
+        '⑴': '1', '⑵': '2', '⑶': '3', '⑷': '4', '⑸': '5', '⑹': '6', '⑦': '7', '⑧': '8', '⑨': '9',
+        '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+        '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+        '０': '0', '１': '1', '２': '2', '３': '3', '４': '4', '５': '5', '６': '6', '７': '7', '８': '8', '９': '9',
+        '0️⃣': '0', '1️⃣': '1', '2️⃣': '2', '3️⃣': '3', '4️⃣': '4', '5️⃣': '5', '6️⃣': '6', '7️⃣': '7', '8️⃣': '8', '9️⃣': '9'
+    };
+
+    for (const [unicode, ascii] of Object.entries(unicodeMap)) {
+        normalized = normalized.split(unicode).join(ascii);
+    }
+
+    // 2. Map word numbers to digits
+    const wordToDigitMap: { [key: string]: string } = {
+        'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+        'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9'
+    };
+
+    // Replace written number words with digits where they have word boundaries
+    for (const [word, digit] of Object.entries(wordToDigitMap)) {
+        const regex = new RegExp(`\\b${word}\\b`, 'g');
+        normalized = normalized.replace(regex, digit);
+    }
+
+    // Replace written numbers when adjacent to digits or common separators
+    for (const [word, digit] of Object.entries(wordToDigitMap)) {
+        const adjacentRegex = new RegExp(`(?<=\\d)${word}|${word}(?=\\d)`, 'g');
+        normalized = normalized.replace(adjacentRegex, digit);
+    }
+
+    // 3. Exclude common dates & times to prevent false positives on birth details
+    // Years (1940-2039)
+    normalized = normalized.replace(/\b(?:19|20)\d{2}\b/g, ' ');
+    // Dates like DD/MM/YYYY or YYYY-MM-DD
+    normalized = normalized.replace(/\b(?:0?[1-9]|[12]\d|3[01])[\/\-\.](?:0?[1-9]|1[0-2])[\/\-\.](?:\d{4}|\d{2})\b/g, ' ');
+    normalized = normalized.replace(/\b(?:\d{4}|\d{2})[\/\-\.](?:0?[1-9]|1[0-2])[\/\-\.](?:0?[1-9]|[12]\d|3[01])\b/g, ' ');
+    // Dates with month words: e.g. 25 Dec 1998, Dec 25 1998
+    normalized = normalized.replace(/\b(?:0?[1-9]|[12]\d|3[01])\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}|\d{2})\b/g, ' ');
+    normalized = normalized.replace(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:0?[1-9]|[12]\d|3[01])\s+(?:\d{4}|\d{2})\b/g, ' ');
+    // Times like 11:45 PM or 23:45
+    normalized = normalized.replace(/\b(?:0?[1-9]|1[0-2])[:\.][0-5]\d\s*(?:am|pm)?\b/g, ' ');
+    normalized = normalized.replace(/\b(?:[01]?\d|2[0-3])[:\.][0-5]\d\b/g, ' ');
+    normalized = normalized.replace(/\b(?:0?[1-9]|1[0-2])\s*(?:am|pm)\b/g, ' ');
+
+    // 4. Collapse consecutive spaces, separators, hyphens, parentheses into a single space
+    normalized = normalized.replace(/[\s\-\.\,\/\_\\:()\[\]{}]+/g, ' ');
+
+    // 5. Find if there is any sequence of digits (length >= 10) with small gaps (<= 4 index difference)
+    const digitPositions: number[] = [];
+    for (let i = 0; i < normalized.length; i++) {
+        if (normalized[i] >= '0' && normalized[i] <= '9') {
+            digitPositions.push(i);
+        }
+    }
+
+    if (digitPositions.length < 10) {
+        return false;
+    }
+
+    // Check for a connected sequence of >= 10 digits
+    let run = 1;
+    for (let i = 0; i < digitPositions.length - 1; i++) {
+        const gap = digitPositions[i + 1] - digitPositions[i];
+        if (gap <= 4) {
+            run++;
+            if (run >= 10) {
+                return true;
+            }
+        } else {
+            run = 1;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Socket.IO Event Handlers
+
  * 
  * Manages real-time connections and message delivery.
  * Authentication, room management, and message relay.
@@ -150,6 +244,16 @@ export function initializeSocketHandlers(io: SocketIOServer): void {
                 const { sessionId, text, type = 'text', fileData, replyToId } = data;
 
                 console.log('[Socket] send_message received:', { sessionId, type, hasFileData: !!fileData, from: userType });
+
+                if ((type === 'text' || type === 'image' || type === 'file') && text && containsPhoneNumber(text)) {
+                    console.warn(`[Socket] Message blocked: Phone number sharing is not allowed | from=${userType} userId=${userId}`);
+                    if (typeof callback === 'function') {
+                        callback({ success: false, error: 'Sharing phone numbers is not allowed.' });
+                    } else {
+                        socket.emit('error', { message: 'Sharing phone numbers is not allowed.' });
+                    }
+                    return;
+                }
 
                 if (!sessionId) {
                     socket.emit('error', { message: 'sessionId is required' });
