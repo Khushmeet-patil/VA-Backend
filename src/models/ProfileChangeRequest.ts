@@ -2,8 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IProfileChangeRequest extends Document {
     astrologerId: mongoose.Types.ObjectId;
-    requestType: 'profile_update' | 'rate_update' | 'photo_update';
-    beforeData: Record<string, any>;
+    requestType: 'profile_update' | 'rate_update' | 'photo_update' | 'live_permission';
+    beforeData?: Record<string, any>;
     afterData: Record<string, any>;
     status: 'pending' | 'approved' | 'rejected';
     adminNote?: string;
@@ -18,7 +18,7 @@ const ProfileChangeRequestSchema: Schema = new Schema({
         enum: ['profile_update', 'rate_update', 'photo_update', 'live_permission'],
         required: true
     },
-    beforeData: { type: Schema.Types.Mixed, required: true },
+    beforeData: { type: Schema.Types.Mixed, default: {} },
     afterData: { type: Schema.Types.Mixed, required: true },
     status: {
         type: String,
@@ -26,7 +26,7 @@ const ProfileChangeRequestSchema: Schema = new Schema({
         default: 'pending'
     },
     adminNote: { type: String, default: '' }
-}, { timestamps: true });
+}, { timestamps: true, minimize: false });
 
 // Index for efficient queries
 ProfileChangeRequestSchema.index({ status: 1, createdAt: -1 });
