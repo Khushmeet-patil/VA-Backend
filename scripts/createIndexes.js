@@ -45,6 +45,10 @@ async function createIndexes() {
     await db.collection('transactions').createIndex({ astrologerId: 1, createdAt: -1 }, { background: true });
     console.log('✓ transactions indexes created');
 
+    // ── ChatReview ───────────────────────────────────────────────────────────
+    await db.collection('chatreviews').createIndex({ sessionId: 1 }, { unique: true, background: true });
+    console.log('✓ chatreviews indexes created');
+
     await mongoose.disconnect();
     console.log('\nAll indexes created successfully.');
 }

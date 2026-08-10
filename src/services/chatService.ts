@@ -1873,7 +1873,15 @@ class ChatService {
             reviewText,
             status: 'pending' // Always start as pending
         });
-        await review.save();
+
+        try {
+            await review.save();
+        } catch (error: any) {
+            if (error.code === 11000) {
+                throw new Error('Session already reviewed');
+            }
+            throw error;
+        }
 
         console.log(`[ChatService] Review submitted for session: ${sessionId} (pending admin approval)`);
     }
