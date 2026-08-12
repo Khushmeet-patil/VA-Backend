@@ -1803,9 +1803,11 @@ class ChatService {
     ): Promise<{ messages: any[]; hasMore: boolean }> {
         // Find all sessions between this user and astrologer
         const sessions = await ChatSession.find({
-            userId,
-            astrologerId,
-            status: { $in: ['ACTIVE', 'ENDED'] }
+            $or: [
+                { userId, astrologerId },
+                { userId: astrologerId, astrologerId: userId }
+            ],
+            status: { $in: ['ACTIVE', 'ENDED', 'COMPLETED'] }
         }).select('sessionId');
 
         const sessionIds = sessions.map(s => s.sessionId);

@@ -666,7 +666,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
             // For astrologers, get sessions where they are the astrologer
             sessions = await ChatSession.find({
                 astrologerId: userId,
-                status: { $in: ['COMPLETED', 'ENDED'] }
+                status: { $in: ['ACTIVE', 'ENDED', 'COMPLETED'] }
             })
                 .populate('userId', 'name mobile')
                 .sort({ createdAt: -1 })
@@ -676,7 +676,7 @@ export const getUserSessions = async (req: AuthRequest, res: Response) => {
             // (both parties joined) - exclude pending/rejected/cancelled sessions
             sessions = await ChatSession.find({
                 userId: userId,
-                status: { $in: ['ACTIVE', 'ENDED'] },
+                status: { $in: ['ACTIVE', 'ENDED', 'COMPLETED'] },
                 userJoined: true,
                 astrologerJoined: true
             })
