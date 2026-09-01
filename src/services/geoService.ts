@@ -63,8 +63,23 @@ export const getGeoDetailsGoogle = async (
         const queryVal = place.trim();
         const normalizedQuery = queryVal.toLowerCase();
 
-        // We no longer use cache for autocomplete to prevent stale or single-result issues
-        // (Places should be queried fresh from Google to show all possible matches)
+        // Check cache prefix for autocomplete matches to cut API requests
+        const cachedMatches = await GeoCache.find({ query: new RegExp('^' + escapeRegex(normalizedQuery)) }).limit(maxRows);
+        if (cachedMatches.length > 0) {
+            console.log(`[GeoService Google] Cache hit prefix for "${queryVal}": ${cachedMatches.length} matches`);
+            return {
+                status: true,
+                data: cachedMatches.map(c => ({
+                    place_name: c.place_name,
+                    place_id: c.place_id,
+                    latitude: c.latitude,
+                    longitude: c.longitude,
+                    timezone: c.timezone,
+                    timezone_id: c.timezone_id,
+                    country_code: c.country_code
+                }))
+            };
+        }
 
         if (!GOOGLE_MAPS_API_KEY) {
             console.warn('[GeoService Google] GOOGLE_MAPS_API_KEY is not defined');
