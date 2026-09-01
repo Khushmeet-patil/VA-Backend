@@ -90,7 +90,7 @@ export const getGeoDetailsGoogle = async (
         const autocompleteUrl = 'https://places.googleapis.com/v1/places:autocomplete';
         const autoRes = await axios.post(autocompleteUrl, {
             input: queryVal,
-            includedPrimaryTypes: ['(regions)']
+            includedRegionCodes: ['in']
         }, {
             headers: {
                 'Content-Type': 'application/json',
@@ -262,7 +262,7 @@ export const geocodePlaceGoogle = async (placeName: string): Promise<any> => {
         const autocompleteUrl = 'https://places.googleapis.com/v1/places:autocomplete';
         const autoRes = await axios.post(autocompleteUrl, {
             input: placeName,
-            includedPrimaryTypes: ['(regions)']
+            includedRegionCodes: ['in']
         }, {
             headers: {
                 'Content-Type': 'application/json',
